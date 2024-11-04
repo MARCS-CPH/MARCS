@@ -1,0 +1,4 @@
+This is a test file by KHM
+Modified
+Modified in worktree
+This is a modifciation test

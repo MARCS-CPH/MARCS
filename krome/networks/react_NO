@@ -1,0 +1,4 @@
+#reactions for Zel'dovich nitric oxyde (NO) mechanism (Baulch et al. 1994)
+@format:idx,R,R,P,P,rate
+1,N2,O,NO,N,3d-10*exp(-38300.*invT)
+2,O2,N,NO,O,1.5d-14*Tgas*exp(-3270.*invT)

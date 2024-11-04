@@ -1,0 +1,16 @@
+reset
+set logscale
+nkrome=3
+load 'species.gps'
+
+set yrange [1e-21:1e-17]
+
+set xlabel "log(Tgas/K)"
+set ylabel "cooling (erg*cm3/s)"
+set format x "%L"
+set format y "%L"
+
+plot './fort.55' u 2:3 every :::0::0 w l  t "T (j21=0e0)",\
+ '' u 2:3 every :::1::1 w l  t "T (j21=1e0)",\
+ '' u 2:3 every :::2::2 w l  t "T (j21=1e2)"
+

@@ -1,0 +1,8 @@
+#Reactions for the Chapman mechanism KHM from NIST. J's from layer 10 in std. MARCS model
+#No M directly
+@format:idx,R,R,R,P,P,P,rate
+1,O2,O,M,O3,M,,2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(8.314E-3*Tgas))
+2,O3,O,,O2,O2,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(8.314E-3*Tgas))
+3,O2,,,O,O,,0.00000000017059045154
+3,O3,,,O2,O,,0.0181501903017985
+

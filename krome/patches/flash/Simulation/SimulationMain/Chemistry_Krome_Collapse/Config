@@ -1,0 +1,26 @@
+REQUIRES Driver 
+REQUIRES physics/Hydro
+REQUIRES physics/Eos/EosMain/Multigamma
+REQUIRES Grid/GridBoundaryConditions/OneRow
+REQUIRES physics/sourceTerms/KromeChemistry/KromeChemistryMain
+REQUIRES Multispecies
+
+# use this gravity solver for 1D
+REQUIRES physics/Gravity/GravityMain/Poisson/Multipole
+
+# use this gravity solver for 3D
+#REQUIRES physics/Gravity/GravityMain/Poisson/Multigrid
+
+PARAMETER sim_c_temp           REAL    1000.0
+PARAMETER sim_c_den	       REAL    1.0e-21
+
+PARAMETER sim_contrast         REAL    0.01
+
+PARAMETER sim_nblockx              REAL    1.0
+PARAMETER sim_nblocky		   REAL	   1.0
+PARAMETER sim_nblockz	  	   REAL    1.0
+
+
+#Define the mass fractions for all the species above!
+#KROME_specs_config
+

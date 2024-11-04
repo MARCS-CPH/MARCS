@@ -1,0 +1,9 @@
+##############
+#options for test reverse
+
+-n networks/react_NO
+-reverse
+-noSinkCheck
+-checkConserv
+-project=MARCS_NO
+-n networks/react_NO

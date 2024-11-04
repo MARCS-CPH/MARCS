@@ -1,0 +1,9 @@
+#This option file has been automatically generated
+#Mon Oct  3 10:39:14 2022
+
+-n=networks/react_NO
+
+-useN
+
+-project=wiz_test
+
