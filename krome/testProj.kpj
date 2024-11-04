@@ -1,0 +1,1 @@
+./krome -noSinkCheck -n networks/react_NO -project=testProj

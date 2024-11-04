@@ -1,0 +1,24 @@
+reset
+#set terminal postscript eps enhanced color font 'Helvetica,10'
+#set output 'J21xr_1e-1.eps'
+#set multiplot layout 2,1
+set logscale
+set autoscale
+set format y "%L"
+set format x "%L"
+
+
+set key b r
+set key Left
+set key reverse
+set key below
+set yrange [7e1:2e4]
+set xrange [:1e8]
+set ylabel "log(T/K)"
+set xlabel "log(density [cm-3])"
+n=100
+#plot './fort.22' u 2:3 w l
+plot './fort.22' u 2:($1==0.?$3:1/0) t "J21x=0.1, J21=0" w l,\
+'' u 2:($1==1e1?$3:1/0) t "J21x=0.1, J21=10" w l,\
+'' u 2:($1==1e3?$3:1/0) t "J21x=0.1, J21=1000" w l,\
+'' u 2:($1==3e3?$3:1/0) t "J21x=0.1, J21=3000" w l 

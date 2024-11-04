@@ -1,0 +1,52 @@
+#!/bin/bash
+
+reset
+set multiplot layout 2,2 rowsfirst
+set logscale
+set autoscale
+set format x "%L"
+set format y "%L"
+set ylabel "log(ni/ntot)"
+set xlabel "log(1+z)"
+set key b l
+set key font ",7"
+set key spacing 0.8
+set key samplen 1
+set grid
+set xrange [1e1:1.e4] reverse
+#set size square
+
+nkrome = 4
+load 'species.gps'
+
+set yrange [1e-25:1e1]
+plot './fort.22' u 1:krome_idx_H  w l t "H",\
+'' u 1:krome_idx_Hj  w l t "H+",\
+'' u 1:krome_idx_Hk  w l t "H-",\
+'' u 1:krome_idx_H2  w l t "H2",\
+'' u 1:krome_idx_H2j  w l t "H2+",\
+'' u 1:krome_idx_H3j  w l t "H3+"
+
+set key b r
+set yrange [1e-25:1e1]
+plot './fort.22' u 1:krome_idx_HE w l t "He",\
+'' u 1:krome_idx_HEj w l t "He+",\
+'' u 1:krome_idx_HEjj w l t "He++",\
+'' u 1:krome_idx_HEHj w l t "HeH+"
+
+set yrange [1e-25:1e1]
+set key b l
+plot './fort.22' u 1:krome_idx_D w l t "D",\
+'' u 1:krome_idx_Dj w l t "D+",\
+'' u 1:krome_idx_HD w l t "HD",\
+'' u 1:krome_idx_HDj w l t "HD+",\
+'' u 1:krome_idx_H2Dj w l t "H2D+"
+
+set ylabel "log(T[K])"
+set xlabel "log(1+z)"
+set yrange [1e0:1e4]
+set key t r
+plot './fort.22' u 1:3 w l t "TGAS",\
+'' u 1:4 w l t "TCMB"
+
+unset multiplot

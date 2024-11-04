@@ -1,0 +1,59 @@
+#This file contains index list and other info
+
+
+#********************************
+# Species list with their indexes
+1	N2	krome_idx_N2
+2	O	krome_idx_O
+3	NO	krome_idx_NO
+4	N	krome_idx_N
+5	O2	krome_idx_O2
+6	CR	krome_idx_CR
+7	g	krome_idx_g
+8	Tgas	krome_idx_Tgas
+9	dummy	krome_idx_dummy
+
+#Note: the first 5 variables above should be used
+# as framework code passive scalars, while the last 4
+# are employed inside KROME.
+
+
+#********************************
+# Species in a Python list of strings
+["N2", "O", "NO", "N", "O2", "CR", "g", "Tgas", "dummy", ]
+
+
+#********************************
+#useful parameters
+krome_nrea           = 4    !number of reactions
+krome_nmols          = 5    !number of chemical species
+krome_nspec          = 9    !number of species including Tgas,CR,...
+krome_ndust          = 0    !number of dust bins (total)
+krome_ndustTypes     = 0    !number of dust types
+krome_nPhotoBins     = 0    !number of radiation bins
+krome_nPhotoRates    = 0    !number of photochemical reactions
+
+
+#********************************
+#list of reactions (including with multiple limits)
+1	N2 + O -> NO + N
+2	O2 + N -> NO + O
+3	NO + N -> N2 + O (REV)
+4	NO + O -> O2 + N (REV)
+
+
+#********************************
+#list of reactions (without multiple limits)
+1	N2 + O -> NO + N
+2	NO + N -> N2 + O (REV)
+3	O2 + N -> NO + O
+4	NO + O -> O2 + N (REV)
+
+
+#********************************
+#list of reactions (LaTeX format)
+#Table columns format {llllclll}
+ 1 & N$_2$ & + & O & $\to$ & NO & + & N\\
+ 2 & O$_2$ & + & N & $\to$ & NO & + & O\\
+ 3 & NO & + & N & $\to$ & N$_2$ & + & O\\
+ 4 & NO & + & O & $\to$ & O$_2$ & + & N\\

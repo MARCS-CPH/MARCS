@@ -1,0 +1,9 @@
+##############
+#options for test Cinterface
+-n tests/Cinterface/network.ntw
+-interfaceC
+-coolFile=tests/Cinterface/coolX.dat
+-cooling=FeII
+-noSinkCheck
+-nomassCheck
+
