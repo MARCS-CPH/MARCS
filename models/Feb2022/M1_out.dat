@@ -1,0 +1,15 @@
+MMY,NCORE,KDIFF,IRRIN,STEFF:    4      5      3      1       5770.
+
+                    NOCONV =        26
+                    MIHAL  =   34
+                    KONSG  =    0  KORT  =    5  KPP  =  100
+  abund(1-17):
+   12.0000   10.9300    1.0500    1.3800    2.7000    8.3900
+    7.7800    8.6600    4.5600    7.8400    6.1700    7.5300
+    6.3700    7.5100    5.3600    7.1400    5.5000
+ionization of element 12:K   was read to   4.339 eV
+  We did a resolution based set of os wavenumbers
+ Total  10598 OS wavenumbers for Marcs radiative transf.
+ Approximate resolution is   2000. (corresponding to step factor10.00050)
+ OS interval:  400.0-  80004.0 cm^-1 (= 0.12- 25.0mu)
+ TOTAL FLUX= 2.2533E+09 ERGS/CM**2/S  TEFF= 2510. K

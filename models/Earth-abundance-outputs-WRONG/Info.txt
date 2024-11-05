@@ -1,0 +1,2 @@
+These had their elemental abundance changed incorrectly (directly in GGChem input) affecting only part of the model.
+These are thus wrong
