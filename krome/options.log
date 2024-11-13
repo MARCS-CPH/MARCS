@@ -1,9 +1,0 @@
--ATOL 1d-30
--n networks/react_NO
--noExample 
--noSinkCheck 
--project MARCS_NO
--reverse 
--RTOL 1D-6
--unsafe 
--useN 

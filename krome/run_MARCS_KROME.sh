@@ -1,6 +1,6 @@
-project=MARCS_NO_transport
+project=React_Chapman
 #./krome -n networks/react_NO -useN -reverse -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-30 -RTOL=1D-6
-./krome -n networks/react_NO -useN -reverse -noSinkCheck -project=$project -noExample -unsafe -ATOL=1d-30 -RTOL=1D-6
+python3 krome -n networks/react_Chapman -useN -reverse -noSinkCheck -project=$project -noExample -unsafe -ATOL=1d-30 -RTOL=1D-6
 #./krome -n networks/react_NO -useN -reverse -noSinkCheck -project=$project -noExample -unsafe
 #./krome -n networks/react_NO -useN -reverse -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-30 -RTOL=1D-6 -useEquilibrium
 #./krome -n networks/react_NO_transport -useN -noSinkCheck -project=$project -noExample -unsafe -nomassCheck -ATOL=1d-30 -RTOL=1D-6
