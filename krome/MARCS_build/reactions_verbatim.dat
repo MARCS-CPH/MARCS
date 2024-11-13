@@ -1,0 +1,8 @@
+O2 + O + M -> O3 + M
+O3 + O -> O2 + O2
+O2 -> O + O
+O3 -> O2 + O
+O3 + M -> O2 + O + M (REV)
+O2 + O2 -> O3 + O (REV)
+O + O -> O2 (REV)
+O2 + O -> O3 (REV)
