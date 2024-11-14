@@ -12318,11 +12318,8 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
       common /NONEQ/noneq
-<<<<<<< HEAD
       
-=======
 
->>>>>>> 381a31b63f9f00b235ad6e20273cd9e6c2a56676
       if (first) then
       TOSREAD = 0.
       TPART = 0.
@@ -12444,16 +12441,15 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
 C ------------ USING KROME TO COMPUTE NON-EQ CHEMISTRY------------
 C      write(*,*) 'X before'
 C      write(*,*) x
-<<<<<<< HEAD
+
       if(noneq.eq.1) then
         call krome_routine(ntau,T,ptot)
         stop
       endif 
-=======
       if (NONEQ==1) then
       call krome_routine(ntau,T,ptot)
       endif
->>>>>>> 381a31b63f9f00b235ad6e20273cd9e6c2a56676
+
 C      write(*,*) 'X after'
 C      write(*,*) x
 
