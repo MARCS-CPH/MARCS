@@ -56,3 +56,43 @@ Return to "main" directory by cd ../
 Compile the combined MARCS and KROME by running:
 make
 Now you can run MARCS via runmarcs as usual
+
+Changes made to the default Makefile for the linking to MARCS to work as intended
+
+Assumption:
+marcs.f is in the “main” directory and all files related to krome are in a sub-directory called “krome”.
+Inside the krome directory, the files created by running ./krome (or better run_MARCS_KROME.sh) are in MARCS_build 
+Exception: the file “reactions_verbatim.dat” must be in the “main” directory
+Desired result: marcs executable is created in the "main" directory and everything else is kept in "krome/MARCS_build"
+
+Added at the top of the Makefile to tell the compiler to look in this directory
+#Paths
+VPATH = ./krome/MARCS_build
+
+Changed the name of the intended executable
+#executable name
+exec = marcs
+
+Added path for krome_subs.f90 file
+GREP = $(shell grep -i 'dgesv' krome/MARCS_build/krome_subs.f90)
+
+Specified location of module files to be “krome/MARCS_build” directory using “-module krome/MARCS_build”
+switchOPT = -O3 -ipo -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise
+
+All the objects have the path “krome/MARCS_build” added in front of their filenames
+
+Modified the default target
+#default target
+all:  $(objs) marcs.o
+      $(fc) $(objs) marcs.o -o $(exec) $(switch) $(lib)
+
+Included specifically the -save compiler option for the marcs compilation to save variables in static memory to aviod segmentation violation
+#Special rule for marcs
+marcs.o:marcs.f
+      $(fc) -save $(switch) $(nowarn) -c $^ -o $@
+
+
+
+
+
+
