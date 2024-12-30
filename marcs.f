@@ -1,10 +1,11 @@
-!-----------------------------------------------------------------------
+!6-----------------------------------------------------------------------
 C BEM�RK:         RS=0.00465047
 C      RAU=1.00
 C      STEFF=5770
 
-
-
+!         version 2024      by KHM and TB: implementation of NonEq. Chemistry via KROME
+!         version 2022      by BCE: update coupling to GGchem and to SW (DRIFT)
+!                                   and to add irradiation
 !         version 2018      by ERC: coupling to GGCHEM to model down to 100 K
 !         version 2015      by DJ: coupling to DRIFT to model clouds
 !         version 00-03-22  by UGJ includes JF's equilibrium and C2H opac.
@@ -49,9 +50,12 @@ C      STEFF=5770
       integer molh, jump
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit,onemor
+      integer krome_on,krome_return,krome_output,photo_on
+      real*8 krome_tmax
+      common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *  kos_step,nwtot,nosmol,newosatom,newosatomlist,
-     *  nchrom,osfil(60),molname(60),sampling
+     *  kos_step,nwtot,nosmol,newosatom,newosatomlist
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
      *  vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
      * ntau,iter
@@ -68,7 +72,7 @@ C      STEFF=5770
      &  partpp(ndp,0:maxmol)
       common /cisph/isph
       common /clist/nlte
-      common/ci5/abmarcs(18,ndp),anjon(17,5),h(5),part(17,5),
+      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *  dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       namelist /outlist/ masslinf
       common /coutlist/pplist(843)
@@ -80,11 +84,12 @@ C      STEFF=5770
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
+     *      r_null,f_eps,f_opac, n_lay, n_eps
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
-      common /cdrift/ idust, ieps
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
       character atnames*2, molnames*8, molnames2*4
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
@@ -93,15 +98,18 @@ C      STEFF=5770
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      common /NONEQ/noneq
-
+      common /noneq/ krome_on,photo_on
+      common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
+      common /noneq_output/ output_freq,krome_output,krome_return
+C    
 
 ! Initiation
+      larciv = 0
       call gettime(0)
       
       open(unit=5,file='mxms7.input',status='old',readonly)
@@ -110,11 +118,12 @@ C      STEFF=5770
       open(unit=16,file='arcivaaa.dat',status='old',readonly)
 
       read(5,'(6(7x,i3,5x))') itmax,nprint,newmod,noarch,jontyp,idust
-      
-      read(5,'(7x,i3,12x,a3,2(12x,i3),12x,a3,12x,i1)') jump,sampling,
-     *molold,nlte,pp_sph,noneq
+      if (idust == 1) idustopac = 1
+      read(5,'(7x,i3,12x,a3,2(12x,i3),12x,a3)') jump,sampling,molold,
+     *  nlte,pp_sph
+
       if(pp_sph.eq.'sph' .or. pp_sph.eq.'SPH') isph = 1
-      !write(*,*) noneq
+      
       if(jump.ne.4) stop 
      * 'Error: This MARCS version only works with GGchem eq. chemistry'
       iggcall = 0
@@ -137,27 +146,18 @@ C      STEFF=5770
         if(isph .eq. 1) stop 'Error: Dust only works for ISPH=0'
         
         print *, 'Reading DRIFT file...'
-        open(unit=976, file='opac_frac.in')
-        read(976,*) f_eps
+        open(unit=976, file='f_cloud.in')
+        read(976,*) f_opac
         close(976)
         call drift2marcs
         print *, 'Done.'
         print *
-        call dust_opac_init
-        ieps = 0
-        call dust_eps
+        call dust_opac_eps_interp
+        if (icloud_conv == 1) stop
       end if
 
       molh = 0                           ! molh=1 => only h,h2,h2+ in molec. eq.      
-
       metals = 0
-      do im = 1,nosmol
-        if(molname(im).eq. 'ATOM') metals = im
-        if(molname(im).eq.'CH4 ' .and. jump.eq.0) then 
-          stop ' P(CH4) not comp. by old Marcs eq.; set JUMP>0'
-        end if
-      end do
-      if(metals.ge.1) call osinit        ! atomic lines included in computation
      
       read(5,outlist)
       pfd=itmax.lt.0
@@ -238,16 +238,19 @@ C      STEFF=5770
       call newsta
 102   continue
       call archiv(22)
-      call listmo(1,22,isph)
+              call listmo(1,22,isph)
 
 
 ! End program
 101   continue
-      write(7,*) ' *** NORMAL END ***'
+      write(7,*) 'Model written out successfully.'
       call gettime(1)
       print *
       print *, 'Successful termination of execution!'
       print *
+      if(it.gt.itmax) then
+        print *, 'WARNING: Maximum number of iterations reached'
+      end if
 
       stop
       end
@@ -309,7 +312,6 @@ C      PARAMETER (KFADIM=4000,IFADIM=1000)
       COMMON/CROS/ROSW(20)
       COMMON /CARC3/ F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /CARC4/ PROV(30),NPROVA,NPROVS,NPROV
-      COMMON /TIO/PTIO(NDP),ROsav(NDP),POXG1(NDP)
       COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
       COMMON/CMOL1/EH,FE,FH,FHE,FC,FCE,FN,FNE,FO,FOE,FK,FKE,FS,FSE
      &             ,FT,FTE
@@ -361,7 +363,8 @@ C
         molh =0
       endif
 
-      if(pe(ntp).le.1.e-33) then
+
+      if(pe(ntp).le.1d-300) then
         print *, "Electron pressure too small in ABSKO"
       end if
       
@@ -371,8 +374,6 @@ C
       if(j.le.0) then
         !molh=molhs
         molh = 0
-        rosav(ntp)=ro
-        poxg1(ntp)=pe(ntp)*foe
 
         IF (JUMP.GE.1) THEN
          prh2o(ntp)=partryck(ntp,4)
@@ -816,6 +817,7 @@ C
 C
 C        COMMONS SHARED BY MAIN PROGRAM
 C        THESE SHOULD BE MODIFIED BY NORDLUND FOR HIS PURPOSES.
+      common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON/STATEC/PRAD(NDP),PTURB(NDP),P(NDP),GG(NDP),ZZ(NDP),DD(NDP),
      &              VV(NDP),FLUXC(NDP),PE(NDP),T(NDP),
@@ -838,8 +840,8 @@ C        COMMON SHARED BY SOLVE
       COMMON /CARC2/TKORRM(NDP),FCCORR(NDP),FLUXME(NWL),TAU5(NDP),INORD
 C
 C        COMMONS SHARED BY JON
-      COMMON/CI5/abmarcs(18,ndp),ANJON(17,5),H(5),PART(17,5),
-     * DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
+      COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
+     *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CI1/FL2(5),PARCO(45),PARQ(180),SHXIJ(5),TPARF(4),
      *XIONG(16,5),EEV,ENAMN(ndp),SUMH(ndp),XKBOL,NJ(16),IEL(16),
      *SUMM(ndp),NEL
@@ -869,10 +871,10 @@ c        COMMON SHARED BY GGCHEM
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
 
       common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
@@ -883,6 +885,7 @@ c        COMMON SHARED BY GGCHEM
                
 C
 c      print *, "archiv called"
+      larciv = 1
       IARCH=LUN
       ISTAN2=1
       JSTAN2=NL(1)+1
@@ -907,12 +910,7 @@ C
 C        COMPUTE AND STORE THERMODYNAMIC QUANTITIES AND DEPTHSCALES.
 C        PUNCH BELL'S CARDS.
 C
-      do k=1,ndp
-        K1=MIN0(K+1,ndp)
-        PGm1(k)=P(K)-PRAD(K)-0.5*(PTURB(K)+PTURB(K1))
-        pem1(k)=pe(k)
-        tm1(k)=t(k)
-      end do
+      
 
 C
 C
@@ -934,6 +932,8 @@ C        THIS IS CERTAINLY QUITE UNIMPORTANT FOR MOST MODELS.
       
       end if
 
+      if(k.eq.1 .or. k.eq.jtau) write(6,2001) k,t(k),pe(k),ppel(k)
+2001  format(' in archiv; k,t,pe,ppel = ',i3,f8.3,2e12.3)
 ****************18.12.04 Ch.H
 *
 * if JUMP >= 1 routine MOL dosn't work => no presmo
@@ -965,13 +965,8 @@ C  NMOL=33 is number of molecules considered in the old MARCS chem.equilibrium
      
       HNIP=HNIC
 C        CHANGE BACK AGAIN
-CUGJ981018      MOLH=MOLHO
-      if(metpe.eq.1) then
+C UGJ981018      MOLH=MOLHO
       CALL TERMO(k,T(K),PE(K),PRAD(K),PTOT,RRO,CP,CV,AGRAD,Q,U2)
-      else if(metpe.eq.2) then
-      CALL TERMO(k,T(K),PPEL(K),PRAD(K),PTOT,RRO,CP,CV,AGRAD,Q,U2)
-        rro = ggrho(k)
-      end if
       FORE=(ABSKA(1)+SPRIDA(1))/XKAPR(K)
       FURE=1./(XKAPR(K)*RRO)
       IF(K.GT.1)GO TO 11
@@ -987,7 +982,7 @@ C
       PG=P(K)-PRAD(K)-0.5*(PTURB(K)+PTURB(K1))
       EMU=(1.38*RRO*T(K))/(1.67E-8*PG)
       if (U2.lt.0.) then
-         write(7,*) ' in Archiv for K=',K,' U2= ',U2
+         !write(7,*) ' in Archiv for K=',K,' U2= ',U2
          U2 = -U2
       end if
       U=SQRT(U2)
@@ -1021,6 +1016,7 @@ C K=JTAU
       ANCONV=FCONV/FLUX
 C
 C partial pressure of He is put into presmo(17)
+
         XNHE = abmarcs(2,k) / (XMH*XMY(k)) 
         PRESMO(17) = 1.38053d-16 * T(K) * XNHE * RRO
         PRESMP(17)=MAX(PRESMO(17),1.D-99)
@@ -1072,7 +1068,6 @@ C
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
-     
       CALL ABSKO(1,1,T(K),PPEL(K),1,J,ABSKA(1),SPRIDA(1),k)
       
       end if
@@ -1567,7 +1562,7 @@ C
       DIMENSION FAKRAY(NDP)
       DIMENSION PHTVA(NDP),PHEL(NDP),H2RAY(NDP)
       COMMON /CLIN/lin_cia
-      COMMON/CI5/abmarcs(18,ndp),ANJON(17,5),H(5),PART(17,5),
+      COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CA2/RCA2DUM(4000),ICA2DUM(602),NKOMP
       COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),XLA(20),XLA3(20),RO,
@@ -1577,7 +1572,6 @@ C
       CHARACTER*8 SOURCE,ABNAME
       COMMON /CHAR/ ABNAME(30),SOURCE(30)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      COMMON /CCIATEST/ CIATEST(44,NDP)
       common /ggchembool/ iggcall
       common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
@@ -1587,6 +1581,7 @@ C
       DATA FIRST/.TRUE./
       DATA NH2PR/'H2PR'/,NHEPR/'HEPR'/,NELS/'ELSC'/,NHRAY/'H-SC'/
      & ,NH2RAY/'H2SC'/,NHMIN/'H-'/
+
 C
 C        SAVE ABSORPTION COMPONENT NAMES THE FIRST TIME DETABS IS CALLED
 
@@ -1752,7 +1747,7 @@ C        C I
 
 C        MG I
       FAKT(23)=rMg(nlayer)*abmarcs(8,ntp)*HN
-
+    
       
 C        AL I
       !FAKT(24)=ANJON(9,1)*abmarcs(9,ntp)*HN*6./PART(9,1)
@@ -2029,123 +2024,8 @@ C               10 DATAKORT FOER AP, 9 FOER XMYP OCH 1 FOER INDOV
       RETURN
       END
 C
-      SUBROUTINE H2OPAC(OMEGA,T,PROPAC)
-      implicit real*8 (a-h,o-z)
-C
-      A=7.02391+1.3380*log10(T)
-      A=10.**A
-      A=1./A
-      B=91.67+0.1033*T
-      C=(15.57906-2.06158*log10(T)-0.477352*(log10(T))**2)/1.E7
-      D=2.31317+3.8856E-4*T
-      D=10**D
-      OMEGAC=274.3+.2762*T
-C     WRITE(7,4) A,B,C,D,OMEGAC
-    4 FORMAT(3X,5E15.5)
-      IF (OMEGA.GE.OMEGAC)GOTO1
-      OMEGAT=A*OMEGA**2*EXP(-OMEGA/B)
-      GOTO2
-    1 OMEGAT=C*EXP(-OMEGA/D)
-    2 CONTINUE
-C     WRITE(7,3) T,OMEGA,OMEGAT
-    3 FORMAT(3X,F10.0,2E15.5)
-    5 CONTINUE
-      E=4.2432E-6-2.8854E-7*log(T)
-      F=1.2171E+5+258.28*T
-      G=2.5830E-4-4.3429E-8*T
-      H=1.1332E-2-1.1943E-3*log(T)
-      OMEGAP=-2973.3+600.73*log(T)
-      OMEGT2=1.5*OMEGAP
-C     WRITE(7,11) E,F,G,H,OMEGAP,OMEGT2
-   11 FORMAT(3X,6E15.5)
-      IF(OMEGA.GT.OMEGT2)GOTO13
-      OMEGAR=E*EXP(-(OMEGA-OMEGAP)**2/F)
-      GOTO14
-   13 OMEGAR=G*EXP(-H*OMEGA)
-   14 CONTINUE
-C     WRITE(7,15) T,OMEGA,OMEGAR
-   15 FORMAT(3X,F10.0,2E15.5)
-   12 CONTINUE
-      GAM=6.0273E-10+2.2905E-13*T+4.0848E-17*T**2
-      W1=363.96+1.3530*T-3.5807E-4*T**2+3.3618E-8*T**3
-      XJ=161.45/T-2.6996-1.9537E-4*T
-      XJ=10.**XJ
-      W2=-108626./T+697.59+0.14353*T
-      XT=28.765/T-9.0461+1.1552E-4*T
-      XT=10.**XT
-      XG=1.4860+0.44462*log10(T)
-      XG=10.**XG
-      XNYC=-5.1972+2.1*log10(T)
-      XNYC=-(10.**XNYC-4172.)
-      W232=1.5*W2
-C     WRITE(7,21) GAM,W21,XJ,W2,XT,XG,XNYC,W232
-   21  FORMAT(3X,8E15.5)
-      XNY=OMEGA
-      IF(XNY.GE.XNYC)GOTO23
-      OMEGAK=GAM*W1**2*EXP(XJ*(XNY-XNYC))/((XNY-XNYC)**2+W1**2)
-      GOTO24
-   23 IF(XNY.GT.(XNYC+W232))GOTO25
-      OMEGAK=GAM*W2**2/((XNY-XNYC)**2+W2**2)
-      GOTO24
-   25 OMEGAK=XT*EXP(-(XNY-XNYC)/XG)
-   24 OMEGAK=OMEGAK*OMEGA
-C     WRITE(7,26) T,XNY,OMEGAK
-   26 FORMAT(3X,2F10.0,E15.5)
-   22 CONTINUE
-      PROPAC=OMEGAR+OMEGAT+OMEGAK
-      RETURN
-      END
-C
-      SUBROUTINE HEOPAC(OMEGA,T,PROPAC)
-      implicit real*8 (a-h,o-z)
-C
-      A=7.02391+1.3380*log10(T)
-      A=10.**A
-      A=1./A
-      B=91.67+0.1033*T
-      C=(15.57906-2.06158*log10(T)-0.477352*(log10(T))**2)/1.E7
-      D=2.31317+3.8856E-4*T
-      D=10**D
-      OMEGAC=274.3+.2762*T
-      IF (OMEGA.GE.OMEGAC)GOTO1
-      OMEGAK=A*OMEGA**2*EXP(-OMEGA/B)
-      GOTO2
-    1 OMEGAK=C*EXP(-OMEGA/D)
-    2 CONTINUE
-      OMEGAK=1.78*OMEGAK
-      E=4.2432E-6-2.8854E-7*log(T)
-      F=1.2171E+5+258.28*T
-      G=2.5830E-4-4.3429E-8*T
-      H=1.1332E-2-1.1943E-3*log(T)
-      OMEGAP=-2973.3+600.73*log(T)
-      OMEGAT=1.5*OMEGAP
-      IF(OMEGA.GT.OMEGAT)GOTO13
-      OMEGAX=E*EXP(-(OMEGA-OMEGAP)**2/F)
-      GOTO12
-   13 OMEGAX=G*EXP(-H*OMEGA)
-   12 CONTINUE
-      OMEGAX=.10*OMEGAX
-      DEL2=-4.033E+4+263.93*T
-      DEL=SQRT(DEL2)
-      APRIM=-7.7245+0.4246*log10(T)
-      APRIM=10.**APRIM
-      AA=1./(1.125E+9+1.5866E+4*T+24.267*T**2)
-      BB=1.2044+.4956*log10(T)
-      BB=10.**BB
-      OMEGAZ=4161.1
-      IF(OMEGA.GE.OMEGAZ)GOTO22
-      OMEGAY=(APRIM*DEL*OMEGA*EXP((OMEGA-OMEGAZ)/(.6952*T)))/((OMEGA-
-     & OMEGAZ)**2 +DEL2)
-      GOTO23
-   22 IF(OMEGA.GT.(OMEGAZ+1.5*DEL))GOTO24
-      OMEGAY=(APRIM*DEL*OMEGA)/((OMEGA-OMEGAZ)**2+DEL2)
-      GOTO23
-   24 OMEGAY=AA*OMEGA*EXP(-(OMEGA-OMEGAZ)/BB)
-   23 CONTINUE
-      PROPAC=OMEGAK+OMEGAX+OMEGAY
-      RETURN
-      END
-C
+
+
       SUBROUTINE INABS(IOUTS)
       implicit real*8 (a-h,o-z)
 C
@@ -2530,23 +2410,485 @@ C
   105 FORMAT(2A8)
       RETURN
       END
+C  end of       SUBROUTINE INABS(IOUTS)
 C
+
+      ! begin ADS
+C     Aaron's routines to read two dimensional OS files:
+
+      MODULE OPAMOD
+         implicit real*8 (a-h,o-z)
+         private
+         public :: get_opac, read_opac  
+         include 'parameter.inc'  
+
+         ! WARNING: -mcmodel=medium is needed to compile - array is too large! 
+         double precision crossec_data(NOSPEC,NWL,NOPI,NOTI) 
+         double precision crossec_pgrid(NOSPEC,NOPI)
+         double precision crossec_tgrid(NOSPEC,NOTI)
+         integer crossec_ktemp(NOSPEC)
+         integer crossec_kpres(NOSPEC)        
+         character(len=4) crossec_molid(NOSPEC)
+         
+         contains
+         subroutine get_opac(press, temp, spec_i, opa_out, struc_len)
+            ! io
+            integer :: spec_i, struc_len
+            double precision, intent(in) :: press(struc_len)
+            double precision, intent(in) :: temp(struc_len) 
+            double precision, intent(inout) :: opa_out(NWL, struc_len)
+   
+            ! local
+            integer :: ktemp, kpres
+            double precision, allocatable :: pgrid(:), tgrid(:)
+            double precision, allocatable :: opa_in(:, :, :)
+   
+            ktemp = crossec_ktemp(spec_i)
+            kpres = crossec_kpres(spec_i)
+
+            if (allocated(pgrid)) deallocate(pgrid)
+            if (allocated(tgrid)) deallocate(tgrid)
+            if (allocated(opa_in)) deallocate(opa_in)
+            allocate(pgrid(kpres))
+            allocate(tgrid(ktemp))
+            allocate(opa_in(NWL,kpres,ktemp))
+            pgrid(1:kpres) = crossec_pgrid(spec_i, 1:kpres)
+            tgrid(1:ktemp) = crossec_tgrid(spec_i, 1:ktemp)
+            opa_in(1:NWL, 1:kpres, 1:ktemp) = 
+     &         crossec_data(spec_i, 1:NWL, 1:kpres, 1:ktemp)
+            
+            ! NOTE: pressure in opacity array is currently in bar !
+            call interpol_kappa(press, temp, pgrid, tgrid, 
+     &         opa_in, opa_out, 
+     &         struc_len, NWL, kpres, ktemp)
+         end subroutine get_opac
+
+         subroutine read_opac(file_b, spec_i, marcs_wn_grid)   
+           ! io
+           double precision, intent(in) :: marcs_wn_grid(NWL)
+           integer, intent(in) :: spec_i
+           character(len=*), intent(in) :: file_b
+   
+           ! local
+           character(len=:), allocatable :: file_nml
+           character(len=:), allocatable :: file_data
+           character(len=:), allocatable :: file_wnos
+   
+           character(len=4)          :: molid
+   
+           integer                   :: kpres, ktemp, nwnos 
+           integer                   :: p_i, t_i, freq_i
+           integer                   :: temporary_index
+           double precision  :: pmol_read(100*NOPI)
+           double precision  :: tmol_read(100*NOTI)
+           double precision :: wn
+   
+           double precision, allocatable :: cread(:,:,:)
+           double precision, allocatable :: wnmol(:)
+C       -----------------------------------
+C       Set the filenames of the input data
+C       -----------------------------------
+           file_nml = trim(file_b) // "input.nml"
+           file_data = trim(file_b) // "crossec.dat"
+           file_wnos = trim(file_b) // "wn.dat"
+C       --------------------
+C       Read in the namelist
+C       --------------------
+           call read_opac_namelist(file_nml, NOPI, NOTI, kpres, ktemp, 
+     &        molid, nwnos, pmol_read, tmol_read)
+           crossec_kpres(spec_i) = kpres
+           crossec_ktemp(spec_i) = ktemp
+           crossec_molid(spec_i) = molid  
+           crossec_pgrid(spec_i,1:kpres) = pmol_read(1:kpres)
+           crossec_tgrid(spec_i,1:ktemp) = tmol_read(1:ktemp)
+C       ----------------------------------------------
+C       Allocate the crosssec and the wavelength array
+C         and readin the crossections and the wavelength
+C       ----------------------------------------------        
+           if (ALLOCATED(cread)) THEN
+             deallocate(cread)
+           endif
+           allocate(cread(nwnos, kpres, ktemp))
+           if (ALLOCATED(wnmol)) THEN
+             deallocate(wnmol)
+           endif
+           allocate(wnmol(nwnos))
+   
+           call read_opac_data(file_data, file_wnos, 
+     &        nwnos, kpres, ktemp,
+     &        cread, wnmol)
+   
+C       ----------------------------------------------
+C       Load opac into array - match closest marcs wn
+C       ----------------------------------------------
+           do freq_i =1, NWL
+             wn = marcs_wn_grid(freq_i)
+             ! search for closest marcs wn
+             call search_intp_ind(wnmol, nwnos, wn, temporary_index)
+             ! assign data to common block:
+             crossec_data(spec_i, freq_i, 1:kpres, 1:ktemp) = 
+     &          cread(temporary_index,1:kpres,1:ktemp)
+
+             ! set opacity to 0 outside range of input data
+             if (wn<wnmol(1) .or. wn>wnmol(size(wnmol))) then
+                crossec_data(spec_i, freq_i, 1:kpres,1:ktemp) = 0
+             endif
+            end do        
+
+         end subroutine read_opac
+         
+         subroutine read_opac_data(file_data, file_wnos, 
+     &        nwnos, kpres, ktemp,
+     &        crossec, wnmol)
+   
+           implicit none
+   
+           !! Reads Opacity data from given file.
+           character(len=*), intent(in) :: file_data, file_wnos
+           integer,  intent(in)    :: kpres, ktemp, nwnos
+           double precision, intent(out) :: crossec(nwnos,kpres,ktemp)
+           double precision, intent(out) :: wnmol(nwnos)
+   
+   
+           ! local
+           integer :: fu, rc, readin_size, freq_i, p_i, t_i
+           integer :: readin_index
+           double precision, allocatable :: crossec_readin(:)
+   
+C       ----------------
+C       OPACITY DATA IO 
+C       ----------------        
+           readin_size = kpres*ktemp*nwnos
+           IF(ALLOCATED( crossec_readin ) ) THEN
+            deallocate(crossec_readin)
+           ENDIF
+           allocate(crossec_readin(readin_size))
+
+C-      Readin kappa to flat array        
+           open (action='read', file=file_data, newunit=fu, 
+     &        FORM='unformatted')
+           read (unit=fu) crossec_readin
+           close (fu)
+   
+C-      Unfold to output array
+   
+           readin_index=1
+           DO freq_i=1,nwnos
+             DO p_i=1,kpres
+               DO t_i=1,ktemp
+                 readin_index = freq_i + nwnos * (p_i-1) +
+     &                             nwnos * kpres * (t_i-1)
+                 crossec(freq_i,p_i,t_i) =
+     &                crossec_readin(readin_index)
+               END DO
+             END DO
+           END DO
+           
+C       ---------------------
+C       OPACITY WAVENUMBER IO 
+C       ---------------------
+C-      Readin temperature to flat array        
+           open (action='read', file=file_wnos, newunit=fu, 
+     &        FORM='unformatted')
+           read (unit=fu) wnmol
+           close (fu)        
+
+           do freq_i =2, nwnos
+             if ((wnmol(freq_i)-wnmol(freq_i-1)) .lt. 0) then
+             write(*,*) 'ERROR: wavenumbers need to '
+             write(*,*) '  be in in increasing sorted order'
+             STOP
+             end if
+           end do  
+         end subroutine read_opac_data
+   
+   
+         subroutine read_opac_namelist(file_path,
+     &        NOPI, NOTI,          
+     &        kpres, ktemp, molid, nwnos, pmol, 
+     &        tmol)
+           implicit none
+           
+           !! Reads Namelist from given file.
+           character(len=*),  intent(in)    :: file_path
+           integer,  intent(in)    :: NOPI, NOTI
+   
+           integer,  intent(out)                  :: kpres, ktemp, nwnos
+           character(len=4),  intent(out)         :: molid
+           double precision, intent(out) :: pmol(100*NOPI)
+           double precision, intent(out) :: tmol(100*NOTI)
+   
+           ! local
+           integer                          :: fu, rc
+           integer                          :: max_ti, max_pi
+   
+   
+           ! Namelist definition.
+           namelist / inputosmol / kpres, ktemp, molid, 
+     &           nwnos, pmol, tmol
+
+           pmol(:) = 0.0 
+           tmol(:) = 0.0 
+           
+           ! Open and read Namelist file.
+           open (action='read', file=file_path, newunit=fu)
+           read (nml=inputosmol, unit=fu)
+           close (fu)
+   
+           max_ti = minloc(tmol, 1)-1
+           max_pi = minloc(pmol, 1)-1
+           
+           if (max_pi .gt. NOPI) then
+             write(*,*) 'ERROR: increase NOPI'
+             write(*,*) 'in parameter.inc'
+             STOP
+           endif
+           if (max_ti .gt. NOTI) then
+             write(*,*) 'ERROR: increase NOTI'
+             write(*,*) 'in parameter.inc'
+             STOP
+           endif
+           if (max_pi .ne. kpres) then
+             write(*,*) 'ERROR: input pressure is wrong'
+             STOP
+           endif
+           if (max_ti .ne. ktemp) then
+             write(*,*) 'ERROR: input temperature is wrong'
+             STOP
+           endif
+   
+   
+         end subroutine read_opac_namelist 
+   
+         subroutine search_intp_ind(binbord,binbordlen,val,intpint)
+           ! ADAPTED FROM PETITRADTRANS
+   
+           implicit none
+         
+           INTEGER            :: binbordlen, intpint
+           DOUBLE PRECISION   :: binbord(binbordlen),val
+           INTEGER            :: i_arr
+           INTEGER            :: pivot, k0, km
+         
+           ! carry out a binary search for the interpolation bin borders
+           
+         
+            if (val >= binbord(binbordlen)) then
+               intpint = binbordlen - 1
+            else if (val <= binbord(1)) then
+               intpint = 1
+            else
+   
+               k0 = 1
+               km = binbordlen
+               pivot = (km+k0)/2
+   
+               do while(km-k0>1)
+   
+                  if (val >= binbord(pivot)) then
+                     k0 = pivot
+                     pivot = (km+k0)/2
+                  else
+                     km = pivot
+                     pivot = (km+k0)/2
+                  end if
+   
+               end do
+   
+               intpint = k0
+   
+            end if
+         
+         end subroutine search_intp_ind
+   
+   
+         subroutine interpol_kappa(press, temp, pgrid, tgrid, 
+     &                  opa_in, opa_out,
+     &                  struc_len, freq_len, kpres, ktemp)
+            
+            ! ADAPTED FROM PETITRADTRANS (interpol_opa_ck)
+            implicit none
+            ! I/O
+            integer, intent(in) :: struc_len
+            integer, intent(in) :: freq_len
+            integer, intent(in) :: kpres
+            integer, intent(in) :: ktemp
+   
+            double precision, intent(in) :: press(struc_len)
+            double precision, intent(in) :: temp(struc_len)
+            double precision, intent(in) :: pgrid(kpres)
+            double precision, intent(in) :: tgrid(ktemp)
+   
+            double precision,intent(in)::opa_in(freq_len, kpres, ktemp)
+            double precision,intent(out)::opa_out(freq_len, struc_len)
+   
+            ! local
+            double precision :: temp_min, temp_max, PorT
+            integer          :: buffer_scalar
+            double precision :: slopes(freq_len)
+            double precision :: buffer1(freq_len), buffer2(freq_len)
+            double precision :: buffer_Ts(freq_len), buffer_Tl(freq_len)
+            integer :: i_str, ts, tl, ps, pl
+            temp_min = MINVAL(tgrid)
+            temp_max = MAXVAL(tgrid)
+
+            do i_str = 1, struc_len
+               call search_intp_ind(tgrid,ktemp,temp(i_str),
+     &               buffer_scalar)
+               ts = buffer_scalar 
+               tl = buffer_scalar + 1
+   
+               call search_intp_ind(pgrid,kpres,press(i_str),
+     &               buffer_scalar)     
+               ps = buffer_scalar
+               pl = buffer_scalar + 1
+
+               ! Interpolate...
+         
+               !**********************************************************
+               ! Interpolation to correct pressure at smaller temperatures
+               !**********************************************************
+               ! kappas
+               if (kpres > 1) then         
+                  ! kappa at smaller T and smaller P
+                  buffer1 = opa_in(:, ps, ts)
+                  ! kappa at smaller T and larger P
+                  buffer2 = opa_in(:, pl, ts)
+            
+                  PorT = log(press(i_str))-log(pgrid(ps))
+            
+                  slopes = (buffer2-buffer1)/
+     &                  (log(pgrid(pl))-log(pgrid(ps)))
+            
+                  if (press(i_str) >= pgrid(pl)) then
+                        buffer_Ts = buffer2
+                  else if (press(i_str) <= pgrid(ps)) then
+                        buffer_Ts = buffer1
+                  else
+                        buffer_Ts = buffer1 + slopes*PorT
+                  end if
+               else
+                  ! There is only one pressure value -> 1D interpolation in T instead
+                  buffer_Ts = opa_in(:, 1, ts)
+               endif
+         
+               !*********************************************************
+               ! Interpolation to correct pressure at larger temperatures
+               !*********************************************************
+               if (kpres > 1) then
+                  ! kappa at larger T and smaller P
+                  buffer1 = opa_in(:, ps, tl)
+                  ! kappa at larger T and larger P
+                  buffer2 = opa_in(:, pl, tl)
+            
+                  PorT = log(press(i_str))-log(pgrid(ps))
+            
+                  ! slopes to correct to correct pressure are larger T
+                  slopes = (buffer2-buffer1)/
+     &                  (log(pgrid(pl))-log(pgrid(ps)))
+            
+                  ! kappa at larger temperature and correct pressure
+                  if (press(i_str) >= pgrid(pl)) then
+                        buffer_Tl = buffer2
+                  else if (press(i_str) <= pgrid(ps)) then
+                        buffer_Tl = buffer1
+                  else
+                        buffer_Tl = buffer1 + slopes*PorT
+                  end if
+               else
+                  ! There is only one pressure value -> 1D interpolation in T instead
+                  buffer_Tl = opa_in(:, 1, tl)
+               endif
+         
+               !***********************************************************
+               ! Interpolation to correct pressure and correct temperatures
+               !***********************************************************
+         
+               PorT = temp(i_str)-tgrid(ts)
+         
+               slopes = (buffer_Tl-buffer_Ts)/(tgrid(tl)-tgrid(ts))
+         
+               if (temp(i_str) >= temp_max) then
+                  opa_out(:,i_str) = buffer_Tl
+               else if (temp(i_str) <= temp_min) then
+                  opa_out(:,i_str) = buffer_Ts
+               else
+                  opa_out(:,i_str) = buffer_Ts + slopes*PorT        
+               end if
+         
+            end do
+       
+         end subroutine interpol_kappa   
+      END MODULE OPAMOD
+
+      subroutine opac_wrapper_read(file_b, spec_i, wn_grid)
+          use OPAMOD
+          implicit real*8 (a-h,o-z)
+          include 'parameter.inc'  
+ 
+          integer, intent(in) :: spec_i
+          double precision, intent(in) :: wn_grid(NWL)
+          character(len=*), intent(in) :: file_b
+  
+          call read_opac(file_b, spec_i, wn_grid)
+         
+      end subroutine opac_wrapper_read
+      subroutine opac_wrapper_interp(press_cgs, temp,
+     &         spec_i, opa, struc_len)
+              use OPAMOD
+              implicit real*8 (a-h,o-z)
+              include 'parameter.inc'  
+     
+              integer, intent(in) :: spec_i, struc_len
+              double precision, intent(in) :: press_cgs(struc_len)
+              double precision, intent(in) :: temp(struc_len)
+
+              double precision, intent(out) :: opa(NWL,struc_len)
+              ! local:
+              double precision :: press_bar(struc_len)
+            
+              ! NOTE: pressure in opacity array is currently in bar !
+              press_bar = press_cgs*1e-6
+              call get_opac(press_bar, temp, spec_i, opa, struc_len)
+     
+      end subroutine opac_wrapper_interp    
+      ! end ADS
+C     End of Aaron's routines (module OPAMOD and a few more subroutines) to read 
+C     two dimensional OS files of molecular cross sections (absorption coefficients)
+C     and interpolate linearly to the temperatures and gas pressures
+C     of a full MSG model structure. The interpolation in done for the
+C     nearest input wavenumbers from the OS files to those in the input
+C     wavenumber set for solution of the radiative transfer (because OS
+C     is a statistical pick). 
+      
+
       SUBROUTINE INITAB (IOUTS)
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
 C
       CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3,INWNFIL*60
+
       NAMELIST /INPUTOS/ WNB,WNSTEP,WNEND
-     *         ,INTVOS,nchrom,NOSMOL,MOLNAME,OSFIL,masabs
+     *         ,INTVOS,nchrom,masabs
      *         ,losresl,osresl,wnos_first,wnos_last,kos_step
      *         ,LISTWN,INWNFIL,NEWC3
      *         ,newosatom,newosatomlist
+      
+
+      character(len=85) :: filebdir(maxosmol)     
+      character atnames*2, molnames*8, mol_file*20      
+      logical ggchem_mol(maxosmol), ggchem_index_read
+      integer ggchem_index(maxosmol), molno
+      character(len=5) molnames_new(maxosmol)
+      common /molupdate/ molnames_new, 
+     * ggchem_index,
+     * molno, ggchem_mol, ggchem_index_read     
       COMMON/COSWR/osresl,losresl,listwn
       COMMON/CNEWC3 /NEWC3
       COMMON /COSLIST/ WNB(25),WNSTEP(25),WNEND,INTVOS
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON/CA1/DUMA(120),IDUM(240),NEXTT,NUTZT
       COMMON/CFIL/IRESET(10),ISLASK,IREAT
       COMMON/CXLSET/XL(20,10),NSET,NL(10)
@@ -2598,8 +2940,23 @@ C  NWTOT, of OS frequency points used. This wavenumber scale should be
 C  identical to the one used when the OS-tables were created.
 C
       READ(5,INPUTOS)
+C     ADS: Note: mol_names.dat can be molecules or atoms
+      mol_file = "./data/mol_names.dat"
 
-      IF(NOSMOL.GT.MAXOSMOL) STOP ' Increase dimension for MAXOSMOL'
+      print*, "molecules/atoms included are: "
+      open(unit=7397, file=mol_file)
+         read(7397, '(i2)') molno
+         do n=1,molno
+            read(7397, '(A,A)') molnames_new(n), filebdir(n)
+            molname(n) = trim(molnames_new(n))
+         end do
+      close(7397)
+      print*, molname(1:molno)
+      nosmol = molno
+C     Reminder: We need to match the ggchem_indices to our read in mols later!
+      ggchem_index_read = .FALSE.
+
+      IF(molno.GT.MAXOSMOL) STOP ' Increase dimension for MAXOSMOL'
 C
 
 C  Calculate (or read, if listwn=1) the wave numbers, WN, for OS opacity
@@ -2608,12 +2965,14 @@ C  and the total number, NWTOT, of OS frequency points for the OS-tables.
 C  spectral resolution, osresl. Else it is computed in fixed steps inside a
 C  number of prespecified intervals.
 C
-      IF (LISTWN .eq. 1) go to 225   ! read an existing OS - wn list
+
+      
+      !IF (LISTWN .eq. 1) go to 225   ! read an existing OS - wn list
 
 
 C  compute an OS - wn list:
 
-      if (losresl.eq.0) go to 228     ! compute list with fixed steps
+      !if (losresl.eq.0) go to 228     ! compute list with fixed steps
 
 C  use OS list with fixed resolution, osresl, through spectrum:
       wnos(1) = wnos_first
@@ -2624,7 +2983,9 @@ C  use OS list with fixed resolution, osresl, through spectrum:
 242   wnkj = wnkj * step
       nwtot = k + 1
       wnos(nwtot) = wnkj
-      if (wnos(nwtot) .gt. wnos_last) go to 241
+      if (wnos(nwtot) .gt. wnos_last) then
+            go to 241
+      end if
 240   continue
 C we come here only if dimension for the OS is too small:
       wnos1 = wnos_first
@@ -2643,64 +3004,24 @@ C we come here only if dimension for the OS is too small:
       stop ' error: increase dimension nwl in parameter.inc for wnos '
 241   continue
 
-      write(7,*) ' We did a resolution based set of os wavenumbers'
-      write(7,245) nwtot,osresl/dfloat(kos_step)
-     & ,kos_step*step,wnos(1),wnos(nwtot)
-     & ,1.e4/wnos(nwtot),1.e4/wnos(1)
+      if (molno .GT. NOSPEC) then
+      print*,' total molno=', molno
+      stop ' error: increase dimension NOSPEC to molno in parameter.inc'
+      endif
+
+      do nm=1,molno
+         call opac_wrapper_read(trim(filebdir(nm)), nm, wnos) 
+      end do
+      write(7,*) "OS done with ADS's routine."     
+
+      !write(7,245) nwtot,osresl/dfloat(kos_step)
+      !& ,kos_step*step,wnos(1),wnos(nwtot)
+      !& ,1.e4/wnos(nwtot),1.e4/wnos(1)
 245   format(' Total ',i6,' OS wavenumbers for Marcs radiative transf.'
      & ,/' Approximate resolution is',f8.0,' (corresponding to ',
      & 'step factor',f8.5,')'
      & ,/' OS interval:',f7.1,'-',f9.1,' cm^-1 (=',f5.2,'-',f5.1,'mu)')
-
-
-      go to 226
-
-228   continue
-      L=0
-      WNOS(1)=WNB(1)
-      WNB(INTVOS+1) = WNEND
-      DO 100 I = 1,INTVOS
-      WNLAST = WNB(I+1)-WNSTEP(I)
-102   L=L+1
-      L1=L+1
-      WNOS(L1)=WNOS(L)+WNSTEP(I)
-      IF ( WNOS(L1).LE.WNLAST ) GO TO 102
-100   CONTINUE
-      NWTOT = L1
-
-      go to 226
-
-225   continue
-
-C     read an existing OS - wn list:
-
-      open (unit=54,file=inwnfil,status='old')
-      do 200 l=1,100000
-      lbp = 10912-l+1
-      read(54,*,end=201) wnos(lbp),idum
-      nwx = l
-200   continue
-201   continue
-      nwtot = nwx
-      im = 0
-      do 210 i=1,nwx
-      if (wnos(i).lt.wnb(1)) then
-       im = i
-       go to 210
-      end if
-        iu = i-im
-        wnos(iu) = wnos(i)
-        nwtot = iu
-      if (wnos(iu).gt.wnend) then
-       nwtot = iu-1
-       go to 211
-      end if
-210   continue
-211   continue
-      close(unit=54)
-
-
-226   continue
+      !write(7,*)
 
       DO 103 I=1,NWTOT
       L=NWTOT-I+1
@@ -2711,7 +3032,6 @@ C     read an existing OS - wn list:
 104   WLSTEP(L) = ( WLOS(LP)-WLOS(LM) ) / 2.
       WLSTEP(1) = WLOS(2)-WLOS(1)
       WLSTEP(NWTOT) = WLOS(NWTOT)-WLOS(NWTOT-1)
-
 
       IF (NWTOT.GT.NWL)  STOP ' DIMENSION NWL TOO SMALL'
       
@@ -2740,6 +3060,170 @@ C
 C
       RETURN
       END
+
+      SUBROUTINE init_thermo()
+        implicit real*8 (a-h,o-z)
+        include 'parameter.inc'
+        character(len=200) line
+        character(len=56) comments
+        character(len=6) id
+        character(len=10) spname
+        character(len=2) el(5)
+        integer type,ggi,ggindex,N_matched,i,j,nT
+        logical species_found, atactive, molactive
+        logical is_atom
+        dimension st(5),ai(7),ci(7)
+        
+        character atnames*2, molnames*8
+        common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
+     >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
+     >                ,gg_partpp(ndp,400)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
+! Output
+        common / thermodata / xmoltha(543,3,7),xmolthTlim(543,4),
+     >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
+     >               xtemplimlow,xtemplimup,molactive(543),
+     >               atactive(22)
+
+
+C       From nasa9.dat, temperature limits, sets default values
+        xtemplimlow = 200.0d0
+        xtemplimup = 20000.0d0
+        xmolthTlim(:,1) = xtemplimlow
+        xmolthTlim(:,2) = 1000.0d0
+        xmolthTlim(:,3) = 6000.0d0
+        xmolthTlim(:,4) = xtemplimup
+        xatthTlim(:,1) = xtemplimlow
+        xatthTlim(:,2) = 1000.0d0
+        xatthTlim(:,3) = 6000.0d0
+        xatthTlim(:,4) = xtemplimup
+
+C      Set temperature exponents (for nasa-9 format):
+        thexp(1) = -2.0d0
+        thexp(2) = -1.0d0
+        thexp(3) = 0.0d0
+        thexp(4) = 1.0d0
+        thexp(5) = 2.0d0
+        thexp(6) = 3.0d0
+        thexp(7) = 4.0d0
+
+        xmoltha(:,:,:) = 0.0d0
+        xattha(:,:,:) = 0.0d0
+        molactive(:)=.FALSE.
+        atactive(:)=.FALSE.
+
+C       read comments
+        open(8897, file='data/nasa9.dat',status='old')
+        do i=1,58
+            read(8897,*) line
+        end do
+
+c       Iteration over the content blocks
+        N_matched = 0
+        rloop: do 
+          read(8897, '(A10,A56)',end=3923) spname, comments
+          read(8897, '(I2,A8,5(A2,F6.2),I2,F13.5,F13.5)') nT, id, 
+     &                               el(1), st(1),el(2),st(2),el(3),
+     &                               st(3),el(4),st(4), el(5),st(5), 
+     &                               type, xm, heatf
+C         GGchem matching here 
+          species_found=.FALSE.  
+          atloop: do ggi=1,22
+             if (upper(trim(atnames(ggi))).EQ.upper(trim(spname)))
+     &          then
+                ggindex = ggi
+                species_found=.TRUE.
+                is_atom=.TRUE.
+                atactive(ggi)=.TRUE.
+                exit atloop
+             end if
+          end do atloop
+          if (.NOT. species_found) then
+            molloop: do ggi=1,543
+               if (upper(trim(molnames(ggi))).EQ.upper(trim(spname))) 
+     &            then
+                  ggindex = ggi
+                  species_found=.TRUE.
+                  is_atom=.FALSE.
+                  molactive(ggi)=.TRUE.
+                  exit molloop
+               end if
+            end do molloop   
+          endif    
+C         
+C          ADS: debugging purposes          
+C          if (species_found) then
+C             N_matched = N_matched+1
+C          else 
+C             print*, trim(spname), 'not found'
+C          end if
+             
+
+          if (type.NE.0) goto 3923 ! Done with the readin   
+
+          if(nT.GT.3) then 
+            print*, 'error readin thermo data: nT>3'
+            STOP
+          end if
+
+          do i=1,nT
+            read(8897, '(2(F11.3),I1,8(F5.1),F15.3)') tlow,tup,ncoeff,
+     &                            ci(1),ci(2),ci(3),ci(4),ci(5),
+     &                            ci(6),ci(7),dump, dH0
+            read(8897, '(5(D16.8))') ai(1),ai(2),ai(3),ai(4),ai(5)
+            read(8897, '(5(D16.8))') ai(6),ai(7),dump,b1,b2
+
+            do j=1,7
+               if(abs(ci(j)-thexp(j)).GT. 0.1d0) then 
+                  print*, 'error readin thermo data, exp mismatch'
+                  STOP
+               endif
+            end do
+
+            if (species_found) then
+                if (is_atom) then
+                   xattha(ggindex,i,:)=ai(:)
+                   if(i.eq.1) xatthTlim(ggindex,1)=tlow
+                   xatthTlim(ggindex,i+1)=tup 
+                else
+                   xmoltha(ggindex,i,:)=ai(:)
+                   if(i.eq.1) xmolthTlim(ggindex,1)=tlow
+                   xmolthTlim(ggindex,i+1)=tup 
+                end if
+            end if
+          end do
+        end do rloop
+3923    continue
+
+        close(8897)
+C        print*, N_matched
+
+        contains 
+        function upper(strIn) result(strOut)
+        ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
+        ! Original author: Clive Page
+
+        implicit none
+  
+        character(len=*), intent(in) :: strIn
+        character(len=len(strIn)):: strOut
+        integer :: i,j
+  
+        do i = 1, len(strIn)
+              j = iachar(strIn(i:i))
+              if (j>= iachar("a") .and. j<=iachar("z") ) then
+                    strOut(i:i) = achar(iachar(strIn(i:i))-32)
+              else
+                    strOut(i:i) = strIn(i:i)
+              end if
+        end do
+      end function upper
+
+      end subroutine init_thermo
+
 C
       SUBROUTINE INITJN(IOUTS)
       implicit real*8 (a-h,o-z)
@@ -2752,8 +3236,8 @@ C
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
 C
 C INITJN INITIATES THE JON BLOCK FROM LUN 9
 C
@@ -2863,7 +3347,7 @@ C
       COMMON/CI3/ALFA(300),GAMMA(300),G0(45),G2(80),XION(80),XL(80),
      *JBBEG(45),JCBEG(45),NK(45),NL(80),IFISH
       COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
-      COMMON/CI5/abmarcs(18,ndp),ANJON(17,5),H(5),PART(17,5),
+      COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CI6/TP,IQFIX(16,5),NQTEMP
       COMMON/UTPUT/IREAD,IWRIT
@@ -2881,8 +3365,8 @@ C
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
       namelist /abundances/sunz,zscale,abundatms_inp
       data mx_elm /1, 2,6,7,8,10,11,12,13,14,16,19,20,23,25,27,21,17/
 C                  H He C N O Ne Na Mg Al Si  S K Ca Cr Fe Ni Ti Cl
@@ -2920,15 +3404,23 @@ C and other routines from gem_init by common CI5.
       nelem = i-1
 
       read(5,abundances)
-      if(sunz.ne.'y' .and. sunz.ne.'Y') then
-        print *, 'Error: cannot scale abundances in this version'
-        stop
+      !BCE (10.02.23 - introducing metallicity changes)
+      !if Z= solar, then sunz=y and nothing changes
+      !else add to the abundances of all elements but H and He log(zscale).
+      print*, "Metallicity is ", zscale, " time(s) solar."
+      ! if(sunz.ne.'y' .and. sunz.ne.'Y') then
+      !   print *, 'Error: cannot scale abundances in this version'
+      !   stop
+      ! end if
+      print*, 'number of elements ', nelem
+      do i=1, nelem
+      if (i>2) then
+            abinit(i) = abinit(i) + log10(zscale)
       end if
-      write(7,*) ' abund(1-17):'
-      write(7,101) (abinit(i),i=1,17)
-
+      end do
+      
       do i=1,18
-        abmarcs(i,1:ntau) = abinit(mx_elm(i))
+          abmarcs(i,1:ntau) = abinit(mx_elm(i))
       end do
       
 C
@@ -3016,10 +3508,10 @@ C
 C        XIONG IS THE IONIZATION ENERGY IN ELECTRON VOLTS FOR THE GROUND STATE,
 C        USED IN THE COMPUTATION OF IONIZATION EQUILIBRIA IN SUBROUTINE JON.
       if(i.eq.12 .and. j.eq.1) then
-C            iafix = iel(12)
-            XIONG(I,J) = 4.339  ! ADS: reset xion to original value (WARNING)
-            write(7,1105) iel(12),xion(jb)
+            iafix = iel(12)
+            write(7,1105) iel(12), xion(jb)
             write(7,1106) iel(12), xiong(i,j)
+            xionfix = xiong(i,j)
       end if
 1105  format('ionization of element 12:',a3,' was read to',f8.3,' eV')
 1106  format('ionization of element 12:',a3,' jon uses ',f8.3,' eV')
@@ -3099,6 +3591,7 @@ C
 
 C TMOLIM, MOLH are given in JONABS.DAT
 C here is set : IREAD=9 --> = JONABS.DAT
+C we seemingly use (2023) tmolim=15000.   and molh=0
 
       READ(IREAD,4528) TMOLIM,MOLH
  4528 FORMAT(F10.0,I5)
@@ -3135,6 +3628,7 @@ C
    25 CONTINUE
 
    40 CONTINUE
+
 C
       IWRIT=ISAVE
 C
@@ -3210,7 +3704,7 @@ C
      *XIONG(16,5),EEV,ENAMN(ndp),SUMH(ndp),XKBOL,NJ(16),IEL(16),
      *SUMM(ndp),NEL
       COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
-      COMMON/CI5/abmarcs(18,ndp),ANJON(17,5),H(5),PART(17,5),
+      COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CI6/TP,IQFIX(16,5),NQTEMP
       COMMON/CI7/A(5),PFISH,ITP
@@ -3227,23 +3721,31 @@ C
 C      common /fullequilibrium/ partryck(ndp,maxmol),
 C     &  xmettryck(ndp,maxmet),xiontryck(ndp,maxmet)
       COMMON/CPHYDRO/PHYDRO
+      common /cg/grav,konsg /cteff/teff,flux
+      COMMON /CMETPE/ PPEL(NDP), METPE
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
       COMMON /PJONINF/ P_MOL(NDP), P_NEU_HCNO(NDP), P_ION_HCNO(NDP),
      & P_NEU_HE(NDP),P_ION_HE(NDP), P_NON_HHECNO(NDP), PG_JON(NDP), 
      & HN_JON(NDP), RO_JON(NDP), P6_JON(NDP)
-      integer, dimension(75) :: idmarcspart, idggchempart
-      integer, dimension(32) :: idmarcspres, idggchempres       
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
-        INTEGER MOLH, JUMP
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
+      
+        INTEGER MOLH, JUMP      
+
 C      REAL PHYDRO
 C        STATEMENT FUNCTION FOR 10.**
       EXP10(X)=EXP(2.302585*X)
+
+CC     NOTE FOR PLANETS:     ! ADS, 31.07.2023
+C      IF METPE=2 JON will use a simplified saha equation, which
+C      results in a physically wrong electron pressure-pressure relation.
+C      The physical electron pressure is the one from ggchem. The electron pressure
+C      in solve is only useful for convergence of the model and SHALL NEVER BE USED ELSEWHERE
 C
       ITP=1
 
@@ -3254,7 +3756,7 @@ C        IS T=THE TEMPERATURE OF THE PRECEDING CALL
 C
 C        SOME QUANTITIES, ONLY DEPENDENT ON T
       TETA=5040./T
-      TETA25=1.202E9/(TETA*TETA*SQRT(TETA))
+      TETA25=1.202D9/(TETA*TETA*SQRT(TETA))
       DO52 J=1,5
    52 A(J)=FL2(J)*TETA
 C        A=ALFA(BASCHEK ET AL., CITED ABOVE)
@@ -3296,6 +3798,10 @@ C
       XNENH=0.
       EJON=0.
       JA=1
+
+C     ADS: initialize calculation of pg-pe relation in simplified saha equation
+      xpgpesumup = 0.0d0
+      xpgpesumdown = 0.0d0
 C
 C        BEGINNING OF LOOP OVER ELEMENTS ('THE I-LOOP').
       DO24 I=1,NEL
@@ -3347,7 +3853,7 @@ C        THE PARTITION FUNCTION IS CONSTANT
    14  PARTP=PARCO(JA)
 c      print *, "constant partition function"
    15 PART(I,J)=PARTP
-      
+
 
 C
 C        IONIZATION EQUILIBRIA AND TOTAL NUMBER OF ELECTRONS
@@ -3361,6 +3867,18 @@ C
    19 JA=JA+1
 C        END OF 'THE J-LOOP'
 C
+
+C     ADS: start here with code for planets, warning we are in loop of elements here
+C     FOLLOWING GRAYS book, p.165  here
+
+      IF(METPE.EQ.2) THEN 
+        xphi = TETA25*PART(I,2)/PART(I,1)*EXP10(-TETA*XIONG(I,1)) 
+        xmultfactor = (xphi/PE)/(1.0d0+xphi/PE)
+C        xmultfactor = 0.01d0
+        xpgpesumdown = xpgpesumdown + abmarcs(I,kl)*xmultfactor
+        xpgpesumup = xpgpesumup + abmarcs(I,kl)*(1.0d0+xmultfactor)
+      ENDIF
+
       FIL=1.
       DO20 J=2,NJP
       LL=NJP-J+1
@@ -3439,7 +3957,15 @@ C JUMP = 3: JFF Gibs minimalisation method (892 molecules, ions and atoms).
 C JUMP = 4: Added GGchem code by ERC
 *********
 
-
+C     ADS: We use a simplified saha equation for planets, when we use metpe=2, better for convergence
+C      IF(METPE.EQ.2 .and. t.le.1500.0) then
+C      IF(METPE.EQ.2 .and. t.le.1000.0) then
+      IF(METPE.EQ.2 .and. teff.le.3000.0) then
+C              print2421,teff,t,pe,ppel,pg
+2421  format('teff,t,pe,ppel,pg = ',2f8.1,3e12.3)   
+      GO TO 421
+      end if
+C     JUMP to no molecules, when temperature is highre than tmolim      
       IF(T.GT.TMOLIM)GO TO 42
 C      IF(JUMP.ge.1) MOLH=1
 * the former step is necessary because often is MOLH=0 on other places !
@@ -3471,7 +3997,7 @@ C        FORMATION OF MOLECULES. ONLY H2 AND H2+
 * F4 = N(H2+)/N(H)  ==> F4P = P(H2+)
 * F5 = N(H2)/N(H)   ==> F5P = P(H2)
 *
-*      print*, 'I am after MOLEQ'
+
       FEPE=PE/FE
       F1P=F1*FEPE
       F3P=F3*FEPE
@@ -3530,6 +4056,7 @@ C        FORMATION OF MOLECULES COMPOSED OF H,C,N,O
       DO 30 I=1,NMOL
       PRESMO(I)=PRESMO(I)*PE
    30 SUMPMO=SUMPMO+PRESMO(I)
+      
 C SUMPMO = sum partial pressures [dyn/cm2] of all molecules
 C SUMPA = sum partial pressures of neutral atoms H,C,N,O not in molecules
 C SUMPI = sum partial pressure from ionized H,C,N,O
@@ -3537,6 +4064,7 @@ C SUMM=SUMM-ABUND(1)-ABUND(3)-ABUND(4)-ABUND(5) in INJON is number
 C of nuclei other than H,C,N,O per H atom (abund are normalized to abund(1) ).
 C PE/FE = ro*k_boltz*T/(XMY*XMH) = conversion from #atoms/#H to P[dyn/cm3]
 C PE*SUMM/FE = sum partial pressures from all nuclei not HCNO.
+
       SUMPA=PE*(FHE+FCE+FNE+FOE)
       SUMPI=PE*(FHE*HJONH+FCE*HJONC+FNE*HJONN+FOE*HJONO)
       HNIC=PE*FHE
@@ -3556,8 +4084,8 @@ C PE*SUMM/FE = sum partial pressures from all nuclei not HCNO.
       P6_JON(KL) = HNIC+0.42*PHE+0.85*PRESMO(2)
       GOTO 46
 C
-C        NO MOLECULES
-   42 print *, "in statement 42 in JON"
+C     NO MOLECULES (high temperature)
+   42 CONTINUE
       F2=ANJON(1,2)
       FE=XNENH+F2
       F1=ANJON(1,1)
@@ -3566,6 +4094,26 @@ C        NO MOLECULES
       F5=0.
       FSUM=1.
       EH=-XIH*F1
+
+      GOTO 43
+
+  421 CONTINUE
+C     planet (metpe=2, fake electron pressure)
+C     Warning: at low temperature, we use a superficial/simplified saha relation for the pe-pg relation
+      F1 = ANJON(1,1)
+      F2 = 0.0d0
+      F3 = 0.0d0
+      F4 = 0.0d0
+      F5 = 0.0d0
+C This relation will be calculated:      
+C PG = PE + PE*FSUM/FE + PE*SUMH/FE   ( = line 43 )      
+C but we have pg = pgpesumup/pgpesumdown * pe
+C setup FE so that equations match:
+      FSUM=0.0d0
+      FE = SUMH(kl)/(xpgpesumup/xpgpesumdown+1.0d0)
+      EH=-XIH*F1
+
+      PG = xpgpesumup/xpgpesumdown * PE
 
 
 **********
@@ -3741,9 +4289,7 @@ C      REAL*8 ROSSO,PTAUO
       DIMENSION WAVFLX(10)
       COMMON /COPINF/ SUMOP(maxosmol,NDP),SUMKAP(maxosmol,NDP)
       COMMON /UTPUT/IREAD,IWRIT
-C      COMMON /TIO/PTIO(NDP),DUMDUM(2)
-      COMMON /KETIO/ptio(ndp),roke(ndp),poxg1(ndp)
-      COMMON/CI5/abmarcs(18,ndp),ANJON(17,5),H(5),PART(17,5),
+      COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      * DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CLEVPRINT/ PRJ2(NDP),masslinf
@@ -3751,7 +4297,7 @@ C      COMMON /TIO/PTIO(NDP),DUMDUM(2)
       COMMON /COSLIST/ WNB(25),WNSTEP(25),WNEND,INTVOS
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON/COSWR/osresl,losresl,listwn
 C      COMMON/COPPR/oppr(15,3,120,3),jvxmax,itxmax  !15mol,10dpt,100wn
 C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
@@ -3762,14 +4308,13 @@ C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
       COMMON /CNEWC3 /NEWC3
       COMMON /CG/GRAV,KONSG
       COMMON /CSTYR/MIHAL,NOCONV
-      common /cirinp/steff,reflect,irrinp,irrin
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom         !irrin=1~comp.irrad,steff=rad*
       COMMON /CXMAX/XMAX /CTAUM/TAUM
       COMMON /MIXC/PALFA,PBETA,PNY,PY /CVFIX/VFIX                          
       COMMON /CPOLY/FACPLY,MOLTSUJI
       COMMON /CROSSOS/ ROSSO(NDP),PTAUO(NDP)
-      COMMON /CINDIAM/TDIAM1,TDIAM2,FDIAM1,FDIAM2,
-     *    TC2H21,TC2H22,FC2H21,FC2H22
       DATA UW/0.145,0.436,0.910,1.385,1.843,2.126,2.305,2.241,1.270,
      *0.360,0.128,0.028/,BW/0.003,0.026,0.179,0.612,1.903,2.615,2.912,
      *3.005,2.990,2.876,2.681,2.388,2.058,1.725,1.416,1.135,0.840,0.568,
@@ -3780,14 +4325,11 @@ C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
      &  xmettryck(ndp,maxmet),xiontryck(ndp,maxmet),partp(ndp,0:maxmol),
      &  partpp(ndp,0:maxmol)
       common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
-      common /cmtest/pgm1(ndp),pgm2(ndp),pem1(ndp),pem2(ndp)
-     *     ,tm1(ndp),tm2(ndp),pgos(ndp)
       COMMON/COPsum/ SSUM(NDP),XSUM(NDP),CONSUM(NDP)
       COMMON/CI4/ TMOLIM, IELEM(16), ION(16,5), MOLH, JUMP
       COMMON /ROSSC/CXKAPR(NDP),CROSS(NDP)
       COMMON /COSEXP/ LOPS,NOPS
       DATA A,B/.34785485,.65214515/
-      COMMON /CCIATEST/ CIATEST(44,NDP)
       COMMON /PJONINF/ P_MOL(NDP), P_NEU_HCNO(NDP), P_ION_HCNO(NDP),
      & P_NEU_HE(NDP),P_ION_HE(NDP), P_NON_HHECNO(NDP), PG_JON(NDP), 
      & HN_JON(NDP), RO_JON(NDP), P6_JON(NDP)
@@ -3803,19 +4345,16 @@ C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
 C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       character name_gem*8
       common /cabink/abink(ndp,nspec)
-      common /cprespp/prespp(ndp,nspec)           !gem computed pp
       dimension phe(ndp), trpe(ndp), trphe(ndp)
       dimension printpp(ndp,nspec), printname(nspec)
       character printname*8
       dimension listpp(nspec)
       dimension ptot(ndp),pp_sum(ndp)
       dimension z(ndp)
-      common /ctotabk/totabk(ndp,natms)
       dimension pe_gem(ndp)
       COMMON /CMETPE/ PPEL(NDP), METPE
       common /dpeset/ dpein,dtin
       COMMON /CORRECT/KORT,KPP,TCONV
-      common /ggchempe/PPEL_OLD(NDP),PE_OLD(NDP)
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
      &   ppnonappsum(ndp),tg(ndp),pges(ndp)
      &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
@@ -3825,10 +4364,10 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
       dimension ppm(ndp),ppp(ndp),ppnmol(ndp),ppamol(ndp),ppnat(ndp)
      &     ,pp24(ndp),pp54(ndp),pp24m(ndp),pp54m(ndp)
       common /consistlist/pgg(ndp)
@@ -3955,6 +4494,7 @@ C  540     541    542     543
 *
       FLUMAG(I)=-2.5*log10(FLUXME(I))-STMAGN
 *
+      ispec =1
       if (ispec.eq.1) then
        open (unit=29,file='spectrum.dat',status='unknown')
        do 290 i=1,nwtot
@@ -3983,7 +4523,6 @@ C
 C
       REWIND IARCH
       DO 1 IMO=1,MO
-C      READ(IARCH) DUMMY
       READ(IARCH) INORD,DAG,KLOCK
       READ(IARCH) TEFF,FLUX,G,PALFA,PNY,PY,PBETA,ILINE,ISTRAL,MIHAL,
      &            IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6,
@@ -3993,8 +4532,6 @@ C      READ(IARCH) DUMMY
       WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,283)
       FNORD=0.1*INORD
-C      WRITE(7,282) FNORD,DAG,KLOCK
-      WRITE(7,282) teff,glog
       WRITE(7,284)
       WRITE(7,200)
 C        CONVERT TO 'PHYSICAL FLUX'
@@ -4033,31 +4570,25 @@ C518   FORMAT(' KONSG,KORT,KPP,TCONV:',3(2X,I3,2X),2X,F8.0)
 1105  format(' To increase Pe, ionization of element 12 (K=Potasium) ',
      *   'was set to',f8.3,' eV in jonabs.dat (real value: 4.339 eV)')
       WRITE(7,2532) NOSMOL
-2532  format(' Following ',i3,' molecules are included in opacity ',
-     &       '(names are from namelist in OS-file):')
+2532  format(' The following ',i3,' molecules are included 
+     & in the gas opacity ')
       WRITE(7,2533) (MOLNAME(I),I=1,NOSMOL)
 2533  FORMAT(18(2X,A4))
-      write(7,*) ' from the following inputfiles:'
-      do 2166 i=1,nosmol
-2166  write(7,2015) OSFIL(i)
-      if (fdiam1.ne.0..or.fdiam2.ne.0..or.fc2h21
-     &    .ne.1..or.fc2h22.ne.1)
-     &write(7,2541) tdiam1,tdiam2,100.*fdiam1,100.*fdiam2,
-     *    tc2h21,tc2h22,100.*fc2h21,100.*fc2h22
+      
 
       IF (losresl.eq.1) THEN
         write(7,*) ' We did a resolution based set of os wavenumbers'
-        write(7,2551) nwtot,osresl/dfloat(kos_step),osresl,kos_step
+        write(7,2551) nwtot,osresl/dfloat(kos_step)
      &  ,wnos(1),wnos(nwtot),1.e4/wnos(nwtot),1.e4/wnos(1)
 C23456789 123456789 123456789 123456789 123456789 123456789 123456789 12
 2551   format(' Total ',i6,' OS wavenumbers for Marcs radiative transf.'
      &  ,/' Approximate resolution was',f8.0
-     &  ,/' OS interval:',f7.1,'-',f9.1,' cm^-1 (=',f5.2,'-',f5.1,'mu)')
+     &  ,/' OS interval:',f6.1,'-',f8.1,' cm^-1 (=',f6.3,'-',f7.3,'mu)')
       ELSE IF (listwn) THEN
         write(7,*) ' the OS wavenumbers were from an input list'
         write(7,2552) nwtot
      &  ,wnos(1),wnos(nwtot),1.e4/wnos(nwtot),1.e4/wnos(1)
-2552   format(' Total ',i6,' OS wavenumbers for Marcs radiative transf.'
+2552   format(' Total ',i9,' OS wavenumbers for Marcs radiative transf.'
      &  ,/' OS interval:',f7.1,'-',f9.1,' cm^-1 (=',f5.2,'-',f5.1,'mu)')
       ELSE
         WRITE(7,2534) INTVOS
@@ -4095,7 +4626,7 @@ C23456789 123456789 123456789 123456789 123456789 123456789 123456789 12
     2 abmarcs(I,1:ntau)=log10(abmarcs(I,1:ntau))+12.
       abmarcs(17,1:ntau)=log10(abmarcs(17,1:ntau))+12.
       abmarcs(18,1:ntau)=log10(abmarcs(18,1:ntau))+12.
-      WRITE(7,203) (abmarcs(I,1),I=1,NEL+1)
+      WRITE(7,203) (abmarcs(I,1),I=1,NEL+2)
       WRITE(7,255) ITMAX
       READ(IARCH)JTAU,NCORE,DIFLOG,TAUM,RADIUS,(RR(K),K=1,JTAU)
       READ(IARCH)JTAU,(TKORRM(I),I=1,JTAU),(FCORR(K),K=1,JTAU)
@@ -4154,8 +4685,7 @@ C*
       
       WRITE(7,207)
       if(metpe.eq.2) write(7,*)
-     &  '(...remark that Pe is the correct Pe from GGchem; 
-     &   not the "fake one" for convergencce)'
+     &  '(listed Pe is from GGchem; Pe for converg. in colm Pturb)'
       WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,208)
       Z0=Z(1)
@@ -4166,7 +4696,8 @@ C*
      &             PTURB(I),XKAPR(I),I
       else if(metpe.eq.2) then
       WRITE(7,209) I,TAU(I),TAUS(I),Z(I),T(I),PPEL(I),PG(I),PRAD(I),
-     &             PTURB(I),XKAPR(I),I
+     &             PE(I),XKAPR(I),I
+C     &             PTURB(I),XKAPR(I),I
        end if
         pgx=PP(i)-PPR(i)-PPT(i)
         ppallsum=ppappsum(i)+ppnonappsum(i)+ppat1sum(i)+ppel(i)
@@ -4189,7 +4720,6 @@ c       END IF
 
 C      masslinf = 1                    !now (sept.2006) in namelist outlist 
       if (masslinf.eq.0) go to 4001
-      print*, "i am here " 
       WRITE(7,2071)
       WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,2081)
@@ -4275,171 +4805,6 @@ C for Tsuji's eq names are not read in (MOL(J) as real*8...)
 
       IF (jump.eq.4) THEN
 
-       open(unit=42,file='data/name_mol.dat'
-     &    ,status='old')
-       do 725 i=1,207
-       read(42,726,end=727) j,name_mol(i)
-725    continue
-727    continue
-726    format(i5,2x,a5)
-       close(42)
-
-       do 15 j=4,16
-        name_listmo(j) = name_mol(j-1)
-  15    continue
-       name_listmo(1) = name_mol(1)
-       name_listmo(2) = name_mol(2)
-       name_listmo(3) = 'H2+   '
-       name_listmo(17) = '     '
-       name_listmo(20) = 'C3H  '
-       name_listmo(36) = 'CaH  '
-       name_listmo(37) = 'LaO  '
-       name_listmo(69) = 'TiS  '
-
-      do 728 j=18,19
-        name_listmo(j) = name_mol(j-2)
-728   continue
-      do 729 j=21,35
-        name_listmo(j) = name_mol(j-3)
-729   continue
-      do 730 j=38,68
-        name_listmo(j) = name_mol(j-5)
-730   continue
-      do 731 j=70,213
-        name_listmo(j) = name_mol(j-6)
-731   continue
-
-
-        do j=1,jtau
-                partpp(j,2)=partpp(j,10)
-                partpp(j,10)=partpp(j,218)
-        end do
-
-
-C Here comes the listing of the original (until July 2020) of partial
-C pressure blocksfrom partpp(j,mol). In July 2020 I (UGJ) changed the
-C listing to follow the GGchem termonology and being adjustable by
-C defining molk1, molk2, molk3 in the data statement ti thei (listmo)
-C subroutine. To skip the old listing set mollistold = 0OB
-
-        mollistold = 0
-        if (mollistold.eq.0) go to 2150
-
-! H, H-, H2, H2+, H2O, OH, CH, CO, CN, C2, N2, O2, NO, NH, TiO
-! 0   1   2   3     4   5   6   7   8   9  10  11  12  13   31
-        WRITE(7,2132)
-        WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-        write(7,2142) (name_listmo(i),i=1,13),name_listmo(31)
-2142    FORMAT(' K',5X,'P(H)',14(3x,a5))
-        do i=1,jtau
-                 write(7,215) i,(log10(max(1.e-99,partpp(i,0)))),
-     &         (log10(max(1.e-99,partpp(i,jj))),jj=1,13),
-     &         (log10(max(1.e-99,partpp(i,31)))),i
-        end do
-
-
-! C2H2, HCN, C2H, HS, SiH, C3H, C3, CS, SiC, SiC2, NS, SiN, SiO, SO, S2,
-! SiS
-!  14    15  16  18 19  20  21 22 23  24   25  26  27 28 29  30
-        write(7,2132)
-        write(7,300) teff,glog,idrab1,idrab2,idrab3,idrab4,idrab5,idrab6
-        write(7,2143)(name_listmo(i),i=14,16),(name_listmo(i),i=18,30)
-2143    format(' K ',16(3x,a5))
-        do 813 i=1,jtau
-                 write(7,217) i,
-     *           (log10(max(1.e-99,partpp(i,j))),j=14,16),
-     *           (log10(max(1.e-99,partpp(i,j))),j=18,30),i
-813     continue
-
-! VO, ZrO, MgH, CaH, LaO, CH4, CH2, CH3, NH3, CO2, Si2C, SiO2, H2S,
-! CaOH, CHNO, SiF2
-C 32  33  34  36  37 39  40  41  43  46  57   58   59   67  107 135
-        WRITE(7,2132)
-        WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-        WRITE(7,2144)(name_listmo(i),i=32,34)
-     &          ,(name_listmo(i),i=36,37)
-     &          ,(name_listmo(i),i=39,41)
-     &          ,name_listmo(43)
-     &          ,name_listmo(46)
-     &          ,(name_listmo(i),i=57,59)
-     &          ,name_listmo(67)
-     &          ,name_listmo(107)
-     &          ,name_listmo(135)
-2144    FORMAT(' K ',16(3x,a5))
-        DO 814 I=1,JTAU
-            WRITE(7,217) I,
-     *          (log10(max(1.e-99,partpp(I,J))),J=32,34),
-     *          (log10(max(1.e-99,partpp(I,J))),J=36,37),
-     *          (log10(max(1.e-99,partpp(I,J))),J=39,41),
-     *          (log10(max(1.e-99,partpp(I,J))),J=43,43),
-     *          (log10(max(1.e-99,partpp(I,J))),J=46,46),
-     *          (log10(max(1.e-99,partpp(I,J))),J=57,59),
-     *          (log10(max(1.e-99,partpp(I,J))),J=67,67),
-     *          (log10(max(1.e-99,partpp(I,J))),J=107,107),
-     *          (log10(max(1.e-99,partpp(I,J))),J=135,135),I
-814     CONTINUE
-
-! TiH, CaH, FeH, CrH, LiH
-! 214, 215, 216, 217, 71
-        name_listmo(214) = 'TiH  '
-        name_listmo(215) = 'CaH  '
-        name_listmo(216) = 'FeH  '
-        name_listmo(217) = 'CrH  '
-        name_listmo(220) = 'AlCl '
-        name_listmo(221) = 'AlF  '
-        name_listmo(222) = 'AlH  '
-        name_listmo(223) = 'AlO  '
-        name_listmo(224) = 'BeH  '
-        name_listmo(225) = 'CaF  '
-        name_listmo(226) = 'CH3F '
-        name_listmo(227) = 'CP   '
-        name_listmo(228) = 'CS   '
-        name_listmo(229) = 'H2CO '
-        name_listmo(230) = 'HCl  '
-        WRITE(7,2132)
-        WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-        WRITE(7,2148) (name_listmo(j),j=214,217),name_listmo(71)
-     *               ,(name_listmo(j),j=220,230)
-        DO I=1,JTAU
-                WRITE(7,'(I3,16F8.3,2X,I3)')I,
-     *          (log10(max(1.e-99,partpp(I,J))),J=214,217),
-     *           log10(max(1.e-99,partpp(I,71))),
-     *          (log10(max(1.e-99,partpp(I,J))),J=220,230),I
-        end do
-2148    FORMAT(' K ',16(3x,a5))
-
-
-        name_listmo(231)=  'HNO3 '                           ! HNO3 
-        name_listmo(232)=  'KCl  '                           ! KCl 
-        name_listmo(233)=  'KF   '                           ! KF 
-        name_listmo(234)=  'LiCl '                           ! LiCl 
-        name_listmo(235)=  'LiF  '                           ! LiF
-        name_listmo(236)=  'MgF  '                           ! MgF 
-        name_listmo(237)=  'NaCl '                           ! NaCl 
-        name_listmo(238)=  'NaF  '                           ! NaF
-        name_listmo(239)=  'NaH  '                           ! NaH 
-!NH3
-!NS
-        name_listmo(240)=  'PH3  '                           ! PH3 
-        name_listmo(241)=  'PN   '                           ! PN 
-        name_listmo(242)=  'PO   '                           ! PO 
-        name_listmo(243)=  'PS   '                           ! PS 
-        name_listmo(244)=  'SH   '                           ! SH 
-!SiS
-        name_listmo(245)=  'SO2  '                           ! SO2 
-        WRITE(7,2132)
-        WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-        WRITE(7,2149) (name_listmo(j),j=231,245)
-        DO I=1,JTAU
-                WRITE(7,'(I2,15F8.3,2X,I2)')I,
-     *          (log10(max(1.e-99,partpp(I,J))),J=231,245),I
-        end do
-2149    FORMAT(' K ',15(3x,a5))
-
-C go here if you don't want the old pp-mol listing in output (molold=0):
-2150    continue
-
-
 C Here comes output blocks for selected of the 22 atoms and 543 molecules directly from GGchem; 
 C Select which by chancing the index numbers in the data statements kions, kpratoms, k1mol, k2mol, k3mol
 C in the top of the LISTMO subroutine ; do not put more than 15 species per output block.
@@ -4451,8 +4816,7 @@ C        open(unit=90,file='allpp.dat',status='unknown')
 
 
 C The OS-molecules:
-        write(90,*)'The 54 molecules we have OS files for are:'
-        write(90,*)'nos,idos(nos),k j,ipos, osnames(k), molnames(j)'
+        
         nos = 0
         do 4201 k=1,54
         do 4200 j=1,543
@@ -4463,8 +4827,6 @@ C The OS-molecules:
         if (ipos.ne.1) go to 4200
         nos = nos + 1
         idos(nos) = j
-        write(90,4204) nos,idos(nos),k,j,ipos, osnames(k), molnames(j)
-4204    format(5i4,2x,a4,2x,a8)
         go to 4201
 4200    continue
 4201    continue
@@ -4607,7 +4969,11 @@ C The neutral molecules:
 C The neutral atoms:
         WRITE(90,3202) (atnames(j),j=1,22)
 3202    format(/'There are 22 neutral atoms:', 22(1x,a2,1x))
- 
+
+      !write(*,*) "ppallmol/at finalcall"
+      !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
+
+
         do 3145 jm=1,2
         jmin=(jm-1)*15 + 1
         jmax = jmin+14
@@ -4840,7 +5206,6 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
 2073  format(i3,52f6.1)
 C End of molecular partial pressures
 
-      WRITE(7,260)
 
       READ(IARCH)(NJ(I),I=1,NEL),NLP,(XLR(I),I=1,NLP)
      & ,NPROV,NPROVA,NPROVS,(ABNAME(KP),SOURCE(KP),KP=1,NPROV)
@@ -5304,9 +5669,11 @@ C285   format(' os-wn',i5,':',f8.1)
 C
       SUBROUTINE MAINB
       implicit real*8 (a-h,o-z)
-C
+C     
       include 'parameter.inc'
-C
+C     
+      integer photo_on
+      real*8 krome_tmax
       COMMON /UTPUT/IREAD,IWRIT
       COMMON /CG/GRAV,KONSG /CTEFF/TEFF,FLUX
       COMMON /CSTYR/MIHAL,NOCONV 
@@ -5331,12 +5698,14 @@ C
       COMMON /Cspec/spec(nwl,3),ispec
       common /cosexp/ lops,nops
       common /dpeset/ dpein,dtin
-      common /cindiam/tdiam1,tdiam2,fdiam1,fdiam2,
-     *    tc2h21,tc2h22,fc2h21,fc2h22
-      common /cirinp/steff,reflect,irrinp,irrin
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
+      common /ch4/ nch4
+      common /noneq/ krome_on,photo_on
+      common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
+      common /noneq_output/ output_freq,krome_output,krome_return
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
-      common /NONEQ/noneq
 
 
 C INITIATIONS
@@ -5369,16 +5738,6 @@ CUGJ      ILINE=0
       IF(TAUM.EQ.0.) TAUM=50.
       IF(XMAX.EQ.0.) XMAX=1.E10
       READ(5,63) ILINE,AMLOSS,MOLTSUJI,LIN_CIA,ISPEC
-      
-      READ(5,634) tdiam1,tdiam2,fdiam1,fdiam2
-      READ(5,634) tc2h21,tc2h22,fc2h21,fc2h22
-      if (fdiam1.ne.0..or.fdiam2.ne.0..or.fc2h21
-     &    .ne.1..or.fc2h22.ne.1) then
-      write(7,*)' tdiam1,tdiam2,fdiam1,fdiam2 ='
-      write(7,*) tdiam1,tdiam2,fdiam1,fdiam2
-      write(7,*)' tc2h21,tc2h22,fc2h21,fc2h22 ='
-      write(7,*) tc2h21,tc2h22,fc2h21,fc2h22
-      end if
       READ(5,51) MIHAL,KONSG,KORT,KPP,TCONV
       
       read(5,635) lops,nops,dpein,dtin,metpe
@@ -5391,7 +5750,7 @@ C MY POINTS  (warning: there are other variables with the same names xmy,h...)
 C                      
 C
       READ(5,512) MMY,NCORE,KDIFF
-      read(5, 1234) irrin,steff,rstar,semimajor
+      read(5, 1234) irrin,steff,rstar,semimajor,f_irrad
       if (irrin == 1) then
       print*, "Irradiation is turned on"
       print*, "Stellar effective temperature of ", steff, " Kelvin "
@@ -5400,16 +5759,23 @@ C
       else
       print*, "Irradiation is turned off" 
       end if   
-      read(5, 1235) irrinp, tbottom, reflect
+      read(5, 1235) irrinp, tbottom, reflect, nch4
       if (irrinp == 1) then
       print*, "Modelling a rocky planet with a surface temperature of ", 
      * tbottom, " and a surface albedo of ", reflect
       end if
-      if (noneq == 1) then
-            print*, "Non-equilibrium chemistry is turned on"
+      read(5, 1236) krome_on, photo_on
+      read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
+      read(5, 1238) krome_output,krome_return,output_freq
+      if (krome_on.eq.1) then
+      print*, "Non-equilibrium Chemistry is turned on"
+        if (photo_on.eq.1) then
+         print*, "Photorates included"
+        endif
       else
-            print*, "Non-equilibrium chemistry is turned off"
-      end if
+      print*, "Non-equilibrium Chemistry is turned off"      
+      endif
+
       !print*, irrinp
       FLUX=STEFAN*TEFF**4/PI
       GRAV=10.**G
@@ -5421,8 +5787,6 @@ C
       DO 100 K=1,NDP
 100   RR(K)=RADIUS
 
-      write(7,519) MMY,NCORE,KDIFF,IRRIN,STEFF
-519   FORMAT('MMY,NCORE,KDIFF,IRRIN,STEFF:',4(2X,I3,2X),2X,F8.0)
       TAURAT=10.**(0.1*KDIFF-0.01)
 C
       ACALL = 0.0D+0
@@ -5453,8 +5817,8 @@ C
 50    FORMAT(5(7X,F8.0))
 51    FORMAT(4(7X,I3,5X),7X,F8.0)
 512   FORMAT(3(7X,I3,5X))
-1234  format(1(7X,I4,4X), 3(7X, F8.0))
-1235  format(1(8X,I4,3X), 2(7X, F8.0))
+1234  format(1(7X,I4,4X), 4(7X, F8.0))
+1235  format(1(8X,I4,3X), 2(7X, F8.0), 1(7X, I2))
 52    FORMAT(20X,'LOG G  =',F10.2,10X,'LOG (ATM/R) =',F5.2,10X,
      & 'LOG (R/RSUN)=',F5.2)
 53    FORMAT(/20X,'PALFA  =',F10.2)
@@ -5482,6 +5846,9 @@ C
 67    FORMAT(20X,'TAUM   =',F10.2)
 68    FORMAT(20X,'METBL  =',I10)
 69    FORMAT(20X,'FACPLY =',F10.3)
+1236  FORMAT(7X,I3,12X,I3)
+1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
+1238  FORMAT(7X,I3,12X,I3,12X,E8.1)
       END
 C
       SUBROUTINE MATINV(A,N)
@@ -5750,13 +6117,13 @@ C ARGUMENTS TO STATEMENT FUNCTION 880916, apollo
       DOUBLE PRECISION X,DX
       EQUIVALENCE (FF(1),FH),(FF(2),FC),(FF(3),FO),(FF(4),FN),
      & (FF(5),FE),(FF(6),FS),(FF(7),FK),(FF(8),FT)
-      dimension qr(22),tqr(22),ptio(ndp),poxg1(ndp)
+      dimension qr(22),tqr(22),ptio(ndp)
      &          ,xnti1(ndp),xnti2(ndp)
       DIMENSION B1(5),B2(5),DIS(10)
       COMMON /CMOL1/EH,FFE,FFH,FHE,FFC,FCE,FFN,FNE,FFO,FOE,FFK,FKE,
      &              FFS,FSE,FFT,FTE
       COMMON /CMOL2/PPK(33),NMOL
-      COMMON /CI5/ abmarcs(18,ndp),ANJON(17,5),DUMT(99)
+      COMMON /CI5/ abmarcs(18,ndp),ANJON(18,5),DUMT(99)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
       common /ggchembool/ iggcall
       data tqr/1000., 1500., 2000., 2500., 3000., 3500., 4000., 4500.,
@@ -5855,7 +6222,6 @@ C COMPUTATION OF DISSOCIATION CONSTANTS K(AB) (AKD) AND PE/K(AB) (PK).
 *
 
          ptio(kl) =  0.
-         poxg1(kl) = 0.
          xnti1(kl) = 0.
          xnti2(kl) = 0.
 C
@@ -6700,6 +7066,7 @@ C
       DIMENSION X(NDP),S(NDP)
       DIMENSION V(NDP),CON(NDP)
       EQUIVALENCE (V(1),CON(1))
+      common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       COMMON /TAUC/TAU(NDP),DUMT(NDP),JJTAU
       COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
      &      VV(NDP),FFC(NDP),PE(NDP),T(NDP),TAULN(NDP),RO(NDP),
@@ -6716,12 +7083,11 @@ C
       COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
 C
       COMMON /COPINF/ SUMOP(maxosmol,NDP),SUMKAP(maxosmol,NDP)
-      COMMON /TIO/ PTIO(NDP),ROSAV(NDP),POXG1(NDP)
       COMMON /CMOL1/DMUDMU(9),FOE,XMUDMUD(6)
       COMMON /CI4/dumdum,IDUMDUM(96),MOLH,JUMP
       COMMON /CARC3/ F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /DENSTY/ BPZ(NDP),PRH2O(NDP)
-      common/ci5/abmarcs(18,ndp),anjon(17,5),h(5),part(17,5),
+      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       INTEGER MOLH, JUMP
       COMMON /CMETPE/ PPEL(NDP), METPE
@@ -6729,7 +7095,7 @@ C
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
      &   ppnonappsum(ndp),tg(ndp),pges(ndp)
      &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
-      character atnames*2, molnames*8
+      character atnames*2, molnames*8,molnames2*4
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
@@ -6737,10 +7103,10 @@ C
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
 
       common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
@@ -6753,13 +7119,16 @@ C
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust     
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
       common /dustplot/ x_gas(ndp,nwl), s_gas(ndp,nwl), gas_opac(ndp)
 C
+      dimension x_cloud(ndp,nwl), s_cloud(ndp,nwl),
+     *  x_cont(ndp,nwl), s_cont(ndp,nwl), x_line(ndp,nwl)
       LOGICAL PF,PFE,PFD,FIXROS,ITSTOP,FIRST
 C                                                              
       DIMENSION PELOG(NDP)
@@ -6767,13 +7136,15 @@ c
       CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
 C      COMMON/COPPRR/ xconop(120,10),xlineop(120,10)    !100wn,10dpt
 C      COMMON/CONLIN/rconop(nwl,ndp),rlineop(nwl,ndp)
       COMMON/COPsum/ SSUM(NDP),XSUM(NDP),CONSUM(NDP)
 c
+       dimension tau_lambda(5)
        DATA JJ/4/
        DATA FIRST/.TRUE./
+       data tau_lambda/ 8.0e+4, 9.0e+4,1.0e+5, 1.1e+5, 1.2e+5 /
 C      EXP10(A)=EXP(2.302585*A)
 C
       IF (J.EQ.1) THEN
@@ -6781,6 +7152,9 @@ C
            PRINT*,' WLOS(1),XL(1,2),XL(2,2) = ',WLOS(1),XL(1,2),XL(2,2)
            STOP ' WLOS(1) (==1.E8/WNEND) < first continuums point'
          END IF
+         if (idust == 1) then
+            call dust_opac_eps_interp
+         end if
          IF (NOSMOL.GT.0) THEN
             CALL OSTABLOOK
          END IF       !if nosmol > 0
@@ -6858,8 +7232,10 @@ C        INTERPOLATION
       DIFXL=(WLOS(J)-XL(JMEM,IMEM))/(XL(JMEM1,IMEM1)-XL(JMEM,IMEM))
 
       X(K)=(ABSK(K)+(ABSK1(K)-ABSK(K))*DIFXL)/XKAPR(K)
+      x_cont(k,j) = x(k)*XKAPR(K)
       PRXC(K)=X(K)
       S(K)=(SPRID(K)+(SPRID1(K)-SPRID(K))*DIFXL)/XKAPR(K)
+      s_cont(k,j) = s(k)*XKAPR(k)
       PRSC(K)=S(K)
    12 CONTINUE  
          
@@ -6878,6 +7254,7 @@ C
           CONSUM(K) = CONSUM(K) + CONOS(K,J)/XKAPR(K)
           XSUM(K) = XSUM(K) + X(K)
           SSUM(K) = SSUM(K) + S(K)
+          x_line(k,j) = CONOS(k,j)
           X(K)=X(K)+CONOS(K,J)/XKAPR(K)
 468   CONTINUE
 C
@@ -6886,23 +7263,58 @@ C
       x_gas(k,j) = x(k)*xkapr(k)
       s_gas(k,j) = s(k)*xkapr(k)
       end do
-! Computation of dust absorption & scattering
-      if(idust .eq. 1) then
-      
-            !call dust_opac(j)
-        do k=1,jtau
-          
-          !x(k) = x(k)+f_eps*(dust_abs(k,j)/xkapr(k))
-      x(k) = x(k)+f_eps*(dust_abs_init(k,j)/xkapr(k))
-          !s(k) = s(k)+f_eps*(dust_sca(k,j)/xkapr(k))
-      s(k) = s(k)+f_eps*(dust_sca_init(k,j)/xkapr(k))
-        end do
+! Addition of dust absorption & scattering
+      if(idust == 1) then
+      do k=1,jtau   
+      x(k) = x(k)+(dust_abs(k,j)/xkapr(k))
+      s(k) = s(k)+(dust_sca(k,j)/xkapr(k))
+      end do
       end if
 
 
    25 CONTINUE
-      DO 17 K=1,JTAU
-17    X(K)=X(K)*XMAX/(X(K)+XMAX)
+      DO  K=1,JTAU
+      X(K)=X(K)*XMAX/(X(K)+XMAX)
+      end do
+      if ( idust==1) then
+      
+         do l=1, 5
+            tau_c = 0.0
+            if ((wlos(j)<= tau_lambda(l)) 
+     >      .and. (wlos(j+1)> tau_lambda(l))) then
+            if (l==1) then
+            open(unit=4297, file='tau_cloud.dat', status="replace", 
+     *       position="append", action="write")
+            else 
+            open(unit=4297, file='tau_cloud.dat', status="old", 
+     *       position="append", action="write")
+            end if
+            write(4297,*) 'table for wavelength (in aa):'
+            write(4297,*) wlos(j)
+            do k=1, jtau
+                  x_cloud(k,j) = dust_abs(k,j)
+                  s_cloud(k,j) = dust_sca(k,j)
+                  if (k>1) then
+                        opac_k_b = opac_k
+                  end if
+                  opac_k = (x_gas(k,j) + s_gas(k,j) + 
+     *             x_cloud(k,j) + s_cloud(k,j))/xkapr(k)
+                  if (k==1) then
+                  tau_c = opac_k * tau(1)
+                  else
+                  tau_c = tau_c + 
+     *             0.5*(tau(k)-tau(k-1))*(opac_k_b+opac_k)
+                  end if
+                  write(4297,'(6e24.15)') x_cont(k,j), s_cont(k,j), 
+     *            x_line(k,j),x_cloud(k,j), s_cloud(k,j), tau_c
+            end do
+            write(4297,*)
+            write(4297,*)
+            close(4297)
+            end if
+
+         end do
+      end if
 50    FORMAT(' X',6(' ***',1PE12.5))
 C
 C
@@ -7117,7 +7529,7 @@ C
 C      REAL*8 Y,YA,SUMW,ROSSO,PTAUO
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
      & VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAU,ITER
       COMMON /TAUC/TAU(NDP),DLNTAU(NDP),JTAU 
@@ -7126,9 +7538,10 @@ C      REAL*8 Y,YA,SUMW,ROSSO,PTAUO
       COMMON /CROSSOS/ ROSSO(NDP),PTAUO(NDP)
       COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
-      common /cdrift/ idust
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
 C      COMMON/CONLIN/rconop(nwl,ndp),rlineop(nwl,ndp)
 
 C CALCULATE DETAILED ROSSELAND MEAN
@@ -7160,12 +7573,7 @@ C     *     ' rosso(k),rconop(j,k),rlineop(j,k),tt(k) '
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 117
           ROSSO(K)=ROSSO(K)+WLSTEP(J)*YA/(xkapr(k)*(X(K)+S(K)))
-C          sumwy(k) = sumwy(k) + WLSTEP(J)*YA
-C          sumwyxs(k) = sumwyxs(k) + WLSTEP(J)*YA/(XKAPR(K)*(X(K)+S(K)))
-C          sumabs(k)=sumabs(k)+XKAPR(K)*(x(k)+s(k))
-C         if (j/50*50.eq.j  .and.  (k.eq.1.or.k.eq.7)) write(7,1171) 
-C     *     j,k,wlos(j),ya,xkapr(k),xkapr(k)*x(k),xkapr(k)*s(k)
-C     *     ,rosso(k),rconop(j,k),rlineop(j,k),tt(k)
+
 117   CONTINUE
 1171  format(i5,i3,1p8e12.3,0pf8.0)
 C
@@ -7201,6 +7609,7 @@ C
      *NTAU,ITER
       COMMON /ROSSC/ROSS(NDP),CROSS(NDP)
       COMMON /CTEFF/TEFF,FLUX /CG/GRAV,KONSG
+      COMMON /CMETPE/ PPEL(NDP), METPE
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       COMMON /MIXC/PALFA,PBETA,PNY,PY    /CSTYR/ MIHAL,NOCONV
@@ -7257,10 +7666,12 @@ C SCALE DD AND VV
       KL=K
       IF(FFC(K).EQ.0.) GO TO 120
       TMEAN=.5*(TT(K)+TT(K-1))
+
       PEMEAN=.5*(PPE(K)+PPE(K-1))
       PRMEAN=.5*(PPR(K)+PPR(K-1))
       ROSSMN=.5*(ROSS(K)+ROSS(K-1))
-      CALL TERMON(TMEAN,PEMEAN,PRMEAN,PG,PGT,PGPE,RO,ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TMEAN,PEMEAN,PRMEAN,PG,PGT,PGPE,RO,ROT,ROPE,
+     &      CP,ADIA,Q)
       HSCALE=(PG+PRMEAN)/GRAV/RO
       OMEGA=PALFA*HSCALE*RO*ROSSMN
       THETA=OMEGA/(1.+PY*OMEGA**2)
@@ -7454,7 +7865,8 @@ C CONSIDER CONVECTION
       PEMEAN=.5*(PPE(K)+PPE(K-1))
       PRMEAN=.5*(PPR(K)+PPR(K-1))
       KL=K
-      CALL TERMON(TMEAN,PEMEAN,PRMEAN,PG,PGT,PGPE,RO,ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TMEAN,PEMEAN,PRMEAN,PG,PGT,PGPE,RO,ROT,
+     &      ROPE,CP,ADIA,Q)
       IF(IT.EQ.1) GO TO 95
 C
 C USE OLD GRAD-ADIA AT SECOND IT-LOOP
@@ -7776,23 +8188,20 @@ C saa aer det helt enkelt numeriskt brus vid laaga temperaturer).
 C Kjell
 
 C
-      DIMENSION PGH(4),ROH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
-      common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
-     &   ppnonappsum(ndp),tg(ndp),pges(ndp)
-     &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
+      DIMENSION PGH(4),ROH(4),TH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
       COMMON /CMETPE/ PPEL(NDP), METPE
+
 C
-      !if(metpe.eq.2) then
-         !pe = ppel(k)
-      !end if  
+      xk_boltz=1.380649d-16
+      xm_p=1.66053906660d-24 
 
-
-      DEREP=0.001
+      DEREP=0.01
       DERET=0.001
       DELPE=DEREP*PE
       DELT=DERET*T
       PINV=1./(2.*DELPE)
       TINV=1./(2.*DELT)
+C     
       
       CALL JON(T,PE,1,PG,RO,EPP,0)
       P=PRAD+PG
@@ -7800,38 +8209,77 @@ C
       PEP=PE-DELPE
       CALL JON(T,PEP,1,PGH(1),ROH(1),EP(1),0)
       PRAH(1)=PRAD
+      TH(1)=T
       PEP=PE+DELPE
       CALL JON(T,PEP,1,PGH(2),ROH(2),EP(2),0)
       PRAH(2)=PRAD
+      TH(2)=T
       TP=T-DELT
       CALL JON(TP,PE,1,PGH(3),ROH(3),EP(3),0)
       PRAH(3)=PRAD*(1.-4.*DERET)
+      TH(3)=TP
       TP=T+DELT
       CALL JON(TP,PE,1,PGH(4),ROH(4),EP(4),0)
       PRAH(4)=PRAD*(1.+4.*DERET)
+      TH(4)=TP
 
-      DO1 I=1,4
-      EH(I)=3.*PRAH(I)/ROH(I)+EP(I)
-      PH(I)=PRAH(I)+PGH(I)
-    1 HH(I)=EH(I)+PH(I)/ROH(I)
+      if (METPE .EQ. 2) then
+        call calc_adiaindex(k, PG, T, gamma, xmmw)
+        cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
+        cv = cp/gamma
+
+C       Squared soundspeed
+        xcs2inv = xmmw*xm_p/xk_boltz
+        RO=pg/T*xcs2inv
+
+        ROH(1)=PGH(1)/TH(1)*xcs2inv 
+        ROH(2)=PGH(2)/TH(2)*xcs2inv  
+        ROH(3)=PGH(3)/TH(3)*xcs2inv  
+        ROH(4)=PGH(4)/TH(4)*xcs2inv   
 C
-      DET=(EH(4)-EH(3))*TINV
-      DEP=(EH(2)-EH(1))*PINV
-      DROT=(ROH(4)-ROH(3))*TINV
-      DROP=(ROH(2)-ROH(1))*PINV
-      DHT=(HH(4)-HH(3))*TINV
-      DHP=(HH(2)-HH(1))*PINV
-      DPT=(PH(4)-PH(3))*TINV
-      DPP=(PH(2)-PH(1))*PINV
-      DPGT=(PGH(4)-PGH(3))*TINV
-      DPGP=(PGH(2)-PGH(1))*PINV
+        DO I=1,4
+          PH(I)=PRAH(I)+PGH(I)
+        end do
 C
-      CV=DET-DEP*DROT/DROP
-      CP=DHT-DHP*DPT/DPP
-      HJALP=DROT-DROP*DPT/DPP
-      TGRAD=-P*HJALP/(CP*RO*RO)
-      Q=-T/RO*(DROT-DROP*DPGT/DPGP)
-      U2=CP*DPP/(CV*DROP)
+        DROT=(ROH(4)-ROH(3))*TINV
+        DROP=(ROH(2)-ROH(1))*PINV
+        DHP=(HH(2)-HH(1))*PINV
+        DPT=(PH(4)-PH(3))*TINV
+        DPP=(PH(2)-PH(1))*PINV
+        DPGT=(PGH(4)-PGH(3))*TINV
+        DPGP=(PGH(2)-PGH(1))*PINV
+C
+        HJALP=DROT-DROP*DPT/DPP
+        TGRAD=-P*HJALP/(CP*RO*RO)
+        Q=-T/RO*(DROT-DROP*DPGT/DPGP)
+        U2=CP*DPP/(CV*DROP)
+
+      else
+C     Case, where METPE not 2, normal stellar marcs
+C
+        DO1 I=1,4
+        EH(I)=3.*PRAH(I)/ROH(I)+EP(I)
+        PH(I)=PRAH(I)+PGH(I)
+    1   HH(I)=EH(I)+PH(I)/ROH(I)
+C
+        DET=(EH(4)-EH(3))*TINV
+        DEP=(EH(2)-EH(1))*PINV
+        DROT=(ROH(4)-ROH(3))*TINV
+        DROP=(ROH(2)-ROH(1))*PINV
+        DHT=(HH(4)-HH(3))*TINV
+        DHP=(HH(2)-HH(1))*PINV
+        DPT=(PH(4)-PH(3))*TINV
+        DPP=(PH(2)-PH(1))*PINV
+        DPGT=(PGH(4)-PGH(3))*TINV
+        DPGP=(PGH(2)-PGH(1))*PINV
+C
+        CV=DET-DEP*DROT/DROP
+        CP=DHT-DHP*DPT/DPP
+        HJALP=DROT-DROP*DPT/DPP
+        TGRAD=-P*HJALP/(CP*RO*RO)
+        Q=-T/RO*(DROT-DROP*DPGT/DPGP)
+        U2=CP*DPP/(CV*DROP)
+      end if  
       if (U2.lt.0.) then
           write(7,*) ' U2 becomes negative in TERMO '
           write(7,*) ' T,RO,PE,PRAD,P,CV,CP,Q,DPP,DROP,TGRAD,U2:'
@@ -7842,7 +8290,8 @@ C
       RETURN
       END
 C
-      SUBROUTINE TERMON(T,PE,PRAD,PG,DPGT,DPGP,RO,DROT,DROP,CP,TGRAD,Q)
+      SUBROUTINE TERMON(k,T,PE,PRAD,PG,DPGT,DPGP,RO,DROT,
+     &      DROP,CP,TGRAD,Q)
       implicit real*8 (a-h,o-z)
        include 'parameter.inc'
 C
@@ -7858,13 +8307,12 @@ C
 C VERSION OF 73.02.05. DOUBLE PRECISION ADDED. *NORD*
 C
 C
-      DIMENSION PGH(4),ROH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
-      common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
-     &   ppnonappsum(ndp),tg(ndp),pges(ndp)
-     &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
+      DIMENSION PGH(4),ROH(4),TH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
       COMMON /CMETPE/ PPEL(NDP), METPE
 C
-      
+      xk_boltz=1.380649d-16
+      xm_p=1.66053906660d-24 
+
       DEREP=0.01
       DERET=0.001
       DELPE=DEREP*PE
@@ -7879,34 +8327,68 @@ C
       PEP=PE-DELPE
       CALL JON(T,PEP,1,PGH(1),ROH(1),EP(1),0)
       PRAH(1)=PRAD
+      TH(1)=T
       PEP=PE+DELPE
       CALL JON(T,PEP,1,PGH(2),ROH(2),EP(2),0)
       PRAH(2)=PRAD
+      TH(2)=T
       TP=T-DELT
       CALL JON(TP,PE,1,PGH(3),ROH(3),EP(3),0)
       PRAH(3)=PRAD*(1.-4.*DERET)
+      TH(3)=TP
       TP=T+DELT
       CALL JON(TP,PE,1,PGH(4),ROH(4),EP(4),0)
       PRAH(4)=PRAD*(1.+4.*DERET)
+      TH(4)=TP
+
+      if (METPE .EQ. 2) then
+        call calc_adiaindex(k, PG, T, gamma, xmmw)
+        cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
+        cv = cp/gamma
+
+
+C       Squared soundspeed
+        xcs2inv = xmmw*xm_p/xk_boltz
+        RO=pg/T*xcs2inv
+
+        ROH(1)=PGH(1)/TH(1)*xcs2inv 
+        ROH(2)=PGH(2)/TH(2)*xcs2inv  
+        ROH(3)=PGH(3)/TH(3)*xcs2inv  
+        ROH(4)=PGH(4)/TH(4)*xcs2inv  
 C
-      DO1 I=1,4
-      EH(I)=3.*PRAH(I)/ROH(I)+EP(I)
-      PH(I)=PRAH(I)+PGH(I)
-    1 HH(I)=EH(I)+PH(I)/ROH(I)
+        DO I=1,4
+          PH(I)=PRAH(I)+PGH(I)
+        end do
 C
-      DET=(EH(4)-EH(3))*TINV
-      DEP=(EH(2)-EH(1))*PINV
-      DROT=(ROH(4)-ROH(3))*TINV
-      DROP=(ROH(2)-ROH(1))*PINV
-      DHT=(HH(4)-HH(3))*TINV
-      DHP=(HH(2)-HH(1))*PINV
-      DPT=(PH(4)-PH(3))*TINV
-      DPP=(PH(2)-PH(1))*PINV
-      DPGT=(PGH(4)-PGH(3))*TINV
-      DPGP=(PGH(2)-PGH(1))*PINV
+        DROT=(ROH(4)-ROH(3))*TINV
+        DROP=(ROH(2)-ROH(1))*PINV
+        DHP=(HH(2)-HH(1))*PINV
+        DPT=(PH(4)-PH(3))*TINV
+        DPP=(PH(2)-PH(1))*PINV
+        DPGT=(PGH(4)-PGH(3))*TINV
+        DPGP=(PGH(2)-PGH(1))*PINV
+      else
+C     Case, where METPE=2, normal stellar marcs
+     
+        DO1 I=1,4
+        EH(I)=3.*PRAH(I)/ROH(I)+EP(I)
+        PH(I)=PRAH(I)+PGH(I)
+    1   HH(I)=EH(I)+PH(I)/ROH(I)
 C
-      CV=DET-DEP*DROT/DROP
-      CP=DHT-DHP*DPT/DPP
+        DET=(EH(4)-EH(3))*TINV
+        DEP=(EH(2)-EH(1))*PINV
+        DROT=(ROH(4)-ROH(3))*TINV
+        DROP=(ROH(2)-ROH(1))*PINV
+        DHT=(HH(4)-HH(3))*TINV
+        DHP=(HH(2)-HH(1))*PINV
+        DPT=(PH(4)-PH(3))*TINV
+        DPP=(PH(2)-PH(1))*PINV
+        DPGT=(PGH(4)-PGH(3))*TINV
+        DPGP=(PGH(2)-PGH(1))*PINV
+C
+        CV=DET-DEP*DROT/DROP
+        CP=DHT-DHP*DPT/DPP
+      end if      
       HJALP=DROT-DROP*DPT/DPP
       TGRAD=-P*HJALP/(CP*RO*RO)
       Q=-T/RO*(DROT-DROP*DPGT/DPGP)
@@ -7914,6 +8396,141 @@ C
 C
       RETURN
       END
+
+      SUBROUTINE calc_adiaindex(k, p, T, gamma, xmmw)
+      implicit real*8 (a-h,o-z)
+        include 'parameter.inc'
+        integer i,j,k
+        character atnames*2, molnames*8
+        character diagempta*2(22), diagemptm*8(543)
+        logical thermo_initialized, molactive, atactive
+      common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
+     >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
+     >                ,gg_partpp(ndp,400)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
+        common /ggchemresults/
+     > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
+     > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
+     > rCgg, rMggg, rAlgg, rSigg, rHegg
+        
+        DATA thermo_initialized / .FALSE. /
+C     from init_thermo      
+        common / thermodata / xmoltha(543,3,7),xmolthTlim(543,4),
+     >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
+     >               xtemplimlow,xtemplimup,molactive(543),
+     >               atactive(22)
+        
+        cpRsum=0.0d0
+        psum=0.0d0
+        diagempta(:)=''
+        diagemptm(:)=''
+
+        call ggchem(k, T, p)   ! sets ggmuk for here and for termo and termon
+        xmmw = ggmuk
+
+C       ADS: initialize thermodynamic data (NASA polynomials)      
+        if (.NOT. thermo_initialized) then
+          call init_thermo()
+          thermo_initialized = .TRUE.
+        end if
+        
+C       The nasa polynomials are only defined between 200K and 20000K        
+C       We will use the boundary values if we cross this temperature
+        TN = min(max(xtemplimlow+1.0d-60,T),xtemplimup-1.0d-60)
+
+C       Molecules        
+        do i=1,543
+C         Determine the temperature regime of the nasa polynomial        
+          if ((TN.ge.xmolthTlim(i,1)).and.(TN.lt.xmolthTlim(i,2))) 
+     &    then 
+             treg = 1
+          elseif ((TN.ge.xmolthTlim(i,2)).and.(TN.lt.xmolthTlim(i,3))) 
+     &    then
+             treg = 2
+          elseif ((TN.ge.xmolthTlim(i,3)).and.(TN.le.xmolthTlim(i,4))) 
+     &    then
+             treg = 3
+          else 
+             ! If the temperature is outside the defining range of the polynomial,
+             ! we will not use it
+             cycle 
+          endif 
+C         Calculate the polynomial
+          if (molactive(i)) then
+            polsum = 0.0d0
+            do j=1,7
+              polsum=polsum+xmoltha(i,treg,j)*TN**thexp(j)
+            end do
+            cpRsum=cpRsum+polsum*ppallmol(k,i)
+            psum=psum+ppallmol(k,i)
+          end if
+        end do
+
+C       ATOMS
+        do i=1,22
+C         Determine the temperature regime of the nasa polynomial        
+          if ((TN.ge.xatthTlim(i,1)).and.(TN.lt.xatthTlim(i,2))) 
+     &    then 
+             treg = 1
+          elseif ((TN.ge.xatthTlim(i,2)).and.(TN.lt.xatthTlim(i,3))) 
+     &    then
+             treg = 2
+          elseif ((TN.ge.xatthTlim(i,3)).and.(TN.le.xatthTlim(i,4))) 
+     &    then
+             treg = 3
+          else 
+             ! If the temperature is outside the defining range of the polynomial,
+             ! we will not use it
+             cycle 
+          endif 
+C         Calculate the polynomial
+          if (atactive(i)) then
+            polsum = 0.0d0
+            do j=1,7
+              polsum=polsum+xattha(i,treg,j)*TN**thexp(j)
+            end do
+            cpRsum=cpRsum+polsum*ppallat(k,i)
+            psum=psum+ppallat(k,i)
+          end if
+        end do
+        if (psum/pgesk .LT. 0.97d0) then
+C         NOTE: if the code fails here, we need to change the matching between ggchem and nasa polynomials.
+C           This can be easily done by diagnosing the here generated file and improving the matching in
+C           init_thermo.        
+
+          print*, 'ISSUE IN CALCULATING THERMODYNAMIC'
+          print*, 'QUANTITIES (HEATCAPACITIES)!'
+          print*, 'The matching between ggchem indexes and nasa9'
+          print*, 'could not match a representative fraction.'
+          print*, 'nasa9 file: data/nasa9.dat'
+          print*, 'ggchem file: pp.dat'
+          print*, 'Find the matched AND NOT MATCHED molecules/atoms'
+          print*, 'here: nasa2ggchem.dat'          
+          
+          open(unit=8895, file='nasa2ggchem.dat', status='replace')
+          write(8895, *) '# Matched elements:'
+          write(8895, *) merge(atnames, diagempta, atactive)
+          write(8895, *) '# UNmatched elements:'
+          write(8895, *) merge(diagempta, atnames, atactive)
+          write(8895, *) ''
+          write(8895, *) '# Matched molecules:'
+          write(8895, *) merge(molnames, diagemptm, molactive)
+          write(8895, *) '# UNmatched molecules:'
+          write(8895, *) merge(diagemptm, molnames, molactive)
+          close(8895)
+          stop
+        endif
+        
+C       Final heat capacities        
+        cpR = cpRsum/psum
+        cvR = cpR - 1
+        gamma = cpR/cvR
+
+      END SUBROUTINE calc_adiaindex
+
 C
       SUBROUTINE TINT(N,X,Y,XINT,YINT)
       implicit real*8 (a-h,o-z)
@@ -8006,7 +8623,7 @@ C STATE VARIABLES
      *VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),stro(ndp),
      *NTAU,ITER
       common /ckdtpe/dpex,kdtpe
-      common /dpeset/ dpein,dtin
+      common /dpeset/ dpein,dtin, pe_corr(ndp)
 C
 C DIMENSIONS
       DIMENSION PTAU(NDP),ROSSP(NDP),SUMW(NDP),ROSST(NDP),ROSSPE(NDP)
@@ -8029,8 +8646,9 @@ C DIMENSIONS
      *,XPE(NDP),SPE(NDP)
      *,RPR(NDP),RP(NDP),RD(NDP),RV(NDP),RFC(NDP),RPE(NDP),RT(NDP)
      *,TAUTAU(NDP) 
-      LOGICAL NEWV
+      LOGICAL NEWV, exist
       real*8 a,b,c,aa,bb,cc,aaa,ccc,STBZ,IR,RS,R,TIR, bpl_var
+      integer photo_on
       character*24 idmodl
 C
 C CONNECTIONS VIA COMMON.
@@ -8044,7 +8662,7 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/
       CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
       common /CPRINT/NPRINT
@@ -8053,6 +8671,8 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/
       COMMON /CSTYR/MIHAL,NOCONV /DEBUG/KDEBUG
       COMMON /MIXC/PALFA,PBETA,PNY,PY /CVFIX/VFIX
       COMMON /CG/GRAV,KONSG /CTEFF/TEFF,FLUX
+      COMMON /CMETPE/ PPEL(NDP), METPE
+
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
       COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
@@ -8062,7 +8682,7 @@ CUGJ FFR in excess     COMMON /CSPHER/DIFLOG,RADIUS,RR(NDP),NCORE,FFR(NDP)
       COMMON /CSPHER/DIFLOG,RADIUS,RR(NDP),NCORE 
 C OWN COMMONS
       COMMON /CTRAN/X(NDP),S(NDP),BPLAN(NDP),XJ(NDP),HFLUX(NDP),XK(NDP)
-     &  ,BSTAR(NDP),dumtran(4*ndp),idumtran(3)
+     & ,dumtran(4*ndp),idumtran(3)
       COMMON /CTRAN2/EJ(NDP),TOTEJ(NDP),TOTIR(NDP),E(NDP),TOTE(NDP),
      & E_P(NDP),EJ_P(NDP), EJ_PLANET(NDP), E_PLANET(NDP), f(nwl)
       COMMON /CANGLE/XMU(6),XMU2(6),H(6),MMU_PP
@@ -8089,24 +8709,60 @@ C SPACE ALLOCATION
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust     
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
 ! IRRADIATION
       COMMON /CROSSIR/ROSSIR(NDP),ROSSPIR(NDP),SUMWIR(NDP),TAURIR(NDP)
       COMMON /CPLANCKIR/PLANCKIR(NDP),PLANCKPIR(NDP),SUMWPIR(NDP),
      &     TAUPIR(NDP)
       COMMON /CIR/TAUIR(NDP),XIR(NDP,NWL),SIR(NDP,NWL),synspec(nwl),
      * DTAUIR(NDP), DTAUPLANET(NDP), DTAUP(NDP)
-      common /cirinp/steff, reflect,irrinp,irrin
+     
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom         !irrin=1~comp.irrad,steff=rad*
       common /dustplot/ x_gas(ndp,nwl), s_gas(ndp,nwl), gas_opac(ndp)
+      
+      common /ch4/ nch4
+      character*24 file_name
+      character*8 file_id
+      
 C
 C DATA
       DATA IVERS,IEDIT/21,1/
-C
+! Chapman Mechanism Variables
+C      DIMENSION Sigma_O2(NWL), Sigma_O3(NWL)
+      DIMENSION Sigma_O2(NWL,NDP), Sigma_O3(NWL,NDP)
+C      integer Chapon
+      REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
+      REAL*8 Na
+      DIMENSION OPJV(NWL,NDP)
+C      common /Chap/Chapon
+      common /Chapvar/J_O2, J_O3
+      common /noneq/ krome_on,photo_on
+
+      Na = 6.02214076D23
+
+      if (krome_on.EQ.1) then
+       if (photo_on.EQ.1) then
+      opjv(:,:) = 0.
+      nm = 51
+      call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+      Sigma_O2 = opjv
+      opjv(:,:) = 0.
+      nm = 52
+      call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+      Sigma_O3 = opjv
+       endif
+      endif    
+
+
+
+C     
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUA
 C LEAVING THE EXPLICIT TEMPERATURE DEPENDANCE OF FLUX AND RADIATION PRES
 C IN THE MATRICES TTT AND PRT.
@@ -8153,6 +8809,7 @@ C CALCULATE DETAILED ROSSELAND MEAN
         ROSSP(K)=0.
 116   CONTINUE
       !print*, "opac call for ross "
+      pe_corr(1:ntau) = 0.0
       DO 117 J=1,NWTOT
         CALL OPAC(J,X,S)
         WRITE(11) X,S
@@ -8190,6 +8847,7 @@ C
 
 C FIRST WAVELENGTH LOOP, TO CALCULATE XT,ST AND SAVE.
       REWIND 12
+      pe_corr(1:ntau) = 0.0
       DO 112 J=1,NWTOT
        ! print*, "opac call for XT and ST "
         CALL OPAC(J,X,S)
@@ -8222,6 +8880,7 @@ c       close(2396)
         ROSSPE(K)=0.
         TT(K)=TT(K)-T(K)
         PPE(K)=PPE(K)+PE(K)
+        pe_corr(k) = pe(k)
 113   CONTINUE
         kdtpe = 2            !information to tstgem about computing dpg/dpe
       REWIND 12
@@ -8230,7 +8889,7 @@ c       close(2396)
 C
 C SECOND WAVELENGTH LOOP, TO CALCULATE XPE,SPE AND SAVE.
       REWIND 14
-        KL=1
+      KL=1
   
       DUMMY=ROSSOP(TT(1),PPE(1),1)
       PGPE=PGC
@@ -8291,19 +8950,26 @@ C TIME
 C     CALL MSLEFT(MSA)
       open(unit=960,file='wlos.dat',status='replace')
 C
-C
+C Initializing Chapman photolysis rate coefficients to zero each
+C iteration before wavelength loop
+      if (krome_on.eq.1) then
+       if (photo_on.eq.1) then
+        J_O2=0.0
+        J_O3=0.0
+       endif
+      endif
 C WAVELENGTH LOOP
       
       FTOT=0.
       write(960,*) '   K,   J,  wlos(J),   WLSTEP(J),   Y'
       DO 150 J=1,NWTOT
+      wlambda = wlos(j)
       write(960,996) K, J, wlos(J), WLSTEP(J), Y
 996   FORMAT(i5, i6, f10.2, f10.2, f10.2) 
 C
       DO K=1,NTAU
             BPLAN(K)=BPL(TT(K),WLOS(J))
             DBPL(K)=DIVBP(TT(K),WLOS(J))  
-            BSTAR(k) = BPL(steff,wlos(j))
       END DO
 
 C
@@ -8483,9 +9149,7 @@ C RADIATIVE EQUILIBRIUM
             if (x(k)==0.) then
                   print*, "X is zero at k ", k
             end if
-            if (isnan(ttt(k,k))) then
-                  print*, "ttt is nan at k ", k
-            end if
+            
             
             TPE(K,K)=TPE(K,K)+Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)  
       end if
@@ -8541,6 +9205,75 @@ C     * ,TRAD1,X01,X25,S01,S25,HW2,DLNX(01),DLNX(25),MSOPAC,MSTRAN,MS
 C      IF(PFD) WRITE(7,30) (XLOG(K),K=1,26)
 C      IF(PFD) WRITE(7,30) (DLNX(K),K=1,26)
 30    FORMAT(1X,26F5.2)
+!     Kristian H. Møller, KHM
+!     Chapman code below
+C      if (irrin > 0) then
+
+      if (krome_on.eq.1) then
+       if (photo_on.eq.1) then
+            do K=1, ntau
+              if (J>1) then
+
+C Int_tot = total intensity = 4*pi*XJ (XJ = mean intensity) in units of erg s-1 cm-2 Å-1. 
+C I.e. mean intentisy integrated over full sphere.
+C Used for actinic flux cf. e.g.:
+C "A NEW SPHERICAL MODEL FOR COMPUTING THE RADIATION FIELD AVAILABLE FOR PHOTOLYSIS AND HEATING AT TWILIGHT"
+C Pluner. Space Ser., Vol. 39, No. 5, pp. 671-683, 1991
+
+C Int_tot = total intensity in 'erg s-1 cm-2 Å-1'
+            Int_tot(K) = 4*pi*XJ(K)
+
+C "max" in actinic flux below is to avoid negative numbers from noise - a negative number of photons is not possible.
+C Af = Actinic flux in 'photons s-1 cm-2 Å-1'
+            Af(K) = max(0.0,(Int_tot(K)*WLOS(J))/((HPLNCK*CLIGHT))*1E-8)
+
+C J = photolysis rate coefficient in units of s-1
+               J_O2(K) = J_O2(K)+Sigma_O2(nwtot+1-J,K)/Na*Af(K)*
+     & (WLOS(J)-WLOS(J-1))
+               J_O3(K) = J_O3(K)+Sigma_O3(nwtot+1-J,K)/Na*Af(K)*
+     & (WLOS(J)-WLOS(J-1))
+              !if (k.eq.1) then
+              !if (j.eq.nwtot) then
+              !write(*,*) "J"
+              !write(*,*) J
+              !write(*,*) "K"
+              !write(*,*) K
+              !write(*,*) "J_O2"
+              !write(*,*) J_O2(K)
+              !write(*,*) "J_O3"
+              !write(*,*) J_O3(K)
+              !write(*,*) "Sigma_O2"
+              !write(*,*) Sigma_O2(nwtot+1-J,K)
+              !write(*,*) "Sigma_O3"
+              !write(*,*) Sigma_O3(nwtot+1-J,K)
+              !endif
+              !endif                       
+C               J_O2(K) = J_O2(K)+Sigma_O2(J)/Na*Af(K)*
+C     & (WLOS(J)-WLOS(J-1))
+C               J_O3(K) = J_O3(K)+Sigma_O3(J)/Na*Af(K)*
+C     & (WLOS(J)-WLOS(J-1))
+C              if (K==1) then
+C            write(*,*) WLOS(J), Sigma_O2(nwtot+1-J,K)/Na, 
+C     & Sigma_O3(nwtot+1-J,K)/Na
+C            write(*,*) WLOS(J), Sigma_O2(J)/Na, 
+C     & Sigma_O3(J)/Na
+C              endif
+              end if
+            end do
+C            print*, wlos(J), J_O2(1), J_O3(1)
+C            print*, wlos(J), E(1), EJ(1)
+
+C      end if
+       end if
+      end if
+      !write(*,*) "Int_tot"
+      !write(*,*) Int_tot(1)
+      !write(*,*) "Af"
+      !write(*,*) Af(1)
+      !write(*,*) "J_O2"
+      !write(*,*) J_O2(1)
+      !write(*,*) "J_O3"
+      !write(*,*) J_O3(1)
 150   CONTINUE
       close(960)
       ftot_a = 0.0
@@ -8553,7 +9286,7 @@ C      IF(PFD) WRITE(7,30) (DLNX(K),K=1,26)
       if (newmod .eq. 2) go to 900
       
       TEFFP=TEFF*(FTOT/FLUX/PI)**.25
-      print*, "TEEFP ", teffp
+      print*, "Current Teff... ", teffp
       WRITE(7,65) FTOT,TEFFP
       DO 154 K=1,NTAU
       Y=0.
@@ -8638,6 +9371,7 @@ C VFIX OPTION
 231   VV(K)=VFIX*1.E5
 230   CONTINUE
 C
+
 C TAU LOOP
       DO 200 K=1,NTAU
         KL=K
@@ -8646,12 +9380,12 @@ C TERMODYNAMICAL QUANTITIES WITH PARTIAL DERIVATIVES
       K1=MAX0(1,K-1)
       TMEAN=.5*(TT(K)+TT(K1))
       PEMEAN=.5*(PPE(K)+PPE(K1))
-      PMEAN=.5*(PP(K)+PP(K1))
       PRMEAN=.5*(PPR(K)+PPR(K1))
       ROSSMN=.5*(ROSS(K)+ROSS(K1))
       IF(K.GT.NOCONV) GO TO 213
 C NO CONVECTION
-      CALL TERMON(TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO,ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO,ROT,
+     &                  ROPE,CP,ADIA,Q)
       RO1=RO
       PG1=PG
       PG1T=0.
@@ -8671,11 +9405,14 @@ C CONVECTION
       PEDELT=PEMEAN*DEREP
       T1=TMEAN+TDELT
       PE1=PEMEAN+PEDELT
-      CALL TERMON(T1,PEMEAN,PRMEAN,Y,YA,YB,YC,YD,YE,CP1,ADIA1,Q1)
-      CALL TERMON(TMEAN,PE1,PRMEAN,Y,YA,YB,YC,YD,YE,CP2,ADIA2,Q2)
-      CALL TERMON(TMEAN,PEMEAN,PRMEAN,PG1,PG1T,PG1PE,RO,ROT,ROPE,CP,
-     &ADIA,Q)
-      CALL TERMON(TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO1,Y,YA,YB,YC,YD)
+      CALL TERMON(K,T1,PEMEAN,PRMEAN,Y,YA,YB,YC,YD,YE,CP1,
+     &        ADIA1,Q1)
+      CALL TERMON(K,TMEAN,PE1,PRMEAN,Y,YA,YB,YC,YD,YE,CP2,
+     &        ADIA2,Q2)
+      CALL TERMON(K,TMEAN,PEMEAN,PRMEAN,PG1,PG1T,PG1PE,RO,
+     &        ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO1,Y,
+     &        YA,YB,YC,YD)
       CPPE=(CP2-CP)/PEDELT
       ADIAPE=(ADIA2-ADIA)/PEDELT
       QPE=(Q2-Q)/PEDELT
@@ -8833,13 +9570,14 @@ C STRMGREN CONDITION
 C FLUXCONSTANCY
       RT(K)=RT(K)+FLUX-FFC(K)
 262   CONTINUE
-C
+
 C END OF TAU LOOP
       PGT=PGT*TT(K)/PG
       PGPE=PGPE*PPE(K)/PG
       IF(PF) WRITE(7,51) K,TAU(K),HSCALE,ADIA,GRAD,CP,Q,PG,RO,PGPE
      * ,PGT,K
 200   CONTINUE
+
 C
 C SUBTRACT CENTERED TURBULENT PRESSURE
       DO 216 K=2,NTAU
@@ -9101,10 +9839,16 @@ C                    call osatom
 C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       END IF
       PRINT406, TCORMXM,IT
-      open(unit=987,file= 'tcormx.dat',status='unknown', 
-     & position='append')
+      inquire(file="tcormx.dat", exist=exist)
+      if (exist) then
+      open(unit=987,file= 'tcormx.dat',status='replace')
       write(987, *) TCORMXM
       close(987)
+      else 
+      open(unit=987,file= 'tcormx.dat',status='new')
+      write(987, *) TCORMXM
+      close(987)
+      end if
       
 406   FORMAT(' Max corr. to T wanted was',F7.1,' K for iteration',I2)
 C
@@ -9141,7 +9885,15 @@ C
 4071  TCORMXM=PM*TCORMX
       
       !print*, "maximum temperature correction LINE 9129"
-      
+      write(file_id,'(i2)') iter
+      file_name = 'PT_struct_' // trim(adjustl(file_id)) // '.dat'
+      !print*, file_name
+      open(unit=73972, file=file_name, status='new')
+      do i=1, ntau
+      write(73972,*) 
+     * TT(i), ",", PP(i), ",", PPE(i), "," ,ROSS(i)
+      end do
+      close(73972)
       PRINT408, TCORMX,KORT
 408   FORMAT(' Maximum correction applied was',F6.1,
      *     ' for applied kort =',I2)
@@ -9344,23 +10096,35 @@ C 79.06.21 *NORD*
 C
       include 'parameter.inc'
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
+      COMMON /CANGLE/XMU(6),XMU2(6),H(6),MMU_PP
+      COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
+     *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON /CTRAN/X(NDP),S(NDP),BPLAN(NDP),XJ(NDP),XH(NDP),XK(NDP)
-     & ,BSTAR(NDP),dumtran(4*ndp),idumtran(3)
+     & ,dumtran(4*ndp),idumtran(3)
       COMMON /SPACE2_PP/SOURCE(NDP),ERROR(NDP),DUM(3*NDP),P(NDP)
      & ,SP1(NDP,6),SP2(NDP,6),SP3(NDP,6),AN(NDP),AD(NDP),BD(NDP)
      & ,FACT(NDP),DSO(NDP),SP2DUM((4*NDP-29)*NDP)
       DIMENSION A(7)
-      common /cirinp/steff, reflect,irrinp,irrin
+      COMMON /CSURF/HSURF,Y1(NRAYS)
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom  
 C
 C INITIATE
-      DO 100 K=1,JTAU
+      
+      if (irrin>0) then
+        bstar = bpl(steff, wlambda)
+      end if
+      DO  K=1,JTAU
       FACT(K)=1.
       DSO(K)=0.
       XJ(K)=0.
       XK(K)=0.
       ERROR(K)=BPLAN(K)*X(K)/(X(K)+S(K))
-100   SOURCE(K)=0.
+      SOURCE(K)=0.
+
+      end do
 C
 C CALCULATE THE MATRIX ELEMENTS
       CALL TRANFR
@@ -9374,21 +10138,42 @@ C ITERATION LOOP
       ITM=IT
 C
 C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
+      h_irrad = 1.0
       CALL SCATTR
+
       DO 120 K=1,JTAU
+      if (irrin>0) then 
+      XJ(K)=XJ(K)+P(K) + Pstar(k)
+      else
       XJ(K)=XJ(K)+P(K)
+      end if 
+
+      if (irrin>0) then
+      XK(K)=XK(K)+.333333*(P(K)+Pstar(k))
+      else
       XK(K)=XK(K)+.333333*P(K)
+      end if
 C
 C AITKEN EXTRAPOLATION USED FOR CONVERGENCE ACCELLERATION
+      if (irrin>0) then
+      DS=ERROR(K)+(P(K)+Pstar(k))*S(K)/(X(K)+S(K))
+      else
       DS=ERROR(K)+P(K)*S(K)/(X(K)+S(K))
+      end if
       IF(DSO(K).NE.0.) 
      #   FACT(K)=MIN(1.25D+0,MAX(0.8D+0,FACT(K)-DS/DSO(K)))
       DS=DS/FACT(K)
       IF(IT.GE.2) DSO(K)=DS
 120   SOURCE(K)=SOURCE(K)+DS
+
+      !different call for taking into account the gaussian weights 
+      !in the irradiation routine
+      
 C
 C SOLVE THE TRANSFER EQUATION WITH GIVEN SOURCE FUNCTION
+
       CALL FORMAL
+
 C
 C CHECK ERROR IN SOURCE FUNCTION
       DO 130 K=1,JTAU
@@ -9400,7 +10185,17 @@ C END OF ITERATION LOOP
       
 50    FORMAT(' MAXFEL =',12F10.7)
 141   CONTINUE
-C
+C     
+      if (wlambda == wlos(1)) then
+            open(unit=51298, file='flux_toa.dat', status='replace')
+            write(51298, '(2e24.15)') wlambda, HSURF
+            close(51298)
+      else
+            open(unit=51298, file='flux_toa.dat', status="old", 
+     *       position="append", action="write")
+            write(51298,'(2e24.15)') wlambda, HSURF
+            close(51298)
+      end if
       RETURN
       END
 C*
@@ -9418,13 +10213,14 @@ C
       include 'parameter.inc'
       COMMON /CANGLE/XMU(6),XMU2(6),H(6),MMU_PP
       COMMON /CTRAN/X(NDP),S(NDP),BPLAN(NDP),XJ(NDP),XH(NDP),XK(NDP)
-     &  ,BSTAR(NDP),dumtran(4*ndp),idumtran(3)
+     & ,dumtran(4*ndp),idumtran(3)
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /SPACE2_PP/SOURCE(NDP),ERROR(NDP),DUM(3*NDP),P(NDP)
      *,SP1(NDP,6),SP2(NDP,6),SP3(NDP,6),AN(NDP),AD(NDP),BD(NDP)
      *,FACT(NDP),DSO(NDP),C(6),T(6),EX(6),SP2DUM((4*NDP-29)*NDP-18)
       COMMON /CSURF/HSURF,Y1(NRAYS)
-      common /cirinp/steff, reflect,irrinp,irrin
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom    
       real*8, parameter :: pi = 3.14159265
 C
@@ -9509,41 +10305,32 @@ C INITIATE APPROXIMATIVE SOURCE FUNCTION
       P(1)=SOURCE(1)+AN(1)*(3.*XMU2(I)-1.)
 C NOTE THE ANISOTROPIC SCATTERING CORRECTION
       S0=P(1)
-      if (irrin<=0) then
-            P(1)=P(1)*(1.+C(I)*EX(I))
-            
-      else if (irrin>0) then
-      !IRRADIATION
+      if (irrin>0) then
       Rsun_au=0.00465047
       Rstar_au= rstar*Rsun_au
-      delta_omega = (Rstar_au/(semimajor))**2.0 / (4.0)
-      
-      P(1)=P(1) *(1.+C(I)*EX(I))*(1-delta_omega) 
-      Pstar(1) = (delta_omega/H(I))*C(I)*(1-EX(I))* 
-     & BSTAR(1) * (S(1)/(X(1)+S(1)))
-            !print*, "pstar 1 ", Pstar(1)
+      delta_omega = (Rstar_au/(semimajor))**2.0 /
+     &  (4.0*(f_irrad))
+      P_star=(delta_omega/H(i)) * bstar * 
+     &  (C(i)*(1-EX(i)))
+      P(1)=P(1) *(1.+C(I)*EX(I))*(1.-delta_omega)
+      P(1) = P(1)+P_star
+      else
+      P(1)=P(1) *(1.+C(I)*EX(I))
       end if
-      DO 140 K=2,JTAU1
-140   P(K)=(1.-AD(K)-BD(K))*(SOURCE(K)+AN(K)*(3.*XMU2(I)-1.))
+
+      DO K=2,JTAU1
+      P(K)=(1.-AD(K)-BD(K))*(SOURCE(K)+AN(K)*(3.*XMU2(I)-1.))
      & +AD(K)*(SOURCE(K-1)+AN(K-1)*(3.*XMU2(I)-1.))
      & +BD(K)*(SOURCE(K+1)+AN(K+1)*(3.*XMU2(I)-1.))
+      end do 
+      
       P(JTAU)=SOURCE(JTAU)
 C
 C ACCUMULATE RIGHT HAND SIDE
       DO 150 K=1,JTAU2
 150   P(K+1)=P(K+1)+SP1(K,I)*P(K)
 C
-      if (irrin>0) then
-      do k=1, JTAU2
-           Pstar(k+1) = SP1(K,I)*Pstar(k)
-      end do
-      do k=1, jtau1
-            P(k) = P(k)+Pstar(k)
-      end do
-      if (irrinp>0) then
-            P(jtau1) = P(jtau1) + reflect*Pstar(jtau1)
-      end if
-      end if
+      
 C BACKSUBSTITUTE
       DO 160 K=1,JTAU1
       P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K,I)*P(JTAU-K+1))/SP2(JTAU-K,I)
@@ -9571,6 +10358,7 @@ C FLUX AND SECOND MOMENT
      /(TAU(K)-TAU(K-1))
 C
       RETURN
+
       END
 C*
 C*NEW PDS MEMBER FOLLOWS
@@ -9587,12 +10375,15 @@ C 79.06.21 *NORD*
 C
       include 'parameter.inc'
       COMMON /CTRAN/X(NDP),S(NDP),BPLAN(NDP),XJ(NDP),HFLUX(NDP),XK(NDP)
-     &  ,BSTAR(NDP),dumtran(4*ndp),idumtran(3)
+     & ,dumtran(4*ndp),idumtran(3)
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /SPACE2_PP/SOURCE(NDP),ERROR(NDP),SP1(NDP),SP2(NDP),
      +            SP3(NDP),P(NDP),SP2DUM((4*NDP-6)*NDP)
-      common /cirinp/steff, reflect,irrinp,irrin
-      common /irradcs/Pstar(ndp),rstar, semimajor,tbottom   
+      common /cirinp/steff,reflect,f_irrad,h_irrad,
+     > wlambda,bstar,irrinp,irrin
+      common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
+      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
+     * STEFAN
       DATA XMU,XMU2/0.5773503,0.3333333/
 C
 C K=1
@@ -9637,18 +10428,41 @@ C
 C INITIATE INHOMOGENOUS TERMS
       DO 120 K=1,JTAU
 120   P(K)=ERROR(K)
-      DSDT=0.
 C PRELIM
-      P(1)=P(1)*(1.+C*EX)-DSDT*C*(EX-T*(1.-EX))
+      if (irrin<=0) then
+            P(1)=P(1)*(1.+C*EX)
+            
+      else if (irrin>0) then
+      !IRRADIATION
+      Rsun_au=0.00465047
+      Rstar_au= rstar*Rsun_au
+      delta_omega = (Rstar_au/(semimajor))**2.0 / 
+     & (4.0*(f_irrad))
+      Pstar(1) = (C*(1-EX))* 
+     & (delta_omega/h_irrad) *bstar
+
+      P(1)=P(1) *(1.+C*EX)*(1.-delta_omega) 
+      end if
 C
 C ACCUMULATE INHOMOGENOUS TERMS
       DO 130 K=1,JTAU2
 130   P(K+1)=P(K+1)+SP1(K)*P(K)
 C
+      if (irrin>0) then
+      do k=1, JTAU1
+       Pstar(k+1) = SP1(k)*Pstar(k)
+      end do
+      if (irrinp >0) then
+       Pstar(JTAU) = Pstar(jtau) + reflect*Pstar(jtau)
+      end if 
+      end if
 
 C BACKSUBSTITUTE
       P(JTAU)=P(JTAU)/SP2(JTAU)
+      Pstar(jtau)=Pstar(jtau)/SP2(JTAU)
       DO 140 K=1,JTAU1
+      Pstar(JTAU-K)=(Pstar(JTAU-K)
+     & -SP3(JTAU-K)*Pstar(JTAU-K+1))/SP2(JTAU-K)
 140   P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K)*P(JTAU-K+1))/SP2(JTAU-K)
 C
       RETURN
@@ -9858,7 +10672,7 @@ C -EQUIDISTANT GRID.
 C
 C
 C
-C_ugj950523:  here the sphereical part begins @@@@@
+C ugj950523:  here the sphereical part begins @@@@@
 C
 C
       SUBROUTINE SOLVE_sph(NEW)
@@ -9953,7 +10767,7 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/PI
       CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CLEVPRINT/ PRJ2(NDP),masslinf
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
@@ -9991,6 +10805,7 @@ C SPACE ALLOCATION
       COMMON /SPACE2/ SPACEDUM1(NDP*7+NDP*NRAYS*5+NRAYS*2),
      &       SPACEDUM2(NDP*2),PFEAU(NRAYS,NDP),XMU(NRAYS,NDP),
      &       MMU(NDP),KSPACE2DUM(NRAYS+1)
+
 
 C
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUATIONS
@@ -10476,12 +11291,12 @@ C TERMODYNAMICAL QUANTITIES WITH PARTIAL DERIVATIVES
       K1=MAX0(1,K-1)
       TMEAN=.5*(TT(K)+TT(K1))
       PEMEAN=.5*(PPE(K)+PPE(K1))
-      PMEAN=.5*(PP(K)+PP(K1))
       PRMEAN=.5*(PPR(K)+PPR(K1))
       ROSSMN=.5*(ROSS(K)+ROSS(K1))
       IF(K.GT.NOCONV) GO TO 213
 C NO CONVECTION
-      CALL TERMON(TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO,ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO,ROT,
+     &                  ROPE,CP,ADIA,Q)
       RO1=RO
       PG1=PG
       PG1T=0.
@@ -10501,11 +11316,14 @@ C CONVECTION
       PEDELT=PEMEAN*DEREP
       T1=TMEAN+TDELT
       PE1=PEMEAN+PEDELT
-      CALL TERMON(T1,PEMEAN,PRMEAN,Y,YA,YB,YC,YD,YE,CP1,ADIA1,Q1)
-      CALL TERMON(TMEAN,PE1,PRMEAN,Y,YA,YB,YC,YD,YE,CP2,ADIA2,Q2)
-      CALL TERMON(TMEAN,PEMEAN,PRMEAN,PG1,PG1T,PG1PE,RO,ROT,ROPE,CP,
-     &ADIA,Q)
-      CALL TERMON(TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO1,Y,YA,YB,YC,YD)
+      CALL TERMON(K,T1,PEMEAN,PRMEAN,Y,YA,YB,YC,YD,YE,CP1,
+     &        ADIA1,Q1)
+      CALL TERMON(K,TMEAN,PE1,PRMEAN,Y,YA,YB,YC,YD,YE,CP2,
+     &        ADIA2,Q2)
+      CALL TERMON(K,TMEAN,PEMEAN,PRMEAN,PG1,PG1T,PG1PE,RO,
+     &        ROT,ROPE,CP,ADIA,Q)
+      CALL TERMON(K,TT(K),PPE(K),PPR(K),PG,PGT,PGPE,RO1,Y,
+     &        YA,YB,YC,YD)   
       CPPE=(CP2-CP)/PEDELT
       ADIAPE=(ADIA2-ADIA)/PEDELT
       QPE=(Q2-Q)/PEDELT
@@ -10863,7 +11681,11 @@ C---
  405  TCORMX=MAX(TCORMX,ABS(T(I)))
       IF(TCORMX.LE. tconv)  ITSTOP=.TRUE.
       
+    
       PRINT406, TCORMX,ITER
+      open(unit=987,file= 'tcormx.dat',status='new')
+      write(987, *) TCORMX
+      close(987)
       !print*, "max corr wanted ", tcormx
 406   FORMAT(' Max corr. to T wanted was',F6.1,' K for iteration',I2)
 C
@@ -10965,6 +11787,8 @@ C
       TCORMX=MAX(TCORMX,ABS(T(I)))
 4071  TCORMXM=PM*TCORMX
       PRINT408, TCORMX,KORT
+      
+
 408   FORMAT(' Maximum correction applied was',F6.1,
      *     ' for applied kort =',I2)
       END IF
@@ -10974,11 +11798,14 @@ C
 C Limit temperature correction to KPP
 C (AB/950519)
 C
+
+      
       PPK = DFLOAT(KPP)
-      DO 413 I=1,NTAU
+      DO  I=1,NTAU
       IF (ABS(T(I)).GT.ABS(PPK)) 
      -     T(I)=PPK*T(I)/ABS(T(I))
-413   CONTINUE
+      end do
+      
 C 
 C
 412   continue
@@ -11423,41 +12250,7 @@ C END MU LOOP
       FUN(I)=-XMU(I,1)*(PFEAU(I,1)-SOURCE(1)*EX(I))
       IF (YSURF(I).LE.0.0) GO TO 231
 170   CONTINUE
-C
-C  INTERPOLATE TO PFEAU AT MU=0 FOR THOSE K THAT HAVE NO RAY
-*  THIS IS THE ORIGINAL CODE, WHICH EXTRAPOLATES IN MU, FOR CONSTANT K.
-*  THIS WAS FOUND TO PRODUCE BAD RESULTS FOR THE FLUX, WHICH IS A
-*  DERIVATIVE OF XK, WHICH IS THE SECOND MOMENT OF THE FUNCTION
-*  BEING EXTRAPOLATED TO ZERO.
-*      DO 181 K=1,JTAU1
-*      II=MMU(K)
-*      IF (KIMPAC(II).EQ.K) GO TO 181
-*      PX=-XMU(II-2,K)/(XMU(II-1,K)-XMU(II-2,K))
-*      QX=1.-PX
-*      PFEAU(II,K)=EXP(log(PFEAU(II-2,K))*QX+log(PFEAU(II-1,K))*PX)
-*181   CONTINUE
-*
-*  INTERPOLATE/EXTRAPOLATE IN K FOR PFEAU AT MU=0
-*  THIS SHOWS WHAT IS INTENDED TO BE DONE, IF USING AN EXTERNAL
-*  INTERPOLATION ROUTINE.
-*       DO 181 I=1,NIMPAC
-*         K=KIMPAC(I)
-*         F(I)=PFEAU(I,K)
-*         X(I)=log(TAU(K))
-*181   CONTINUE
-*      DO 182 K=1,JTAU1
-*        XX(K)=log(TAU(K))
-*182   CONTINUE
-*      CALL INTERP(NIMPAC,X,F,JTAU1,XX,FF)
-*      DO 183 K=1,JTAU1
-*        I=MMU(K)
-*        PFEAU(I,K)=FF(K)
-*183   CONITNUE
-C
-C  DO IT INLINE:  EXTRAPOLATE/INTERPOLATE THE PFEAU IN log(TAU), FOR MU=0.
-C   START WITH 3 OUTERMOST POINTS (YOU PROBABLY NOTICED THAT KIMPAC(NIMPAC)=4)
-C   JUMP OVER THE RAYS (WHERE PFEAU(MU=0.) IS ALREADY CALCULATED), AND
-C   INTERPOLATE THE REST OF THE TIME.
+
 C
       IF (NCORE.EQ.NIMPAC) THEN
 C
@@ -12178,105 +12971,56 @@ C
       RETURN
       END
 
-
-
       SUBROUTINE OSTABLOOK
 
       implicit real*8 (a-h,o-z)
 
        include 'parameter.inc'
-       character atnames*2, molnames*8
-C
- !OS-TABle-LOOK-up is called 3 time for each itteration (from OPAC with
- !J=1, called from SOLVE with T,Pe, T+dT,Pe, T,Pe+dPe). 
-  !It looks up the OS-tables for all molecules and calculates the
- !total line opacity at each depth layer. It returns the array
- !CONOS(NDP,NWL) which is the total molecular opacity at each wavenumber
- !XL(NWL) and each depth of temperature T(NDP).
- !The OS-tables can be generated by use of OS.F, and all tables
- !are assumed to have been generated for the same wavenumbers (but
- !not necessarily for the same temperatures). OSTABLOOK checks that the
- !wavenumbers are identical from one table to another. If this is not the
- !case, a warning is written in the output, and nearest wavenumber is used.
- !It is in principle ok to use wavenumbers that differs a bit from one
- !species to another, because the OS is a statistical approach, but care 
- !has to be taken if the wavenumber lists are too different. It would be 
- !statistically wrong to interpolate in the OS tables to the adopted OS
- !wavenumbers for the specific iteration.
- !This subroutine is written by UGJ in mid-1990'ties and has been 
- !modified several times later.
+       character atnames*2, molnames*8, molnames2*4, shn*8
+       character(len=100) :: mol_file
+       !BCE November 2022 - routine is being revamped for correct consideration
+       !of molecular opacities.
 
-       !Namelist INPUTOS contains the variables
-        !NOSMOL = number of molecules considered in the opacity
-        !MOLNAME(30) = the names of the molecules considered
 
-        !The header of each OS table is assumed to contain a namelist,
-        !INPUTOSMOL, with the followig variables:
-        !NWNOS = number of OS wavenumber values for given molecule.
-        !NTMOL, TMOL(mtemp) = number of temperatures and the actual 
-        !temperatures for which kap is tabulated for that molecule.
-        !MOLID which identifies the molecule, and ensures that the
-        !right molecules are combined with the right partial pressures.
-        !VKMS = the microturbulence value (only in OSs after July 1997)
-        !RATIS = 13C/12C (only in OSs produced after July 1997; after
-        !Aug 1998 substituted with kiso,reliso,vkms -- only for identification)
-        !l_per_stellar (=0 or 1) identifies whether the absorption coefficient 
-        !is in units of cm^2/mole (absorption coefficient) or cm^2/g* ("opacity").
-        !Usually l_per_stellar should be 0 for molecules but 1 for atoms.
-
-      DIMENSION OPJV(MTEMP),AKAPMOL(NDP)
+      DIMENSION OPJV(NWL,NDP),AKAPMOL(NDP)
+     *      ,opav(20,nwl),wnav(nwl)
      *      ,TMOL(MTEMP),OPLN(MTEMP),FXLN(MTEMP)
      *      ,reliso(15),OPT(MTEMP),DADT(MTEMP),WT(3,MTEMP)
       dimension xx(ndp), yy (ndp)
-C      dimension fi(ndp), fxi(ndp), fyi(ndp), fxyi(ndp) !fi==akapmol
+
       dimension fxi(ndp), fyi(ndp), fxyi(ndp)
       CHARACTER MOLNAME*4,OSFIL*60,MOLID*4,SAMPLING*3
       LOGICAL FIRST
-C
+
       NAMELIST /INPUTOSMOL/ MOLID, KTEMP, TMOL, NWNOS
      &   ,VKMS, KISO, RELISO, RATIS, JDERIV, L_PER_STELLAR, lchrom
-C
+
       COMMON /COPINF/ SUMOP(maxosmol,NDP),SUMKAP(maxosmol,NDP)
+      common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       common/eostab/ xmin, ymin, dx, dy, f(mtemp,mpe)
      *       , fx(mtemp,mpe), fy(mtemp,mpe), fxy(mtemp,mpe), nx, ny
       COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
      & VV(NDP),FFC(NDP),PE(NDP),T(NDP),TAULN(NDP),RO(NDP),
      & NTAU,ITER
       COMMON /CMETPE/ PPEL(NDP), METPE
-      common /ckdtpe/dpex,kdtpe
-c      COMMON /STATEC/NTAU,PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP)
-c     *,DD(NDP),VV(NDP),FFC(NDP),PE(NDP),T(NDP),TAULN(NDP),GEFF(NDP)
-c     *,RRO(NDP),RO(NDP),PGZ(NDP)
-      COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
-      COMMON/CXLSET/XL(20,10),NSET,NL(10)
-      COMMON /CVAAGL/XLB(500),W(500),NLB
+      !COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
+      !COMMON/CXLSET/XL(20,10),NSET,NL(10)
+      !COMMON /CVAAGL/XLB(500),W(500),NLB
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
-C      COMMON/COPPR/oppr(15,3,120,3),jvxmax,itxmax !15mol,10dpt,100wn
-      COMMON/CARC3/F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
+     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
+      !COMMON/CARC3/F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
-      common/ci5/abmarcs(18,ndp),anjon(17,5),h(5),part(17,5),
+      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
       COMMON /CPOLY/FACPLY,MOLTSUJI
-      COMMON /TIO/ PTIOOLD(NDP),ROOLD(NDP),POXG1OLD(NDP)
-      COMMON /KETIO/ PKETIO(NDP),ROKE(NDP),POXG1(NDP)
       common /fullequilibrium/ partryck(ndp,maxmol),
      &  xmettryck(ndp,maxmet),xiontryck(ndp,maxmet),partp(ndp,0:maxmol),
      &  partpp(ndp,0:maxmol)
-      common /cmtest/pgm1(ndp),pgm2(ndp),pem1(ndp),pem2(ndp)
-     *     ,tm1(ndp),tm2(ndp),pgos(ndp)
       common /cmasabs/ masabs(3)
       common /cosexp/ lops,nops
-      common /cindiam/tdiam1,tdiam2,fdiam1,fdiam2,
-     *    tc2h21,tc2h22,fc2h21,fc2h22
       common /catoms_head/ p6(9),t_at(17)
-      common/catoms/opjva(nwl,9,3:17),fxln_at(nwl,9,3:17)
-C opjva is ln(opac_atoms[cm2/g-*]); fxln is d(opjva)/dln(p6)
-      dimension oplna(9),fxlna(9),oplna_t(15),dadta(15),wta(3,15)
-     & ,oplna_tau(ndp),tat(15),p6ln(9)
-      COMMON /CCIATEST/ CIATEST(44,NDP)
       COMMON /PJONINF/ P_MOL(NDP), P_NEU_HCNO(NDP), P_ION_HCNO(NDP),
      & P_NEU_HE(NDP),P_ION_HE(NDP), P_NON_HHECNO(NDP), PG_JON(NDP), 
      & HN_JON(NDP), RO_JON(NDP), P6_JON(NDP)
@@ -12286,19 +13030,18 @@ C     parameter(nspec=892)
       common /cgem/pres_gem(ndp,nspec)
       common /cgemnames/natms_gem,nions_gem,nspec_gem,name_gem(nspec)
 C atms,ions,spec ~ highest index of neutral atoms, ions, species total
+      common /cdrift/ idust, ieps, idustopac
       character name_gem*8
       common /cabink/abink(ndp,nspec)
+      common /ch4/ nch4
       dimension ptot(ndp),pp_sum(ndp),pg(ndp)
-      dimension trpe(ndp), trphe(ndp)
-      common /cprespp/prespp(ndp,nspec)           !gem computed pp
-      common /ctotabk/totabk(ndp,natms)
+      dimension trpe(ndp), trphe(ndp),akapmax(ndp)
       dimension pe_gem(ndp),ptot1(ndp),dptot(ndp)
      &  ,pe1(ndp),dptot2(ndp),dpe2(ndp),dpe(ndp)
-
+      integer photo_on
       INTEGER MOLH, JUMP
       DATA FIRST/.TRUE./
 
-      common /ggchempe/PPEL_OLD(NDP),PE_OLD(NDP)
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
      &   ppnonappsum(ndp),tg(ndp),pges(ndp)
      &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
@@ -12306,19 +13049,32 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
      > rCgg, rMggg, rAlgg, rSigg, rHegg
-      integer, dimension(75) :: idmarcspart, idggchempart
+      !integer, dimension(75) :: idmarcspart, idggchempart
+
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
+     >                ,ppat(22),ppmol(543)
      >                ,idmarcspres(32),idggchempres(32)
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
-      common /NONEQ/noneq
-      
+      logical ggchem_mol(maxosmol), ggchem_index_read, species_found
+      integer ggchem_index(maxosmol), molno
+      character(len=5) molnames_new(maxosmol)
+      common /molupdate/ molnames_new, 
+     * ggchem_index,
+     * molno, ggchem_mol, ggchem_index_read
+      common /dpeset/ dpein,dtin, pe_corr(ndp)
+      common /noneq/ krome_on,photo_on
+      character*20 file_id, file_name
+      dimension nmid(20)
+      data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
+  
+      real conos_sum
+      !common /cit/ it
 
       if (first) then
       TOSREAD = 0.
@@ -12326,36 +13082,25 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       end if
 
       call timex1
-
-      do 276 ip6 = 1,9
-276   p6ln(ip6) = 2.3025851*dfloat(ip6)     !ln(p6[dyn/cm2])
-      DO 59 IT=1,NTAU
-      DO 59 JV=1,NWTOT
-         CONOS(IT,JV) = 0.
-59    CONTINUE
+      do it=1,ntau
+         do jv=1,nwtot
+            conos(it,jv) = 0.
+         end do
+      end do
+  
 C
 C CALCULATE THE PARTIAL PRESSURE
       TBPART=SECOND()
-C      TBPART=0.
       MOLM=MOLH
       MOLH=0
       div = 1./(xmy(1)*xmh)
       
-     
-
-        DO 2111 K=1,NTAU
-
-CV20    ptot(k)=pe(k)+pp(k)-ppr(k)-ppt(k)
-
-        ptot(k)=pp(k)-ppr(k)-ppt(k)
-2111    continue
-      
-       DO  K=1,NTAU
+      do k=1,ntau
+        ptot(k)=pp(k)-ppr(k)-ppt(k)+pe_corr(k)
+       
+      end do
+      DO  K=1,NTAU
         KL=K         
-C KL connects FOLD in CMOLRAT with depth in call to JON...
-C PRESMO is in units of dyn/cm2; partp is in units of mol/g(stellar)
-C Partryck is in units of dyn/cm2
-        
 
 C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------  
           
@@ -12384,48 +13129,27 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             rSi(k) = rSigg
             rHe(k) = rHegg
             ro_dt(k) = ggrhok
+      enddo
+C        ROKE(K) = RO(K)      !for transfer in KE's TiO common-block - probably not needed 
 
-        ROKE(K) = RO(K)      !for transfer in KE's TiO common-block
-
-        ph = 8.24673e7*ro(k)*t(k)/xmy(k)
-        pox = abmarcs(5,k)/(1+anjon(5,2)/anjon(5,1))*ph
-        pomol = presmo(4)+presmo(5)+presmo(7)+2.*presmo(11)+
-     *          presmo(12)+presmo(27)+presmo(28)  !H2O,OH,CO,O2,NO,SiO,SO
-        poxg1(k) = pox - pomol
-        TRIX=T(K)*RO(K)
-
-        RO4=RO(K)
+C        ph = 8.24673e7*ro(k)*t(k)/xmy(k)
+C        pox = abmarcs(5,k)/(1+anjon(5,2)/anjon(5,1))*ph
+C        pomol = presmo(4)+presmo(5)+presmo(7)+2.*presmo(11)+
+C     *          presmo(12)+presmo(27)+presmo(28)  !H2O,OH,CO,O2,NO,SiO,SO
+C       poxg1(k) = pox - pomol !maybe not needed
+      !  TRIX=T(K)*RO(K) 
+        !TRIX=1.20274D+8 !double check wheter trix is needed
+      !  RO4=RO(K)
         
-        partp(k,0) = ppallat(k,1) / TRIX*1.20274D-8 
-        do m=1, 75
-         partp(k,idmarcspart(m)) = 
-     *   gg_partpp(k,idmarcspart(m)) / TRIX*1.20274D-8 
-        end do
-        partp(k,2) = (ppallmol(k,1) /3.7095D3/T(K) )**2 /RO(K)
-        XNHE = abmarcs(2,k) / (XMH*XMY(k))
-         
-         partp(k,17) = 1.38053e-16 * T(K) * XNHE 
-         partp(k,17)=
-     *     partp(k,2)*partp(k,17)/( 3.7095D3 * T(K) )**2
-         partp(k,17) = partp(k,17) * RO(K)
-         PHE = partp(K,17)
-         P6_JON(K) = xmettryck(k,1)+0.42*PHE+0.85*ppallmol(k,1)
-
-
-! Partial pressures PARTPP(k,j) in a unit suitable to print in listmo:
-! i.e. dyn/cm2. They come directly from demo_sweep.f in ggchem16 where
-! they are computed as number density (number per cm3) times kT, which
-! is energy per cm3 (erg/cm3) which is the same as dyn/cm2.
-! Remark that PARTP [mol/g-*] is useful for opacity calculation, while
-! PARTPP [dyn/cm2] is useful for plotting etc but not physically used.
-! The variable PARTP used for opacities per g-* depends on rho and mu
-! so rho and mu should be computed consistently with PARTP (i.e. from
-! ggchem and not from JON or THERMO).
+      !  partp(k,0) = ppallat(k,1) / TRIX*1.20274D-8 
+      !  do m=1, 75
+      !   partp(k,idmarcspart(m)) = 
+      !*   gg_partpp(k,idmarcspart(m)) / TRIX*1.20274D-8 
+      !  end do   
+      
+C     Updating stuff for ggchem
+      DO K=1,NTAU
         partpp(k,0) = ppallat(k,1)
-        do m=1, 75
-         partpp(k,idmarcspart(m)) =
-     *   gg_partpp(k,idmarcspart(m))
-        end do
          partpp(k,2) = (ppallmol(k,1) /3.7095D3/T(K) )**2 /RO(K)
          XNHE = abmarcs(2,k) / (XMH*XMY(k))
 
@@ -12434,20 +13158,16 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
      *     partpp(k,2)*partpp(k,17)/( 3.7095D3 * T(K) )**2
          partpp(k,17) = partpp(k,17) * RO(K)
          PHE = partpp(K,17)
-         P6_JON(K) = xmettryck(k,1)+0.42*PHE+0.85*ppallmol(k,1)
-   
+         P6_JON(K) = xmettryck(k,1)+0.42*PHE+0.85*ppallmol(k,1)     
       end do
-
 C ------------ USING KROME TO COMPUTE NON-EQ CHEMISTRY------------
 C      write(*,*) 'X before'
 C      write(*,*) x
 
-      if(noneq.eq.1) then
-        call krome_routine(ntau,T,ptot)
-        stop
-      endif 
-      if (NONEQ==1) then
-      call krome_routine(ntau,T,ptot)
+      !write(*,*) "ppallmol/at"
+      !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
+      if (krome_on.eq.1) then
+          call krome_routine(ntau,T,ptot)
       endif
 
 C      write(*,*) 'X after'
@@ -12455,603 +13175,246 @@ C      write(*,*) x
 
 C ------------ KROME DONE------------
 
-
       !MOLH=MOLM
       molh=0
-      TEPART=SECOND()
-      TPART = TPART + TEPART-TBPART
-C
-C CORRECT FOR THE PARTIAL PRESSURE
-C
-      TBREAD=SECOND()
 
-C Now consider each molecule in turn in loop 100:
 
-      DO 100 NM=1,NOSMOL
-C
-      DO 102 IT=1,NTAU
-      SUMOP(NM,IT) = 0.
-      SUMKAP(NM,IT) = 0.
-102   CONTINUE
+C     ADS: Code that matches the ggchem index to the read in molnames
+C     Idea: call ggchem once to generate ggchem index of molnames and atnames for partial pressures
+C     in ggchem. We will then try to match these to those in mol_names.dat, where we could have 
+C     molnames or atomnames inside. The order defined there is the order in which the opacities are
+C     processed and read in. The order in mol_names.dat can be whatever.
 
-      if (molname(nm).eq.'ATOM') then
-         print*, "atom stuff"
-         molid = 'ATOM'
-         IDMOL = 1
-         go to 215
+C     Lets now search for the ggchem index of our species      
+      if (.not. ggchem_index_read) then
+C           Note: we only need to do this once!!       
+      do nm=1, molno
+          species_found = .FALSE.
+C         We first try to match the species to a molecule
+C         Species can be in mixed uppercase and lowercase to be matched to GGchem
+          molloop: do imol = 1, 543
+             shn = trim(upper(molnames_new(nm)))
+             if (trim(molnames(imol)) == shn) then
+                  ggchem_index(nm) = imol
+                  ggchem_mol(nm) = .TRUE.
+                  species_found = .TRUE.
+                  exit molloop
+             endif
+          end do molloop
+C         We then check if our species is an atom          
+          atmloop: do iatm = 1, 22
+             shn = trim(molnames_new(nm))
+             if (trim(atnames(iatm)) == shn) then
+                  ggchem_index(nm) = iatm
+                  if (.not. species_found) then
+                        ggchem_mol(nm) = .FALSE.
+                        species_found = .TRUE.
+                  else
+                        print*,' Species could be ',
+     &                     'atom or molecule! Check: '
+     &                     ,nm,molnames_new(nm)                    
+                        STOP 'Check species name in mol_names.dat'
+                  endif
+                  exit atmloop
+             endif
+          end do atmloop
+          if (.not. species_found) then
+            print*,' species is not an atom or molecule from ggchem: '
+     &         ,nm,molnames_new(nm)
+            STOP 'Check species name in mol_names.dat'
+          endif
+      end do
+      ggchem_index_read = .TRUE.
+      endif
+      write(file_id,'(i2)') iter
+      file_name = 'ppress_' // trim(adjustl(file_id)) // '.dat'
+      open(unit=23962, file=file_name, status='replace')
+      file_name = 'sumop_' // trim(adjustl(file_id)) // '.dat'
+      open(unit=23963, file=file_name, status='replace')
+C      open(unit=23975, file='osplots.dat', status='replace')
+
+      if(larciv.eq.1)then
+               open(unit=424,file='kappa_plot.dat',status='replace')
+               open(unit=430,file='opplot.dat',status='replace')
+               ltop = 44
+               write(424,426)ltop, t(ltop), nwtot
+426            format(' ltop =',i3,' temp = ',f8.2,' nwtot =',i9)
+               write(424,*)' molecule number and name etc in OS list:'
+            write(424,428)
+428         format
+     *      ('name nm jvmax wl_mu{op_first/last/max}',
+     *       ' wnmax_cm-1 akapmax sumop:')
       end if
-      OPEN(UNIT=3,FILE=OSFIL(NM),STATUS='OLD',readonly)
-      READ(3,INPUTOSMOL)
-      IF (MOLID.EQ.'AJ1 ') THEN
-         MOLID = 'C2  '
-      ELSE IF (MOLID.EQ.'AJ2 ') THEN
-         MOLID = 'CN  '
-      ELSE IF (MOLID.EQ.'AJ3 ') THEN
-         MOLID = 'HCN '
-      ELSE IF (MOLID.EQ.'AJ4 ') THEN
-         MOLID = 'C2H2'
-      ELSE IF (MOLID.EQ.'AJ5 ') THEN
-         MOLID = 'H2O '
-      ELSE IF (MOLID.EQ.'AJ6 ') THEN
-         MOLID = 'TiO '
-      ELSE IF (MOLID.EQ.'AJ7 ') THEN
-         MOLID = 'CH  '
-      ELSE IF (MOLID.EQ.'H2OS' .or. MOLID.EQ.'swmx') THEN
-         MOLID = 'H2O '
-      END IF
 
-      IF (MOLNAME(NM).NE.MOLID) THEN
-         print 570, NM,MOLNAME(NM),MOLID
-570      FORMAT(' MOLECULE IN INPUT,FILE = ',I3,2X,A4,2X,A4)
-         STOP ' MAYBE THE WRONG OPACITY FILE HAS BEEN OPENED ? '
-      END IF
-      NWMOL=0
-      ISKIP=0
-      IF (MOLID.EQ.'CH  ') THEN
-          IDMOL = 6
-      ELSE IF (MOLID.EQ.'CO  ') THEN
-          IDMOL = 7
-      ELSE IF (MOLID.EQ.'CN  ') THEN
-          IDMOL = 8
-      ELSE IF (MOLID.EQ.'C2  ') THEN
-          IDMOL = 9
-      ELSE IF (MOLID.EQ.'C2H2') THEN
-          IDMOL = 14
-      ELSE IF (MOLID.EQ.'DIAM') THEN
-          IDMOL = 14                  !diamond grains
-      ELSE IF (MOLID.EQ.'AMPC') THEN
-          IDMOL = 14                  !amorphous carbon grains
-      ELSE IF (MOLID.EQ.'HCN ') THEN
-          IDMOL = 15
-      ELSE IF (MOLID.EQ.'C2H ') THEN
-          IDMOL = 16
-      ELSE IF (MOLID.EQ.'C3  ') THEN
-          IDMOL = 21
-      ELSE IF (MOLID.EQ.'CS  ') THEN
-          IDMOL = 22
-      ELSE IF (MOLID.EQ.'CH4 ') THEN
-          IDMOL = 39
-      ELSE IF (MOLID.EQ.'H2O ') THEN
-          IDMOL = 4
-      ELSE IF (MOLID.EQ.'OH  ') THEN
-          IDMOL = 5
-      ELSE IF ((MOLID.EQ.'TIO ').OR.(MOLID.EQ.'TiO ')) THEN
-          IDMOL = 31
-      ELSE IF ((MOLID.EQ.'SIO ').OR.(MOLID.EQ.'SiO ')) THEN
-          IDMOL = 27
-      ELSE IF (MOLID.EQ.'H2H2') THEN
-          IDMOL = 2
-      ELSE IF (MOLID.EQ.'H2HE'.OR.(MOLID.EQ.'H2He')) THEN
-          IDMOL = 17
-      else if (molid.eq.'NO  ') then
-          idmold = 12
-      ELSE IF (MOLID.EQ.'NH  ') THEN
-          IDMOL = 13
-      ELSE IF (MOLID.EQ.'SIH '.OR.(MOLID.EQ.'SiH ')) THEN
-          IDMOL = 19
-      ELSE IF (MOLID.EQ.'VO  ') THEN
-          IDMOL = 32
-      ELSE IF (MOLID.EQ.'ZRO '.OR.(MOLID.EQ.'ZrO ')) THEN
-          IDMOL = 33
-      ELSE IF (MOLID.EQ.'MGH '.OR.(MOLID.EQ.'MgH ')) THEN
-          IDMOL = 34
-      ELSE IF (MOLID.EQ.'CAH '.OR.(MOLID.EQ.'CaH ')) THEN
-          IDMOL = 215
-      else if (molid.eq.'TIH '.or.(molid.eq.'TiH ')) then
-          idmol = 214
-      else if (molid.eq.'FEH ' .or. (molid.eq.'FeH ')) then
-          idmol = 216
-      else if (molid.eq.'CRH ' .or. (molid.eq.'CrH ')) then
-          idmol = 217
-      else if (molid.eq.'LIH ' .or. (molid.eq.'LiH ')) then
-          idmol = 71
-      else if (molid.eq.'H2  ') then
-          idmol = 10
-      ELSE IF (MOLID.EQ.'NH3 ') THEN
-          IDMOL = 43
-      ELSE IF (MOLID.EQ.'CO2 ') THEN
-          IDMOL = 46
-      ELSE IF (MOLID.EQ.'at1d') THEN    !atomic abs.coef. as function of temp.only
-          IDMOL = 1
-
-! EXOMOL MOLECULES (Rune D.K. 2019)
-
-      ELSE IF (MOLID.EQ.'AlCl ') THEN
-          IDMOL = 220
-      ELSE IF (MOLID.EQ.'AlF ') THEN
-          IDMOL = 221
-      ELSE IF (MOLID.EQ.'AlH ') THEN
-          IDMOL = 222
-      ELSE IF (MOLID.EQ.'AlO ') THEN
-          IDMOL = 223
-      ELSE IF (MOLID.EQ.'BeH ') THEN
-          IDMOL = 224
-      ELSE IF (MOLID.EQ.'CaF ') THEN
-          IDMOL = 225
-      ELSE IF (MOLID.EQ.'CH3F ') THEN
-          IDMOL = 226
-      ELSE IF (MOLID.EQ.'CP ') THEN
-          IDMOL = 227
-      ELSE IF (MOLID.EQ.'CS ') THEN
-          IDMOL = 228
-      ELSE IF (MOLID.EQ.'H2CO ') THEN
-          IDMOL = 229
-      ELSE IF (MOLID.EQ.'HCl ') THEN
-          IDMOL = 230
-      ELSE IF (MOLID.EQ.'HNO3 ') THEN
-          IDMOL = 231
-      ELSE IF (MOLID.EQ.'KCl ') THEN
-          IDMOL = 232
-      ELSE IF (MOLID.EQ.'KF ') THEN
-          IDMOL = 233
-      ELSE IF (MOLID.EQ.'LiCl ') THEN
-          IDMOL = 234
-      ELSE IF (MOLID.EQ.'LiF ') THEN
-          IDMOL = 235
-      ELSE IF (MOLID.EQ.'MgF ') THEN
-          IDMOL = 236
-      ELSE IF (MOLID.EQ.'NaCl ') THEN
-          IDMOL = 237
-      ELSE IF (MOLID.EQ.'NaF ') THEN
-          IDMOL = 238
-      ELSE IF (MOLID.EQ.'NaH ') THEN
-          IDMOL = 239
-      ELSE IF (MOLID.EQ.'PH3 ') THEN
-          IDMOL = 240
-      ELSE IF (MOLID.EQ.'PN ') THEN
-          IDMOL = 241
-      ELSE IF (MOLID.EQ.'PO ') THEN
-          IDMOL = 242
-      ELSE IF (MOLID.EQ.'PS ') THEN
-          IDMOL = 243
-      ELSE IF (MOLID.EQ.'SH ') THEN
-          IDMOL = 244
-      ELSE IF (MOLID.EQ.'SO2 ') THEN
-          IDMOL = 245
-      ELSE IF (MOLID.EQ.'SiS ') THEN
-          IDMOL = 30
-      ELSE IF (MOLID.EQ.'NS ') THEN
-          IDMOL = 25
-
-       ELSE
-          STOP ' ********** molecule not found ********* '
-      END IF
-
-215   continue
-
-C connect the opacity index with the partial pressure index
-      KMOL(NM) = IDMOL
-      if(first) then 
-        open(unit=90,file='allpp.dat',status='unknown')
-
-         if(nm.eq.1) write(90,*)
-     &     ' molid is read from OS-files; pp from conected GGchem index'
-         if(nm.eq.1) write(90,621) nosmol
-621      format('For the',i3,' OS molecules:',/
-     &           ' nm  molid   idmol=kmol(nm)   partp({1,ntau},idmol)')
-         write(90,620) 
-     &     nm,molid,kmol(nm),partpp(1,idmol),partpp(ntau,idmol)
-        if(nm.eq.nosmol) then
-        write(90,*)'nm=2,17,14,21,228= h2-h2, h2-he, c2h2, c3,'
-     &     ,' cs(228/22), HS(18),  SH(224)  NS(25)   AlCl(220):'
-         idmol=2
-         molid='H2H2'
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=17
-         molid='H2HE'
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=14
-         molid='C2H2'
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=21
-         molid='C3  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=228
-         molid='CS  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=22
-         molid='CS  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=18
-         molid='HS  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=224
-         molid='SH  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=25
-         molid='NS  '
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-         idmol=220
-         molid='AlCl'
-         write(90,622)idmol,molid,partpp(1,idmol),partpp(ntau,idmol)
-        end if
-      end if
-620   format (i4,3x,a4,3x,i5,4x,1p2e12.3)
-622   format (i4,3x,a4,12x,1p2e12.3)
-
-      jvs = nwtot
-      kon0wr = 0
-      kread = 0
-      kosr = 1
-
-
-C we have now identified the molecule and starts reading the 
-C abs.koef. data in order to compute the total opacity in 
-C NWTOT OS opacity frequency points
-
-C
-C If we compute a photospheric-chromospheric spectrum (from an
-C illuminated atmosphere), find the temperature minimum
-          itmax2= 0
-          itmin = 1
-          if(nchrom.eq.1) then
-             do 1612 it = 2,ntau
-             if(t(it) .lt. t(it-1)) itmin = it
-1612         continue
-
-C if there is a secondary maximum, i.e. a cooler region above the chromosphere,
-C then for now ignore that in the spectrum (this is for strongly illuminated
-C atmospheres). The maximum temperature (i.e. the top of the chromosphere)
-C is at itmax2 and we compute the chromospheric atomic opacity above itmax2 
-C with the corresponding gas pressure from the crhomospheric at the same 
-C temperature below itmax2.
-             do 1622 it = 2,itmin
-             if(t(it) .gt. t(it-1)) itmax2 = it
-1622         continue
+      do nm=1, molno
+       write(23962,*) molnames_new(nm)
+       write(23963,*) molnames_new(nm)
+C           if(larciv.eq.1) write(424,425) nm, molnames_new(nm)
+C425        format(i4,2x,a4)
+          do it=1, ntau
+            sumop(nm,it) = 0.
+            sumkap(nm,it) =0.
+            akapmax(it) = 0.
+          end do
+          
+          opjv(:,:) = 0.
+          call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+          if (molnames_new(nm)=='CH4') then
+          if (nch4 == 1) then
+            open(unit=423, file='fch4.dat', readonly)
+            read(423, *) fch4
+            close(423)
+            opjv(:,:) = fch4 * opjv(:,:)
           end if
-C
+          end if
+          jvfirst = 0
+          jvlast = 0
+          locfirst = 0
+          lop10 = 0
+          do  jv=1,nwtot
+            jvn = min(nwtot-1,jv)
+            jvpr = max(1,jv-1)
+            dw = (wnos(jvn)-wnos(jvpr))/2.
 
+C ....printout for understanding and plotting the opacities
+            if(larciv.eq.1)then
+              if(opjv(jv,ltop).gt.0.0 .and. locfirst.eq.0) then   ! first opacity gt 0
+                       jvfirst = jv
+                       locfirst = 1
+              end if
+C                       if(locfirst.eq.1 .and. lop10.eq.10) then !average over say 10 frequencies
+                        do i=1,11
+                        nmi = i
+                        if(nm.eq.nmid(i)) go to 3401
+                        go to 3402
+                        end do
+3401                    continue
+                       if(lop10.eq.50) then !average over say 10 frequencies
+                       write(430,*) 'nmi,iop wnav(iop),opav(nmi,iop) = '
+                       iop = iop+1
+                       opav(nmi,iop) = 0.
+                       wnav(iop) = 0.
+                       lop10 = 0
+                       do jop = 0,49
+                       opav(nmi,iop) = 
+     &                         opav(nmi,iop) + opjv(jvn-jop,ltop)
+                       wnav(iop) = wnav(iop) + wnos(jvn-jop)
+                       end do
+                       opav(nmi,iop) = opav(nmi,iop)/50.
+                       wnav(iop) = wnav(iop)/50.
+                       write(430,3410) 
+     *                    nmi,iop,wnav(iop),1.e4/wnav(iop),opav(nmi,iop)
+3410                   format('1.loop',2i4,f10.2,f10.6,1pe12.3)
+                       end if
+                       lop10 = lop10 + 1
+3402                    continue
+              if(opjv(jv,ltop) .eq. 0.0) jvlast = jv    ! when the rest of opacities are 0
+            end if
+C ....the plot            
 
-      DO 110 JV=1,NWTOT
+            jvs=nwtot
+            jvl = nwtot-jv + 1
+            if (jvl/nops*nops == jvl) jvs = jvl
 
-      JVN = MIN(NWTOT,JV+1)
-      JVPR = MAX(1,JV-1)
-      DW = ( WNOS(JVN)-WNOS(JVPR) )/2.
+            do it=1, ntau
+                  TRIX=T(it)*RO(it)
+                  if (ggchem_mol(nm)) then
+                        if (jv==1) then
+                        write(23962,*) ppallmol(it,ggchem_index(nm))
+                        end if
+                        ppx_os = ppallmol(it,ggchem_index(nm))
+                  else
+                  !if (it.eq.1) then
+                  !if (jv.eq.2) then
+            !if (ppallat(it,ggchem_index(nm)).eq.ppallat(it,5)) then
+                         !write(*,*) "CONOS"
+                         !write(*,*) nm,ggchem_index(nm),ppallat(it,5)
+            !endif                 
+                  !endif
+                  !endif
+                        ppx_os = ppallat(it,ggchem_index(nm))
+                  endif
+                  px_os = ppx_os / TRIX*1.20274D-8    
 
-      IF (MOLID.EQ.'ATOM') go to 315
-      JVLAST = JV-1
-      LEPS = 0
-      IF (ISKIP.EQ.1) GO TO 111
-116   CONTINUE
-      do 1161 kos = 1,kosr
-      READ(3,*,END=199) WN,(OPJV(IT),IT=1,KTEMP)
-      if (jderiv.eq.1) READ(3,*) (FX(IT,1),IT=1,KTEMP)
-1161  continue
-      kread = kread + 1
-111   CONTINUE
+                  akapmol(it) = opjv(jv,it)
+                  if(it.eq.ltop .and. akapmol(it) .gt. akapmax(it)) then
+                        akapmax(it) = akapmol(it)
+                        jvmax = jvn
+                        wnmax = wnos(jvn)
+                  end if
+                  sumop(nm,it) = sumop(nm,it) + akapmol(it)*dw
+                  conos(it,jvl) = 
+     &            px_os*akapmol(it) + conos(it,jvl)
+                  sumkap(nm,it) = 
+     &            sumkap(nm,it) + akapmol(it)*px_os*dw
+            end do
+          end do 
 
-C Generally the abs.coef. data will have computed to be used
-C for the OS frequencies we have also chosen for the model
-C atmosphere computations. If, however,
-C some abs.coef. data are NOT computed for the OS frequencies
-C we use for this model atmosphere computation, then make sure
-C for each OS frequency to take a nearby abs.coef. OPJV set.
-C The following lines of computing should ensure this when there 
-C are too many as well as too few abs.coef. values compared to
-C the number of OS frequency values.
+          write(23962, *) 
+          do it=1, ntau
+          write(23963, *) sumop(nm, it)
+          end do
+           if (larciv.eq.1) then
+            write(424,427)molnames_new(nm),nm,jvmax
+     &            ,1.e4/wnos(jvfirst),1.e4/wnos(jvlast),1.e4/wnmax
+     &            ,wnmax,akapmax(ltop),sumop(nm,ltop)
+           end if
+      end do
+      !conos_sum=0
+      ! do jv=1, nwtot
+      ! do it=1, ndp
+      !    conos_sum=conos_sum+conos(it,jv)
+      ! enddo
+      ! enddo
+      !write(*,*) consos_sum
+           if (larciv.eq.1) then
+              do i=1,11
+              write(430,432)molnames_new(nmid(i)),nmid(i)
+     &            ,1.e4/wnos(jvfirst),1.e4/wnos(jvlast)
+     &            ,opav(i,1)
+              write(430,*) 'i,iop = ',i,iop
+              do j=1,50
+              if (j.le.50)
+     &          write(430,431)i,nmid(i),1.e4/wnav(j),wnav(j),opav(i,j)    !(opav(i,j),in=1,11)
+C     *                    nmi,iop,wnav(iop),1.e4/wnav(iop),opav(nmi,iop)
+              end do
+              end do
+           end if  
+        close(424)
+        close(430)
+        write(23963,*) 
+      close(23962)
+      close(23963)
+427           format(2x,a4,1x,i3,i6,3f10.6,f10.2,1p2e12.3)
+431           format(2i3,f10.6,f10.2,1p11e12.3)
+432           format(2x,a4,1x,i3,3f10.6,f10.2,1p2e12.3)
 
-      ISKIP=0
-      EPSILON = (WNOS(JVN)-WNOS(JV))/100.
-      IF (kread.eq.1) then
-         if(WN .GT. WNOS(JV)+EPSILON ) THEN
-          ISKIP=1
-          GO TO 110 !i.e. OS freq.JV < first wn
-         end if
-      END IF
-      IF (WN .LT. WNOS(1)-EPSILON) THEN
-         JVFIRST = JV + 1
-         GO TO 116 !i.e. wn < first OS freq.
-      END IF
-      IF (WN .LT. WNOS(JV)-EPSILON) THEN
-         LEPS = LEPS + 1
-         GO TO 116 !i.e. wn < present OS freq.
-      END IF 
-      IF (WN .GT. WNOS(JV)+EPSILON .and. LEPS.LE.1) THEN
-          ISKIP=1
-      END IF
-C
-C ..now we have found the first OSWN on mol.list correspond to Marcs-OS-wn,
-C hereafter use each kos_step of the os-wn for the radiative transfer:
-      kosr = kos_step
-
-         IF (jderiv .EQ. 1) go to 315  !0~derivatives are not in OS file
-
-         DO 312 IT=1,KTEMP
-         IF (OPJV(IT).EQ.0) THEN
-           DO 314 ITN=1,KTEMP
-           FX(ITN,1)=0.
-314        CONTINUE
-           GO TO 315
-         END IF
-312      OPT(IT)=LOG( OPJV(IT) )
-
-C  Calculate the derivative, FX/OPJV = DADT(IT)=d(ln(opt)/d(tmol), 
-C  at each temperature.
-
-         CALL TB04AT(MTEMP,KTEMP,TMOL,OPT,DADT,WT)
-
-         DO 313 IT=1,KTEMP
-313      FX(IT,1) = DADT(IT)*OPJV(IT)    !fx = d(opt)/d(tmol)
-
-315      CONTINUE
-
-C
-      NWMOL=NWMOL+1
-      SUMDWN=SUMDWN+ABS(WN-WNOS(JV))
-
-      IF (MOLID.EQ.'ATOM') THEN                   
-      II=-1
-
-      MTA = 15
-      KTA = 15
-      MPA = 9
-      KPA = 9
-
-      DO 1210 IDP=1,NTAU
-      TINT=T(IDP)
-      PINT = P6_JON(IDP)
-
-      pintln = log(pint)
-      do 1211 it = 1,15
-      tat(it) = t_at(it+2)
-      do 1212 ip = 1,9
-      oplna(ip) = opjva(jv,ip,it+2)
-      fxlna(ip) = fxln_at(jv,ip,it+2)
-1212  continue
-
-      oplna_t(it) = TG01B(II,MPA,KPA,p6ln,OPLNA,FXLNA,pintln)
-1211  continue
-      CALL TB04AT(MTA,KTA,tat,oplna_t,dadta,wta)
-      oplna_tau(idp) = TG01B(II,MTA,KTA,TAT,OPLNA_T,DADTA,TINT)
-      akapmol(idp) = exp ( oplna_tau(idp) )
-      SUMOP(NM,IDP) = SUMOP(NM,IDP) + akapmol(idp)*DW
-
-C absko in cm/g*
-
-1210  CONTINUE
-
-C after loop 1210 akapmol(idp), idp=1,ntau is atomic abs.coef. in cm^2/g*
-
-      ELSE                                  
-C ~~~~~~~~ molecules (or one-dimensional atomic abs.coef. cm^2/g*(t))
-C
-      NULOP = 0
-      II=-1
-      DO 123 IT=1,KTEMP
-      IF (OPJV(IT).EQ.0.) THEN
-       OPJV(IT) = 1.E-25
-       NULOP = NULOP + 1
-      END IF
-123   CONTINUE
-C
-      IF(NULOP.EQ.KTEMP) GO TO 110  ! no opacity for this OS waven.
-C
-      ZSUM = 0.
-      DO 122 IT=1,KTEMP
-C     IF (FACPLY.NE.1.) OPJV(IT) = FACPLY*OPJV(IT)
-      OPLN(IT)=LOG(OPJV(IT))
-      FXLN(IT)=FX(IT,1)/OPJV(IT)
-      ZSUM = ZSUM + FXLN(IT)
-122   continue
-      t1 = tmol(1)
-      t2 = tmol(2)
-      op1 = opjv(1)
-      op2 = opjv(2)
-      iop2 = 2
-C
-
-C ..begin  do loop 120 for evaluating kappa in each depth layer
-C for the 1-dimensional atomic OS we need to split it in two if there
-C is a chromosphere caused by an illuminated atmosphere, and interpolate 
-C in the chromospheric OS for temperatures above the temperature 
-C minimum, and in the photospheric OS for layers below the temeperature 
-C minimum.
-
-      DO 120 IT=1,NTAU
-      TINT=T(IT)
-
-C if opac is == 0 at some temperatures spline may give
-C negative opacities at some depth layers. To avoid this the
-C derivatives are set to zero at all temperatures, and we use 
-C linear interpolation in opact here:
-      IF (ZSUM.EQ.0.) THEN
-       do 1221 iop = iop2,ktemp
-       if (tmol(iop).gt.tint) then
-         t1 = tmol(iop-1)
-         t2 = tmol(iop)
-         op1 = opjv(iop-1)
-         op2 = opjv(iop)
-         iop2 = iop
-         go to 1222
-       end if
-1221   continue
-1222   continue
-      AKAPMOL(IT) = (tint-t1)/(t2-t1)*(op2-op1) + op1
-C .. but normally the derivative for spline interpol in temp is given:
-       ELSE
-      AKAPMOL(IT) = TG01B(II,MTEMP,KTEMP,TMOL,OPLN,FXLN,TINT)
-      AKAPMOL(IT) = EXP ( AKAPMOL(IT) )
-       END If
-
-C Her er (27/8-96) insat en lille rutine der for T < Tdiam indsaetter
-C absorptions koefficienten for X gange diamanterne og Y gange C2H2.
-
-      IF (MOLID.EQ.'DIAM' .or. MOLID.EQ.'AMPH') THEN
-C                              for t < tdiam1 fakdiam = fdiam1 (from input)
-      if (t(it).le.tdiam1) then
-        fakdiam = fdiam1
-      else if (t(it).ge.tdiam2) then
-C                              for t > tdiam2 fakdiam = fdiam2 (from input)
-        fakdiam = fdiam2
-      else
-C                               i.e., lin.intp. for tdiam1 < t(it) < tdiam2
-        fakdiam = (t(it)-tdiam1)/(tdiam2-tdiam1)*(fdiam2-fdiam1)+fdiam1
-      end if
-           AKAPMOL(IT) = fakdiam * AKAPMOL(IT)
-
-      END IF
-
-      IF (MOLID.EQ.'C2H2' .and. 
-     &           (fc2h21.ne.1..or.fc2h22.ne.1.)) THEN
-C                             for t < tc2h21 fakc2h2 = fc2h21 (from input)
-      if (t(it).le.tc2h21) then  
-        fakc2h2 = fc2h21
-      else if (t(it).ge.tc2h22) then
-C                              for t > tc2h22 fakc2h2 = fc2h22 (from input)
-        fakc2h2 = fc2h22         
-      else
-C                               i.e., lin.intp. for tc2h21 < t(it) < tc2h22
-        fakc2h2 = (t(it)-tc2h21)/(tc2h22-tc2h21)*(fc2h22-fc2h21)+fc2h21
-      end if
-            AKAPMOL(IT) = fakc2h2 * AKAPMOL(IT)
-
-      END IF
-
-      SUMOP(NM,IT) = SUMOP(NM,IT) + AKAPMOL(IT)*DW
-
-C akapmol(k) in cm^2/mol; sumop in cm/mol integrated over all OS range
-120   CONTINUE
-
-C ..end do loop 120 for evaluating kappa in each depth layer
-
-1202  format(i3,i3,3f6.0,1p3e9.2)
-C
-      END IF
-C ~~~~~~~~ end if for metals/molecules
-C
-C NB: we shift to index for wavelength compared to the listing
-C     in the OS-tables   
-C this is because the planck function and the calls to opac etc
-C are for (increasing) wavelengths. Also the indexing of WLOS is
-C reversed compared to the indexing of WNOS.
-
-      JVL=NWTOT-JV+1
-C
-C experiment with shifting the opacities lops os-steps compared to the
-C real computation (jvl = jvl + lops),
-C and using only each nops step of the opacity:     
-      jvl = jvl + lops
-      if (jvl.gt.nwtot) go to 110  
-C
-      DO 108 IT=1,NTAU
-        if (molid.eq.'ATOM' .or. molid.eq.'at1d') then
-           f1 = -1.
-        else
-        F1=LOG10(max(PARTP(IT,IDMOL),1.d-99))
-        end if
-        F2=LOG10(max(AKAPMOL(IT),1.d-99))
-      IF (F1+F2.LE.-33) THEN
-         kon0wr = kon0wr + 1
-         
-6633     format(' CONS=0; idmol,it,t=',2i4,f7.0
-     #          ,' because partp,akapmol=',1p2e10.2)
-6634     format(' CONS=0; con0wr,idmol,it=',i7,2i4
-     #          ,'; partp,akapmol=',1p2e12.3)
-      ELSE IF (F1+F2.GE.33) THEN
-6636     format('OVERFLOW FOR NM,JV,IT,IDMOL,molid=',i3,i6,i3,i4,2x,a4)
-         PRINT 6636,NM,JV,IT,IDMOL,molid
-         print 6634,kon0wr,idmol,it,partp(it,idmol),akapmol(it)
-         PRINT 6637,f1,f2,t(it),jv,wn
-6637     format(' F1,F2,T,jv,wn=',1p2e12.3,0pf9.1,i6,1pe12.2)
-         STOP ' OVERFLOW IN OSTABLOOK '
-      ELSE
-         if (jvl/nops*nops.eq.jvl)jvs = jvl
-        if (molid.eq.'ATOM' .or. molid.eq.'at1d') then
-         if (molid.eq.'at1d'.and.nchrom.eq.1 ) then
-           if (lchrom.eq.1.and.it.ge.itmin) akapmol(it) = 0.0
-           if (lchrom.eq.0.and.it.lt.itmin) akapmol(it) = 0.0
-         end if
-         CONOS(IT,JVL)=AKAPMOL(IT)+CONOS(IT,JVS)
-         sumkap(nm,it) = sumkap(nm,it) + AKAPMOL(IT) *dw
-        else
-         CONOS(IT,JVL)=PARTP(IT,IDMOL)*AKAPMOL(IT)+CONOS(IT,JVS)
-         sumkap(nm,it) = 
-     &         sumkap(nm,it) + AKAPMOL(IT)*partp(it,idmol)* dw
-        end if
-C         CONOS(IT,JVL)=PARTP(IT,IDMOL)*AKAPMOL(IT)+CONOS(IT,JVL)
-      END IF
-
-C conos is in cm^2/g*, so sumkap(imol) is in units cm/g* 
-
-C      itxmax = 3
-C       if (it.eq.7) then 
-C           itx = 1
-C       else if (it.eq.27) then
-C           itx = 2
-C       else if (it.eq.40) then
-C           itx = 3
-C       else 
-C           itx = 4
-C       end if
-C
-C      if (jv/1000*1000.eq.jv .and. (itx.le.3) ) then
-C         jvx = max(1,jv/1000)
-C         oppr(nm,itx,jvx,1) = PARTP(IT,IDMOL)*AKAPMOL(IT)
-C         oppr(nm,itx,jvx,2) = PARTP(IT,IDMOL)
-C         oppr(nm,itx,jvx,3) = AKAPMOL(IT)
-C         jvxmax = jvx
-C      end if
-
-108   CONTINUE
-C
-110   CONTINUE                    ! next wavenumber, wnos(jv)
-
-199   CONTINUE                    ! no more data for this molecule
-
-      IF (first) THEN
-
-      SUMDWN=SUMDWN/NWMOL
-
-      
-      END IF                 !end of write out for first call to ostablook
-
-
-       kmw = kmol(nm)
-
-      CLOSE(3)
-100   CONTINUE                                    
-C next molecule   (/or all atoms)
-
-       do 1509 nmw=1,nosmol
-       kmw = kmol(nmw)
-       sumpp1 = sumpp1 + partp(1,kmw)
-       sumpp2 = sumpp2 + partp(15,kmw)
-       sumpp3 = sumpp3 + partp(30,kmw)
-       sumpp4 = sumpp4 + partp(ntau,kmw)
-1509   continue
-       
-      TEREAD=SECOND()
-      TOSREAD = TOSREAD + TEREAD-TBREAD
-C
-1402   FORMAT(' INTEGRATED ABS.COF. IN CM/MOL FOR ',A4)
-14021  FORMAT(' INTEGRATED OPACITY IN CM/g* FOR ',A4)
-1403   FORMAT(1P8E10.3)
-C
       FIRST = .FALSE.
 
       call timex1
 
-      return
+      contains
+      function upper(strIn) result(strOut)
+      ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
+      ! Original author: Clive Page
+
+      implicit none
+
+      character(len=*), intent(in) :: strIn
+      character(len=len(strIn)):: strOut
+      integer :: i,j
+
+      do i = 1, len(strIn)
+            j = iachar(strIn(i:i))
+            if (j>= iachar("a") .and. j<=iachar("z") ) then
+                  strOut(i:i) = achar(iachar(strIn(i:i))-32)
+            else
+                  strOut(i:i) = strIn(i:i)
+            end if
+      end do
+
+      end function upper
+
       END
 C
 C
@@ -13276,171 +13639,7 @@ C      TIME_NOW=SECOND()
       return
       end
 
-C
-C
 
-      subroutine interp( ni, xx, yy, fi, fxi, fyi, fxyi )
-      implicit real*8 (a-h,o-z)
-C
-       include 'parameter.inc'
-c***********************************************************************
-c     interpolate pressure or energy density using monotonized         *
-c     bicubic hermite interpolation                                    *
-C     The routine assumes that there exist a table with values, f(x,y),*
-C     of the (natural) logarithm of the function F(x,y) in which we    *
-C     we wish to interpolate.                                          *
-C     *** do the routine need input values of fx, fy, fxy at the grid **
-C     *** points ????????????    ***************************************
-C     On calling the routine assumes that the common block /eostab/    *
-C     contains the minimum values xmin,ymin of x and y and the         *
-C     increments, dx,dy, and the total number of x and y values, nx,ny *
-C     The function can now return the values of F at values (xi,yi) in *
-C     ni points simoultanously. ni < ndp.                             *
-C     The dimension, mtemp,mpe, of the table must be set in the parameter  *
-C     statement. This is a pure dimension problem and it must just     *
-C     assure that the dimension of the table covers the real table     *
-C     The value of ndp, on the other hand, must be greater than       *
-C     max(nx,ny) to avoid out-of-range problems.                       *
-c***********************************************************************
-! ifix changet to idint because our VAX machine doesn't reconise idfix
- !UGJ/900417
-
-
-      common/eostab/ xmin, ymin, dx, dy, f (mtemp,mpe)
-     *     , fx (mtemp,mpe), fy(mtemp,mpe), fxy(mtemp,mpe), nx, ny
-c
-      dimension x (mtemp), y (mpe)
-c
-      dimension xx(ni), yy (ni)
-      dimension fi(ni), fxi(ni), fyi(ni), fxyi(ni)
-c
-      dimension ii (ndp), jj  (ndp)
-      dimension xi (ndp), yi  (ndp)
-c
-      dimension f00(ndp), fx00(ndp), fy00(ndp), fxy00(ndp),
-     .          f01(ndp), fx01(ndp), fy01(ndp), fxy01(ndp),
-     .          f10(ndp), fx10(ndp), fy10(ndp), fxy10(ndp),
-     .          f11(ndp), fx11(ndp), fy11(ndp), fxy11(ndp)
-c
-      dimension h1 (ndp), h2  (ndp), h3  (ndp), h4   (ndp),
-     .          hx1(ndp), hx2 (ndp), hx3 (ndp), hx4  (ndp)
-      dimension g1 (ndp), g2  (ndp), g3  (ndp), g4   (ndp),
-     .          gy1(ndp), gy2 (ndp), gy3 (ndp), gy4  (ndp)
-c
-c-----------------------------------------------------------------------
-c     construct coordinate mesh
-c-----------------------------------------------------------------------
-c
-      do 1 i = 1, nx
-      x(i) = xmin + dfloat( i - 1 ) * dx
-    1 continue
-c
-      do 2 i = 1, ny
-      y(i) = ymin + dfloat( i - 1 ) * dy
-    2 continue
-c
-c-----------------------------------------------------------------------
-c     evaluate interpolant 
-c-----------------------------------------------------------------------
-c
-      do 3 i = 1, ni
-c
-c     forbid points off edges of table
-      xx(i) = max( x(1), min( xx(i), x(nx) ) )
-      yy(i) = max( y(1), min( yy(i), y(ny) ) )
-c
-c     compute indices of lower left corner of the cell
-      ii(i) = min( int( (xx(i) - x(1))/dx + 1.01 ), nx - 1 )
-C  at VAX:  idint if *8
-      jj(i) = min( int( (yy(i) - y(1))/dy + 1.01 ), ny - 1 )
-c
-c     compute coordinates ( xi, yi ) relative to lower left corner of cell
-c     in units of cell dimensions 
-      xi(i) = ( xx(i) - x( ii(i) ) ) / dx
-      yi(i) = ( yy(i) - y( jj(i) ) ) / dy
-c
-c     evaluate basis functions at (xi, yi)
-      h 2(i) = - ( 2.0*xi(i) - 3.0 ) * xi(i)**2
-      g 2(i) = - ( 2.0*yi(i) - 3.0 ) * yi(i)**2
-      h 1(i) = 1.0 - h2(i)
-      g 1(i) = 1.0 - g2(i)
-      h 3(i) = dx * ( ( xi(i) - 2.0 ) * xi(i) + 1.0 ) * xi(i)
-      g 3(i) = dy * ( ( yi(i) - 2.0 ) * yi(i) + 1.0 ) * yi(i)
-      h 4(i) = dx * ( xi(i) - 1.0 ) * xi(i)**2
-      g 4(i) = dy * ( yi(i) - 1.0 ) * yi(i)**2
-      hx2(i) = - 6.0 * ( xi(i) - 1.0 ) * xi(i) / dx
-      gy2(i) = - 6.0 * ( yi(i) - 1.0 ) * yi(i) / dy
-      hx1(i) = - hx2(i)
-      gy1(i) = - gy2(i)
-      hx3(i) = ( 3.0*xi(i) - 4.0 ) * xi(i) + 1.0
-      gy3(i) = ( 3.0*yi(i) - 4.0 ) * yi(i) + 1.0
-      hx4(i) = ( 3.0*xi(i) - 2.0 ) * xi(i)
-      gy4(i) = ( 3.0*yi(i) - 2.0 ) * yi(i)
-c
-c     assemble f, fx, fy, fxy at corners of each cell
-      f  00(i) = f  ( ii(i)    , jj(i)     )
-      fx 00(i) = fx ( ii(i)    , jj(i)     )
-      fy 00(i) = fy ( ii(i)    , jj(i)     )
-      fxy00(i) = fxy( ii(i)    , jj(i)     )
-      f  01(i) = f  ( ii(i)    , jj(i) + 1 )
-      fx 01(i) = fx ( ii(i)    , jj(i) + 1 )
-      fy 01(i) = fy ( ii(i)    , jj(i) + 1 )
-      fxy01(i) = fxy( ii(i)    , jj(i) + 1 )
-      f  10(i) = f  ( ii(i) + 1, jj(i)     )
-      fx 10(i) = fx ( ii(i) + 1, jj(i)     )
-      fy 10(i) = fy ( ii(i) + 1, jj(i)     )
-      fxy10(i) = fxy( ii(i) + 1, jj(i)     )
-      f  11(i) = f  ( ii(i) + 1, jj(i) + 1 )
-      fx 11(i) = fx ( ii(i) + 1, jj(i) + 1 )
-      fy 11(i) = fy ( ii(i) + 1, jj(i) + 1 )
-      fxy11(i) = fxy( ii(i) + 1, jj(i) + 1 )
-    3 continue
-c
-      do 4 i = 1, ni
-c
-c     compute f, fx, fy, and fxy at (xi, yi)
-      fi  (i) = g 1(i) * ( h 1(i)*f  00(i) + h 2(i)*f  10(i)
-     .                   + h 3(i)*fx 00(i) + h 4(i)*fx 10(i) )
-     .        + g 2(i) * ( h 1(i)*f  01(i) + h 2(i)*f  11(i)
-     .                   + h 3(i)*fx 01(i) + h 4(i)*fx 11(i) )
-     .        + g 3(i) * ( h 1(i)*fy 00(i) + h 2(i)*fy 10(i)
-     .                   + h 3(i)*fxy00(i) + h 4(i)*fxy10(i) )
-     .        + g 4(i) * ( h 1(i)*fy 01(i) + h 2(i)*fy 11(i)
-     .                   + h 3(i)*fxy01(i) + h 4(i)*fxy11(i) )
-      fxi (i) = g 1(i) * ( hx1(i)*f  00(i) + hx2(i)*f  10(i)
-     .                   + hx3(i)*fx 00(i) + hx4(i)*fx 10(i) )
-     .        + g 2(i) * ( hx1(i)*f  01(i) + hx2(i)*f  11(i)
-     .                   + hx3(i)*fx 01(i) + hx4(i)*fx 11(i) )
-     .        + g 3(i) * ( hx1(i)*fy 00(i) + hx2(i)*fy 10(i)
-     .                   + hx3(i)*fxy00(i) + hx4(i)*fxy10(i) )
-     .        + g 4(i) * ( hx1(i)*fy 01(i) + hx2(i)*fy 11(i)
-     .                   + hx3(i)*fxy01(i) + hx4(i)*fxy11(i) )
-      fyi (i) = gy1(i) * ( h 1(i)*f  00(i) + h 2(i)*f  10(i)
-     .                   + h 3(i)*fx 00(i) + h 4(i)*fx 10(i) )
-     .        + gy2(i) * ( h 1(i)*f  01(i) + h 2(i)*f  11(i)
-     .                   + h 3(i)*fx 01(i) + h 4(i)*fx 11(i) )
-     .        + gy3(i) * ( h 1(i)*fy 00(i) + h 2(i)*fy 10(i)
-     .                   + h 3(i)*fxy00(i) + h 4(i)*fxy10(i) )
-     .        + gy4(i) * ( h 1(i)*fy 01(i) + h 2(i)*fy 11(i)
-     .                   + h 3(i)*fxy01(i) + h 4(i)*fxy11(i) )
-      fxyi(i) = gy1(i) * ( hx1(i)*f  00(i) + hx2(i)*f  10(i)
-     .                   + hx3(i)*fx 00(i) + hx4(i)*fx 10(i) )
-     .        + gy2(i) * ( hx1(i)*f  01(i) + hx2(i)*f  11(i)
-     .                   + hx3(i)*fx 01(i) + hx4(i)*fx 11(i) )
-     .        + gy3(i) * ( hx1(i)*fy 00(i) + hx2(i)*fy 10(i)
-     .                   + hx3(i)*fxy00(i) + hx4(i)*fxy10(i) )
-     .        + gy4(i) * ( hx1(i)*fy 01(i) + hx2(i)*fy 11(i)
-     .                   + hx3(i)*fxy01(i) + hx4(i)*fxy11(i) )
-c
-c     convert ln f to f
-      fi  (i) = exp( fi(i) )
-c
-    4 continue
-c
-      return
-      end
-
-C
       SUBROUTINE SCALEMOD
       implicit real*8 (a-h,o-z)
 C
@@ -13757,127 +13956,7 @@ C
       RETURN
       END
 C
-
-      subroutine osinit
-C     program intp_atom
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-C
-      CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3
-      COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
-     *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(60),MOLNAME(60),SAMPLING
-      common/catoms/opjva(nwl,9,3:17),fxln(nwl,9,3:17)
-C 
-C  program to read the atomic opacities of decreasing wavenumbers
-C  constructed by BE, and create an opacity file
-C  at the frequency points of interest at increasing wavenumbers.
-      
-      dimension opjvit(nwl)
-     &   ,opl(9,17),opl_pr(9,17),p6ln(9),dadp(9),wp(3,9)
-     &   ,sumatdir(9,17)
-      common /catoms_head/ p6(9),t_at(17)
-c     character osfilatom*39
-      data np6,nftemp /9,17/
-c     data osfilatom/'/ste1/uffegj/atoms/metals_sun_ascii.x03'/
-      
-      
-
-      DO 2163 I=1,NOSMOL
-      IF (MOLNAME(i).eq.'ATOM') THEN
-        open(41,file=osfil(i),form='formatted',recl=1246,
-     &     status='unknown',readonly)
-        
-        go to 2165
-      END IF
-2163  continue
-2165  continue
-
-       call atoms_head
-       natom = 0
-       nerr = 0
-       jv = nwtot
-       nwatom_os = 0
-
-       read(41,1060)
-     &   waven,((opl(ip6,itemp),ip6=1,np6),itemp=1,nftemp)
-1060   format(d23.16,153f8.3)
-       do 276 ip6 = 1,np6
-       p6ln(ip6) = 2.3025851*dfloat(ip6)     !ln(p6[dyn/cm2])
-       do 276 it = 1,nftemp
-       sumatdir(ip6,it) = 0.                 !init sum op[cm/g*]
-276    continue
-       
-       do 1065 ia = 1,160000
-         waven_pr = waven
-         do 270 itemp=1,nftemp
-         do 270 ip6=1,np6
-270      opl_pr(ip6,itemp)= opl(ip6,itemp)
-       read(41,1060,end=1069,err=279)
-     &   waven,((opl(ip6,itemp),ip6=1,np6),itemp=1,nftemp)
-       dw = waven_pr - waven
-       do 2761 ip6 = 1,np6
-       do 2761 it = 1,nftemp
-       sumatdir(ip6,it) = sumatdir(ip6,it) + dw * 10.**opl(ip6,it) !sum op[cm/g*]
-2761   continue
-       if (waven.lt.wnos(1)   .or.  waven.gt.wnos(nwtot)) go to 278
-       natom = natom + 1
-       if (natom.eq.1) waven_1 = waven
-       waven_2 = waven
-
-290    continue
-       if (waven.le.wnos(jv) .and. waven_pr.gt.wnos(jv)) then
-          if (wnos(jv)-waven .le. waven_pr-wnos(jv)) then
-              do 281 itemp = 3,nftemp
-              do 280 ip6=1,np6
-              opjvit(ip6) = 2.3025851*opl(ip6,itemp) !log_10(listed) -> ln(for intp)
-              opjva(jv,ip6,itemp) = opjvit(ip6)
-280           continue
-C  The derivative, DADP(ip6)=d(ln(opac))/d(p6ln), at each p6 and temp.
-              CALL TB04AT(np6,np6,p6ln,opjvit,DADP,WP)
-              do 282 ip6=1,np6
-282           fxln(jv,ip6,itemp) = dadp(ip6)   !d(ln(opac))/d(ln(p6)) for t=temp
-281           continue
-          else
-              do 285 itemp = 3,nftemp
-              do 284 ip6=1,np6
-              opjvit(ip6) = 2.3025851*opl_pr(ip6,itemp)
-284           opjva(jv,ip6,itemp) = opjvit(ip6)
-              CALL TB04AT(np6,np6,p6ln,opjvit,DADP,WP)
-              do 286 ip6=1,np6
-286           fxln(jv,ip6,itemp) = dadp(ip6)
-285           continue
-          end if
-          nwatom_os = nwatom_os + 1
-          
-1226      format(i5,3f10.2/,1p,15(5e10.3/))
-          jv = jv -1
-          go to 290
-       end if
-
-       go to 278
-  279  continue
-
-       nerr = nerr + 1
-  278  continue
-1065   continue
-1069   continue
-
-        do 451 it=1,17
-        do 453 ip6=1,9
-453     sumatdir(ip6,it)= max(1.d-99, sumatdir(ip6,it))
-        
-451     continue
-452     format(f8.1,9f8.3)
-       close(unit=11)
-C23456789 123456789 123456789 123456789 123456789 123456789 123456789 12
-       
-
-
-       return
-       end
    
-
       subroutine atoms_head
 * reads integrated metal opacity file in ascii format
       implicit real*8 (a-h,o-z)
@@ -14238,495 +14317,899 @@ C
       RETURN
       END
 
-!-----------------------------------------------------------------------
-! Reads in the dust data from the DRIFT output file and makes a table
-! of dust opacities
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine drift2marcs
 
-      implicit real*8 (a-h,o-z)
+      module mie_precision
+      use, intrinsic :: iso_fortran_env ! Requires fortran 2008
+      implicit none
+
+      !!!
+      ! Different sets of single, double and quad precision availible for DIHRT
+      ! Try different sets should one fail to compile/give errors for any reason
+      ! This module should be compiled first in the DIHRT chain and used in every
+      ! module/subroutine when required
+      !!!
+
+      private
+      public :: sp, dp, qp
+
+
+      ! Fortran 2008 intrinsic precisions - reccomonded if possible
+      integer, parameter :: sp = REAL32
+      integer, parameter :: dp = REAL64
+      integer, parameter :: qp = REAL128
+
+      end module mie_precision
+
+      module mie_data
+        
+      use mie_precision,ONLY: sp,dp,qp
+      !use drift_data,ONLY: n_dust => NDUST
+      implicit none
+        
+        
+        
+      ! Constants
+      real(kind=dp), parameter :: pi = 4.0_dp * atan(1.0_dp) 
+      real(kind=dp), parameter :: pi2 = 8.0_dp * atan(1.0_dp)
+      real(kind=dp), parameter :: onethird = 1.0_dp/3.0_dp
+
+      ! Parameters
+      !integer, parameter :: n_wl = 31     ! Number of wavelengths
+      logical, parameter :: Brug = .True. ! Use Bruggeman method? .False. = LLL method
+      integer, parameter :: a_type = 0    ! 0 = mean grain size, 1 = effecitve grain size
+
+
+      end module mie_data
+!      ********************************************************************
+!New Mie routine for cloud opacity calculation (June 2023)
+
+! ******************************************************************
+! MIEX: MIE SCATTERING CODE FOR LARGE GRAINS
+! BCE: Mie code by Sebastian Wolf - see contact below!
+!  _____________________________________________________
+!  Contact information:   swolf@mpia.de (Sebastian Wolf)
+! ==================================================================
+
+      module datatype
+      implicit none
+      integer, parameter, public ::  r1=selected_real_kind(1)  ! real*4
+      integer, parameter, public ::  r2=selected_real_kind(9)  ! real*8 (double precision)
+      end module datatype
+
+
+! ====================================================================================================
+! Collection of subroutines
+! ====================================================================================================
+      module mie_routines
+      private :: aa2
+      public  :: shexqnn2
+      contains
+  ! ==================================================================================================
+  ! Subroutine for calculations of the ratio of derivative to the function for Bessel functions
+  ! of half order with complex argument: J'(n)/J(n). The calculations are given by the recursive
+  ! expression ``from top to bottom'' beginning from n=num.
+  ! *  a=1/x (a=2*pi*a(particle radius)/lambda - size parameter).
+  ! *  ri - complex refractive index.
+  ! *  ru-array of results.
+  ! - this routine is based on the routine 'aa' published by
+  !       N.V.Voshchinnikov: "Optics of Cosmic Dust",
+  !                           Astrophysics and Space Physics Review 12,  1 (2002)
+  ! ==================================================================================================
+      pure subroutine aa2( a, ri, num, ru )
+      use datatype
+
+      implicit none
+
+      ! variables for data exchange.....................................................................
+      real(kind=r2), intent(in)                   :: a
+      complex(kind=r2), intent(in)                :: ri
+      integer, intent(in)                         :: num
+      complex(kind=r2), dimension(:), intent(out) :: ru
+
+      ! local variables.................................................................................
+      integer :: i, i1, j, num1
+      complex(kind=r2) :: s, s1
+      !-------------------------------------------------------------------------------------------------
+      ! initialisierung: not necessary (+ slowes the code down remarkably)
+      ! ru(:) = (0.0, 0.0)
+
+      s       = a / ri
+      ru(num) = real(num+1,kind=r2) * s
+      num1    = num - 1
+      do j=1, num1
+            i     = num - j
+            i1    = i + 1
+            s1    = i1 * s
+            ru(i) = s1 - 1.0_r2 / (ru(i1) + s1)
+      end do
+      end subroutine aa2
+
+
+      !===================================================================================================
+      ! shexqnn2
+      ! --------
+      ! - for a given size parameter 'x' and (complex) refractive index 'ri' the following quantities
+      !   are determined:
+      !   * Qext     - extinction effiency
+      !   * Qsca     - scattering effiency
+      !   * Qabs     - absorption effiency
+      !   * Qbk      - backscattering effiency
+      !   * Qpr      - radiation pressure effiency
+      !   * albedo   - Albedo
+      !   * g        - g scattering assymetry factor
+      !   * SA1, SA2 - scattering amplitude function
+      ! - further input parameters
+      !   * doSA = .true.  ->  calculation of the scattering amplitudes
+      !   * nang ... half number of scattering angles theta in the intervall 0...PI/2
+      !              (equidistantly distributed)
+      ! - this routine is based on the routine 'shexqnn' published by
+      !       N.V.Voshchinnikov: "Optics of Cosmic Dust",
+      !                           Astrophysics and Space Physics Review 12,  1 (2002)
+      !===================================================================================================
+      subroutine shexqnn2( ri, x, Qext, Qsca, Qabs, Qbk, 
+     * Qpr, albedo, g, ier, SA1, SA2, doSA, nang )
+      use datatype
+
+      implicit none
+
+      ! variables for data exchange.....................................................................
+      complex(kind=r2), intent(in)  :: ri
+      real(kind=r2), intent(in)     :: x
+      real(kind=r2), intent(out)    :: Qext, Qsca, Qabs, 
+     > Qbk, Qpr, albedo, g
+      integer, intent(out)          :: ier
+      complex(kind=r2), dimension(:), intent(out) :: SA1, SA2
+      logical, intent(in)           :: doSA
+      integer, intent(in)           :: nang
+
+      ! local variables.................................................................................
+      integer       :: iterm, nterms, num, iu0, 
+     * iu1, iu2, iang2, iang
+      real(kind=r2) :: r_iterm, factor, eps, pi, ax, 
+     * besJ0, besJ1, besJ2, besY0, besY1, besY2, b, an, 
+     * y, ass, w1, qq, fac, an2, P, T, Si, Co, z, xmin
+
+      complex(kind=r2) :: ra0, rb0, ra1, rb1, r, 
+     * ss, s1, s2, s3, s, rr
+
+      real(kind=r2),dimension(0:1)   :: fact
+      real(kind=r2),dimension(:),allocatable,save :: mu, fpi, 
+     *                                     fpi0, fpi1, ftau
+      complex(kind=r2),dimension(:),allocatable,save :: ru
+      !$omp threadprivate(ru,mu,fpi,fpi0,fpi1,ftau)
+      !-------------------------------------------------------------------------------------------------
+      ! Maximum number of terms to be considered
+      nterms = 100000000
+      ! this works for x up to 1.d9, but needs a hell more of memory!!
+      !nterms= 550000000
+
+      ! Accuracy to be achieved
+      eps    = 1.0e-15_r2
+
+      ! Minimum size parameter
+      xmin   = 1.0e-6_r2
+
+      !-------------------------------------------------------------------------------------------------
+      ! initialization
+      if (.not.allocated(ru)) then
+            allocate( ru(1:nterms), mu(1:nang), fpi(1:nang), 
+     >              fpi0(1:nang), fpi1(1:nang), ftau(1:nang))
+      endif
+      ier     = 0
+      Qext    = 0.0_r2
+      Qsca    = 0.0_r2
+      Qabs    = 0.0_r2
+      Qbk     = 0.0_r2
+      Qpr     = 0.0_r2
+      albedo  = 0.0_r2
+      g       = 0.0_r2
+      fact(0) = 1.0_r2
+      fact(1) = 1.0e+250_r2
+      factor  = 1.0e+250_r2
+
+      ! null argument
+      if (x <= xmin) then
+            ier = 1
+            print *, "<!> Error in subroutine shexqnn2:"
+            print *, "    - Mie scattering limit exceeded:"
+            print *, "      current size parameter: ", x
+      else
+            pi = 4.0_r2 * atan(1.0_r2) ! PI = 3.14...
+            ax = 1.0_r2 / x
+            b  = 2.0_r2 * ax**2
+            ss = (0.0_r2, 0.0_r2)
+            s3 = (0.0_r2,-1.0_r2)
+            an = 3.0_r2
+
+            ! define the number for subroutine aa2 [Loskutov (1971)]
+            y   = sqrt( RI * conjg(ri) )  *  x
+            num = 1.25 * y + 15.5
+
+            if      ( y<1.0_r2 ) then
+            num = 7.5 * y + 9.0
+            else if ( (y>100.0_r2) .and. (y<50000.0_r2) ) then
+            num = 1.0625 * y + 28.5
+            else if ( y>=50000.0_r2 ) then
+            num=1.005*y+50.5
+            end if
+
+            if(num > nterms) then
+            ier = 2
+            print *, "<!> Error in subroutine shexqnn2:"
+            print *, "    - Maximum number of terms  : ", nterms
+            print *, "    - Number of terms required : ", num
+      print *, 
+     *  "** Solution: Increase default value of the variable 'nterm' **"
+            else
+            ! logarithmic derivative to Bessel function (complex argument)
+            call aa2(ax,ri,num,ru)
+
+            ! ------------------------------------------------------------------------------------------
+            ! FIRST TERM
+            ! ------------------------------------------------------------------------------------------
+            ! initialize term counter
+            iterm = 1
+
+            ! Bessel functions
+            ass = sqrt( pi / 2.0_r2 * ax )
+            w1  = 2.0_r2/pi * ax
+            Si  = sin(x)/x
+            Co  = cos(x)/x
+
+            ! n=0
+            besJ0 =  Si / ass
+            besY0 = -Co / ass
+            iu0   = 0
+
+            ! n=1
+            besJ1 = ( Si * ax - Co) / ass
+            besY1 = (-Co * ax - Si) / ass
+            iu1   = 0
+            iu2   = 0
+
+            ! Mie coefficients
+            s   = ru(1) / ri + ax
+            s1  = s * besJ1 - besJ0
+            s2  = s * besY1 - besY0
+            ra0 = s1 / (s1 - s3 * s2)   ! coefficient a_1
+
+            s   = ru(1) * ri + ax
+            s1  = s * besJ1 - besJ0
+            s2  = s * besY1 - besY0
+            rb0 = s1 / (s1 - s3 * s2)   ! coefficient b_1
+
+            ! efficiency factors
+            r    = -1.5_r2 * (ra0-rb0)
+            Qext = an * (ra0 + rb0)
+            Qsca = an * (ra0 * conjg(ra0)  +  rb0 * conjg(rb0))
+
+            ! scattering amplitude functions
+            if (doSA) then
+                  do iang=1, nang
+                  mu(iang) = cos( (real(iang,kind=r2)-1.0_r2) * 
+     >             (pi/2.0_r2)/real(nang-1,kind=r2) )
+                  end do
+
+                  fpi0(:) = 0.0_r2
+                  fpi1(:) = 1.0_r2
+                  SA1(:)  = cmplx( 0.0_r2, 0.0_r2 )
+                  SA2(:)  = cmplx( 0.0_r2, 0.0_r2 )
+
+                  r_iterm = real(iterm,kind=r2)  ! double precision
+                  fac     = (2.0*r_iterm + 1.0_r2) / 
+     >             (r_iterm * (r_iterm+1.0_r2))
+
+                  do iang=1, nang
+                  iang2      = 2 * nang - iang
+
+                  fpi(iang)  = fpi1(iang)
+                  ftau(iang) = r_iterm * mu(iang) * fpi(iang)  - 
+     >              (r_iterm+1.0) * fpi0(iang)
+
+                  P          = (-1.0)**(iterm-1)
+                  SA1(iang)  = SA1(iang)   +   fac * 
+     >             (ra0*fpi(iang)  + rb0*ftau(iang))
+
+                  T          = (-1.0)**iterm
+                  SA2(iang)  = SA2(iang)   +   fac * 
+     >             (ra0*ftau(iang) + rb0*fpi(iang) )
+
+                  if  ( iang /= iang2 )  then
+                        SA1(iang2) = SA1(iang2)   +   
+     >                   fac * (ra0*fpi( iang)*P + rb0*ftau(iang)*T)
+                        SA2(iang2) = SA2(iang2)   +   
+     >                   fac * (ra0*ftau(iang)*T + rb0*fpi( iang)*P)
+                  end if
+                  end do
+
+                  iterm   = iterm + 1
+                  r_iterm = real(iterm, kind=r2)
+
+                  do iang=1, nang
+                  fpi1(iang) = ((2.0*r_iterm-1.0) / 
+     >             (r_iterm-1.0))   *   mu(iang)  *  fpi(iang)
+                  fpi1(iang) = fpi1(iang)   -   
+     >             r_iterm * fpi0(iang)/(r_iterm-1.0)
+                  fpi0(iang) = fpi(iang)
+                  end do
+            else
+                  ! start value for the next terms
+                  iterm = 2
+            end if
+
+            ! ------------------------------------------------------------------------------------------
+            ! 2., 3., ... num
+            ! ------------------------------------------------------------------------------------------
+            z = -1.0_r2
+
+            do
+                  an  = an + 2.0_r2
+                  an2 = an - 2.0_r2
+
+                  ! Bessel functions
+                  if(iu1 == iu0) then
+                  besY2 = an2 * ax * besY1 - besY0
+                  else
+                  besY2 = an2 * ax * besY1 - besY0 / factor
+                  end if
+                  if(dabs(besY2) > 1.0e+300_r2) then
+                  besY2 = besY2 / factor
+                  iu2   = iu1 + 1
+                  end if
+                  besJ2 = (w1 + besY2 * besJ1) / besY1
+
+                  ! Mie coefficients
+                  r_iterm = real(iterm,kind=r2)
+
+                  s   = ru(iterm) / ri + r_iterm * ax
+                  if(iu1>1) then
+                  ier=1
+                  return
+                  endif
+                  if(iu2>1) then
+                  ier=1
+                  return
+                  endif
+                  s1  = s * besJ2 / fact(iu2) - 
+     >             besJ1 / fact(iu1) ! Subscript #1 of the array FACT has value 2 which is greater than the upper bound of 1
+                  s2  = s * besY2 * fact(iu2) - 
+     >             besY1 * fact(iu1)
+                  ra1 = s1 / (s1 - s3 * s2)                        ! coefficient a_n, (n=iterm)
+
+                  s   = ru(iterm) * ri + r_iterm * ax
+                  s1  = s * besJ2 / fact(iu2) - 
+     >             besJ1 / fact(iu1)
+                  s2  = s * besY2 * fact(iu2) - 
+     >             besY1 * fact(iu1)
+                  rb1 = s1 / (s1 - s3 * s2)                        ! coefficient b_n, (n=iterm)
+
+                  ! efficiency factors
+                  z  = -z
+                  rr = z * (r_iterm + 0.5_r2) * (ra1 - rb1)
+                  r  = r + rr
+                  ss = ss + (r_iterm - 1.0_r2) * 
+     >             (r_iterm + 1.0_r2) / r_iterm * (ra0 * conjg(ra1)  
+     >                   + rb0 * conjg(rb1)) 
+     >            + an2 / r_iterm / (r_iterm - 1.0_r2) * 
+     >            (ra0 * conjg(rb0))
+                  qq   = an * (ra1 + rb1)
+                  Qext = Qext + qq
+                  Qsca = Qsca + an * (ra1 * conjg(ra1) 
+     >             + rb1 * conjg(rb1))
+
+                  ! leaving-the-loop criterion
+                  if ( dabs(qq / qext) < eps ) then
+                  exit
+                  end if
+
+                  ! Bessel functions
+                  besJ0 = besJ1
+                  besJ1 = besJ2
+                  besY0 = besY1
+                  besY1 = besY2
+                  iu0   = iu1
+                  iu1   = iu2
+                  ra0   = ra1
+                  rb0   = rb1
+
+                  ! scattering amplitude functions
+                  if (doSA) then
+                  r_iterm = real(iterm,kind=r2)
+                  fac      = (2.0 * r_iterm+1.0) / 
+     >             (r_iterm * (r_iterm+1.0))
+
+                  do iang=1, nang
+                        iang2      = 2 * nang - iang
+
+                        fpi(iang)  = fpi1(iang)
+                        ftau(iang) = r_iterm * mu(iang) * fpi(iang) 
+     >                    -  (r_iterm+1.0) * fpi0(iang)
+
+                        P          = (-1.0)**(iterm-1)
+                        SA1(iang)  = SA1(iang)   +   fac * 
+     >                   (ra0*fpi(iang) + rb0*ftau(iang))
+
+                        T          = (-1.0)**iterm
+                        SA2(iang)  = SA2(iang)   +   fac * 
+     >                  (ra0*ftau(iang) + rb0*fpi(iang))
+
+                        if  ( iang /= iang2 ) then
+                        SA1(iang2) = SA1(iang2)   +   
+     >                   fac * (ra0*fpi(iang)*P  + rb0*ftau(iang)*T)
+                        SA2(iang2) = SA2(iang2)   +   
+     >                   fac * (ra0*ftau(iang)*T + rb0*fpi( iang)*P)
+                        end if
+                  end do
+
+                  iterm   = iterm + 1
+                  r_iterm = real(iterm,kind=r2)
+
+                  do iang=1, nang
+                        fpi1(iang) = ((2.0*r_iterm-1.0) / 
+     >                   (r_iterm-1.0))   *   mu(iang)  *  fpi(iang)
+                        fpi1(iang) = fpi1(iang)   -   
+     >                   r_iterm * fpi0(iang)/(r_iterm-1.0)
+                        fpi0(iang) = fpi(iang)
+                  end do
+                  else
+                  iterm = iterm + 1
+                  endif
+
+                  if ( iterm==num ) then
+                  exit
+                  else
+                  cycle
+                  end if
+            end do
+
+            ! efficiency factors (final calculations)
+            Qext   = b * Qext
+            Qsca   = b * Qsca
+            Qbk    = 2.0_r2 * b * r * conjg(r)
+            Qpr    = Qext - 2.0_r2 * b * ss
+            Qabs   = Qext - Qsca
+            albedo = Qsca / Qext
+            g      = (Qext - Qpr) / Qsca
+            end if
+      end if
+      !deallocate( ru, mu, fpi, fpi0, fpi1, ftau )
+      ier=0
+      return
+      end subroutine shexqnn2
+      end module mie_routines
+
+      module mie_opacity
+      use mie_precision
+      use mie_data
+      use mie_routines
+      implicit none
+
+      complex(kind=dp), allocatable, 
+     > dimension(:,:) :: e_inc, N_inc
+      real(kind=dp), parameter :: 
+     > vol2rad = (3.0_dp/(4.0_dp*pi))**(1.0_dp/3.0_dp)
+
+      contains
+
+      subroutine calc_Mie(LL,N_eff,kext_dust,g_dust,
+     > a_dust,kabs_dust,ksca_dust)
+    !! Uses MieX large size parameter routines: Wolf & Voshchinnikov (2004)
+    !! References: Helling et al. (2008), Lee et al. (2015b), Lee et al. (2016)
+      
+      implicit none
       include 'parameter.inc'
-      real*8    :: L0(max_lay), L1(max_lay), object
-      real*8, parameter :: pi = 3.14159265
-      complex*8 :: M_inc(max_inc,nwl),M_eff0,M_eff(nwl,max_lay)
-      logical   :: first
-      dimension :: elnr(max_eps),V_inc(max_inc,max_lay),
-     *             a(max_lay)
-      dimension :: tt_read(ndp),rad_read(ndp),
-     *  ro_read(ndp), surfgrav_read(ndp), v_read(ndp), 
-     *  flag_read(ndp), emu_read(ndp)
-      dimension :: wn(2000),p(2),step(2),var(2)
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     * ntau,iter
+      
+      real(kind=dp), dimension(4), intent(in) :: LL
+      complex(kind=dp), dimension(nwl), intent(in) ::  N_eff
+      real(kind=dp), dimension(nwl), intent(out) :: 
+     > kext_dust, g_dust, a_dust, kabs_dust, ksca_dust
+      integer, parameter :: rnang = 1
+      integer :: rier, l, nwtot, kos_step
+      real(kind=dp) :: x, rQext, rQsca, rQabs, rQbk, rQpr, 
+     > ralbedo, rg, a, cross_sec_g
+      complex(kind=dp), dimension(rnang) :: rSA1, rSA2
+      complex(kind=dp) :: N_efft
+      logical, parameter :: rdoSA = .False.
+      real(kind=dp) :: wnos, conos, wlos, wlstep
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
+
+      
+      ! Use mean (0) or effective (1) cloud particle radius [cm]
+      if (a_type == 0) then
+            a = (LL(2)/LL(1)) * vol2rad
+      else if (a_type == 1) then
+            a = (LL(4)/LL(3)) * vol2rad
+      end if
+
+      ! Cross sectional area * g-1 [cm2 g-1]
+      cross_sec_g = (LL(1))*pi*a**2
+
+      ! Mie Theory Step----------------------------
+      do l = 1, nwtot
+
+            ! Size parameter - limit to 1e-6 and 10000 (micron)(2000 for low memory)
+            x = (pi2*(a*1.0000e+8_dp))/wlos(l)
+            x = max(1.00001e-2_dp, x)
+            !x = min(1.0000e+8_dp, x)
+            ! if (x<=1.0e-2) then
+            ! kabs_dust(l) = 0.0
+            ! ksca_dust(l) = 0.0
+            ! else 
+            x = min(1.0000e+8_dp, x)
+            N_efft = N_eff(l)
+
+            !print*, N_efft, x
+            ! Mie theory routine - careful with memory in parallel and large n_wl
+            call shexqnn2(N_efft, x, rQext, rQsca, rQabs, 
+     >      rQbk, rQpr, ralbedo, rg, 
+     >       rier, rSA1, rSA2, rdoSA, rnang)
+
+            kext_dust(l) = cross_sec_g * rQext
+            a_dust(l) = ralbedo
+            g_dust(l) = rg
+            kabs_dust(l) = cross_sec_g * rQabs
+            ksca_dust(l) = cross_sec_g * rQsca
+            !end if
+
+      end do
+
+      end subroutine calc_Mie
+
+      subroutine calc_emt(Vol,N_eff)
+      !! Effective medium theory routines
+      !! Calculates (n,k) constants of mixed material cloud particle
+      !! Uses the Bruggeman method with LLL method backup
+      !! References: Helling et al. (2008), Lee et al. (2015b), Lee et al. (2016)
+      
+      implicit none
+      include 'parameter.inc'
+      integer :: n, l, j, n_dust, nwtot, kos_step
+      integer :: n_lay, n_eps
+      real(kind=dp) :: wnos, conos, wlos, wlstep
+      real(kind=dp), dimension(max_inc),intent(in) :: Vol
+      complex(kind=dp), dimension(nwl) :: e_eff
+      complex(kind=dp), dimension(nwl), intent(out) ::  N_eff
+      complex(kind=dp) :: e_eff0, N_eff0
+      logical :: errflag = .False.
+      logical :: first_call = .True.
+      complex(kind=dp) :: cri_inc
+      complex(kind=dp), allocatable, dimension(:,:) :: e_inc, N_inc
+      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
+     *    kos_step,nwtot
+      real(kind=dp) :: dabstable, dscatable, eps, temp, pgas,
+     * rhod, rho_sw, rho_dtg, z_sw, z_marcs_init, 
+     * z_marcs, pg_read, tt_init, eps_init, eps_new,
+     * r_null, f_eps, f_opac
+
       common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
      *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
      *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust
+     *      r_null,f_eps,f_opac, n_lay, n_eps
 
-! Read in dust data from DRIFT
-      open(110,file='./out_default/drift2marcs.dat',
-     &  status='old',readonly)
-      do i=1,28
-        read(110,*)
-      end do
-      read(110,'(i4)') n_inc
-      print*, "Number of dust species: ", n_inc
-      if(n_inc .gt. max_inc) then
-        print *, 'Error: increase max_inc.'
-        stop
-      end if
-      do i=1,n_inc
-        read(110,*)
-      end do
-      read(110,'(i4)') n_eps
-      print*, "Number of affected elements by cloud formation: ", n_eps
-      !if(n_eps .gt. max_eps) then
-       ! print *, 'Error: increase max_eps.'
-       ! stop
-      !end if
-      do i=1,n_eps
-        read(110,*) elnr(i)
-      end do
-      read(110,*)
-      read(110,*)
-      i = 1
-      do
-        read(110,'(6e20.12,40x,99e20.12)',iostat=io) 
-     *    z_sw(i),temp(i),rho_sw(i),pgas(i),L0(i),L1(i),
-     *    rhod(i), V_inc(1:n_inc,i),
-     *    eps(1:n_eps,i)
-        if(io .lt. 0) exit
-        if(L0(i) .le. 0.) then
-            exit
-        else
-          a(i) = (3./4./pi)**(1./3.)*L1(i)/L0(i) 
-        end if
-        i = i + 1
-      end do
-      close(110)
-      n_lay = i-1
-      open(unit=33, file='marcs2drift.dat')
-      do i=1,22
-            read(33,*)
-      end do
-      do k=1,ntau
-        
-        read(33,'(i5,6e16.8,a6,e16.8)') k_read, rad_read(k), 
-     *  tt_read(k), pg_read(k), ro_read(k),
-     *  surfgrav_read(k), v_read(k), flag_read(k), emu_read(k)
-      if (k==1) r_null = rad_read(k)
-      
-      end do
-      close(33)
-      if(n_lay .gt. max_lay) then
-        print *, 'Warning: only used the first 1000 layers from DRIFT.'
-      end if
-      
-! Read in optical constants
-      call optical_data(n_inc,M_inc)
+      common /cdustnew/ cri_inc(max_inc, nwl), n_dust
 
-! Make opacity table
-      do i=1,nwtot
-        do j=1,n_lay
-          if(i .eq. 1) then
-            M_eff0 = (0.0,0.0)
-
-            do k=1,n_inc
-              M_eff0 = M_eff0 + V_inc(k,j)*M_inc(k,i)
+      ! On first call, allocate local global arrays
+      if (first_call .eqv. .True.) then
+            allocate(e_inc(n_dust, nwtot), N_inc(n_dust, nwtot))
+            do l = 1, nwtot
+            do n = 1, n_dust
+            N_inc(n,l) = cri_inc(n,l)
+            e_inc(n,l) = m2e(N_inc(n,l)) ! N_inc**2
             end do
-          else
-            M_eff0 = M_eff(i-1,j)
-          end if
+            end do
 
-          call NR(M_inc(:,i),V_inc(:,j),M_eff0,M_eff(i,j),n_inc)
+            first_call = .False.
+      end if
 
-          x = 2.*3.141593*a(j)*1e8/wlos(i)      ! a: cm -> �
-          if(x .eq. 0.) then
-            q_abs = 0.
-            q_sca = 0.
-            gsca = 0.
-          else
-            call mie(M_eff(i,j),x,q_abs,q_sca, gsca)
-          end if
-          dabstable(j,i) = L0(j)*pi*a(j)**2*q_abs
-          dscatable(j,i) = (1.0-gsca)*L0(j)*pi*a(j)**2*q_sca
-          
-        end do
+      ! Main wavelength loops
+      
+      do l = 1, nwtot
+            ! Effective Medium Theory (EMT) step
+            N_eff0 = (0.0_dp,0.0_dp)
+            do n = 1, n_dust
+            N_eff0 = N_eff0 + Vol(n) * N_inc(n,l)
+            end do
+
+            ! Try Bruggeman approach
+            if (Brug .eqv. .True.) then
+            ! Call Newton-Raphson minimization
+            call NR(N_inc(1:n_dust,l),Vol(1:n_dust),
+     >       N_eff0,N_eff(l),errflag)
+
+            ! if fails (errflag) use LLL method
+            if (errflag .eqv. .True.) then
+            e_eff0 = (0.0_dp,0.0_dp)
+            do n = 1, n_dust
+                  e_eff0 = e_eff0 + Vol(n)*e_inc(n,l)**(onethird)
+            end do
+            e_eff(l) = e_eff0**3
+            N_eff(l) = e2m(e_eff(l))
+            errflag = .False.
+            end if
+            ! Try LLL method
+            else if (Brug .eqv. .False.) then
+            e_eff0 = (0.0_dp,0.0_dp)
+            do n = 1, n_dust
+                  e_eff0 = e_eff0 + Vol(n)*e_inc(n,l)**(onethird)
+            end do
+            e_eff(l) = e_eff0**3
+            N_eff(l) = e2m(e_eff(l))
+            end if
+
       end do
-            
-      return
-      end
+
+
+      end subroutine calc_emt
+
+      ! ------------- Functions for LLL theory ------------- !!
+      pure complex(kind=dp) function e2m(e)
       
-!-----------------------------------------------------------------------
-! Reads in optical data for solids
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine optical_data(n_inc,M_inc)
+      implicit none
       
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      integer :: i, j, k, io, u, nlines, counter, n_inc, n_lines
-      real*8, allocatable, dimension(:) :: wl_work, n_work, k_work
-      real*8  :: a, b, nkdata(3,3000)
-      real*8  :: ndata(max_inc,nwl), kdata(max_inc,nwl)
-      complex*8 :: M_inc(max_inc,nwl)
-      character :: filename(16)*50
-      character(len=200) :: info
-      logical :: conducting,ex
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
+      real(kind=dp) :: ereal, eimag, n, k
+      real(kind=dp) :: sqrte2
+      complex(kind=dp), intent(in) :: e
 
-      filename(1) = 'nk_data/nk_origin/TiO2[s]_ori.dat'       ! TiO2
-      filename(2) = 'nk_data/nk_origin/Mg2SiO4[s]_ori.dat'    ! Mg2SiO4
-      filename(3) = 'nk_data/nk_origin/SiO[s]_ori.dat'        ! SiO
-      filename(4) = 'nk_data/nk_origin/SiO2[s]_ori.dat'       ! SiO2
-      filename(5) = 'nk_data/nk_origin/Fe[s]_ori.dat'         ! Fe
-      filename(6) = 'nk_data/nk_origin/Al2O3[s]_ori.dat'      ! Al2O3
-      filename(7) = 'nk_data/nk_origin/CaTiO3[s]_ori.dat'     ! CaTiO3
-      filename(8) = 'nk_data/nk_origin/FeO[s]_ori.dat'        ! FeO
-      filename(9) = 'nk_data/nk_origin/FeS[s]_ori.dat'        ! FeS
-      filename(10) = 'nk_data/nk_origin/Fe2O3[s]_ori.dat'     ! Fe2O3
-      filename(11) = 'nk_data/nk_origin/MgO[s]_ori.dat'       ! MgO
-      filename(12) = 'nk_data/nk_origin/MgSiO3[s]_ori.dat'    ! MgSiO3
+      ereal = real(e,kind=dp)
+      eimag = aimag(e)
+      sqrte2 = sqrt(ereal*ereal + eimag*eimag)
+      n = sqrt(0.5_dp * ( ereal + sqrte2))
+      k = sqrt(0.5_dp * (-ereal + sqrte2))
+      e2m = cmplx(n,k,kind=dp)
+      end function e2m
 
-    
-      do i=1, n_inc
-        u = 1
-        open(unit=u,file=filename(1))
-        read(u,*) n_lines, conducting
-        read(u,*) ; read(u,'(A200)') info; 
-     *  read(u,*) ; read(u,*)
-        allocate(wl_work(n_lines),n_work(n_lines),k_work(n_lines))
 
-        do l = 1, n_lines
-            read(u,*) wl_work(l),n_work(l),k_work(l)
-            n_work(l) = max(0.0D+0, n_work(l))
-            k_work(l) = max(0.0D+0, k_work(l))
-        enddo
-        close(u)
+      pure complex(kind=dp) function m2e(m)
+      
+      implicit none
 
-        wl_work(:) = wl_work(:)*1000.0
-        do l = 1, nwtot
-            ! If required wavelength is less than available data - keep constant
-         if (wlos(l) < wl_work(1)) then
-            ndata(i,l) = n_work(1)
-            kdata(i,l) = k_work(1)
-            ! If required wavelength is greater than available data - extrapolate
-            ! Non conducting: n is constant - k is linear decreasing
-            ! Conducting: n and k are log-log extrapolated
-         else if (wlos(l) > wl_work(n_lines)) then
-            if (conducting .eqv. .False.) then
-                ndata(i,l) = n_work(n_lines)
-                kdata(i,l) = k_work(n_lines)*wl_work(n_lines)/wlos(l)
-            else if (conducting .eqv. .True.) then
-                do l1 = n_lines,1,-1
-                  if (wl_work(l1) < 0.7D+0*wl_work(n_lines)) then  ! data can be noisy, so
-                    exit                                           ! it's safer to use larger
-                  endif                                            ! region to get the slope
-                enddo
-                fac = log(wlos(l)/wl_work(n_lines))/
-     *           log(wl_work(l1)/wl_work(n_lines))
-                ndata(i,l) = exp(log(n_work(n_lines)) 
-     &            + fac*log(n_work(l1)/n_work(n_lines)))
-                kdata(i,l) = exp(log(k_work(n_lines)) 
-     &            + fac*log(k_work(l1)/k_work(n_lines)))
+      real(kind=dp) :: ereal, eimag, n, k
+      complex(kind=dp), intent(in) :: m
+
+      n = real(m,kind=dp)
+      k = aimag(m)
+      ereal = n*n - k*k
+      eimag = 2.0_dp * n * k
+      m2e = cmplx(ereal,eimag,kind=dp)
+      end function m2e
+
+      ! -------------------------------------------------------------------------------------------------
+      ! A program for function minimization using the Newton-Raphson method.
+      ! -------------------------------------------------------------------------------------------------
+      pure subroutine NR(M_inc,V_inc,M_eff0,M_eff,unphysical)
+      implicit none
+
+      integer, parameter :: itmax = 30
+      integer :: it
+      real(kind=dp), dimension(:), intent(in)  :: V_inc
+      real(kind=dp), dimension(2,2) :: DF
+      real(kind=dp), dimension(2) ::  Fold, FF, FF1, FF2, FF3, FF4
+      real(kind=dp), dimension(2) :: corr, xx, xnew
+      real(kind=dp) :: qual, de1, de2
+      complex(kind=dp), dimension(:), intent(in) :: M_inc
+      complex(kind=dp), intent(in)  :: M_eff0
+      complex(kind=dp), intent(out) :: M_eff
+      logical, intent(inout) :: unphysical
+
+      M_eff = M_eff0
+
+      do it = 1, itmax
+            xx(1) = real(M_eff,kind=dp)
+            xx(2) = aimag(M_eff)
+            call Bruggeman(M_eff,M_inc,V_inc,FF)
+            qual = FF(1)*FF(1) + FF(2)*FF(2)
+            de1 = xx(1)*1.0e-5_dp
+            de2 = xx(2)*1.0e-5_dp
+            call Bruggeman(M_eff
+     >       +cmplx(de1,0.0_dp,kind=dp),M_inc,V_inc,FF1)
+            call Bruggeman(M_eff
+     >       -cmplx(de1,0.0_dp,kind=dp),M_inc,V_inc,FF2)
+            call Bruggeman(M_eff
+     >       +cmplx(0.0_dp,de2,kind=dp),M_inc,V_inc,FF3)
+            call Bruggeman(M_eff
+     >       -cmplx(0.0_dp,de2,kind=dp),M_inc,V_inc,FF4)
+            DF(1,1) = (FF1(1)-FF2(1)) / (2.0_dp*de1)
+            DF(1,2) = (FF3(1)-FF4(1)) / (2.0_dp*de2)
+            DF(2,1) = (FF1(2)-FF2(2)) / (2.0_dp*de1)
+            DF(2,2) = (FF3(2)-FF4(2)) / (2.0_dp*de2)
+            Fold = FF
+            call gauss(2,2,DF,corr,FF)
+            corr = -corr
+            call eff_pullback(2,xx,corr,Fold,
+     >       xnew,unphysical,M_inc,V_inc)
+            if (unphysical) then
+      !        print*, qual, 'qual'
+            exit
+            end if
+            M_eff = cmplx(xnew(1),xnew(2),kind=dp)
+            if (abs(qual) < 1.0e-13_dp) then
+            exit
+            end if
+      end do
+
+      end subroutine NR
+
+
+      !!! Combine using Bruggeman formula
+      ! define function to be minimized
+      pure subroutine Bruggeman(M_eff,M_inc,V_inc,FF)
+      implicit none
+
+      integer :: i
+      real(kind=dp), dimension(:), intent(in) :: V_inc
+      real(kind=dp), intent(out) :: FF(2)
+      complex(kind=dp), intent(in) :: M_eff
+      complex(kind=dp), dimension(:), intent(in) :: M_inc
+      complex(kind=dp) :: fun, mm2, mmi2
+
+      mm2 = M_eff**2
+      fun = cmplx(0.0_dp,0.0_dp,kind=dp)
+      do i = 1, size(V_inc)
+            mmi2 = M_inc(i)**2
+            fun = fun + V_inc(i)*(mmi2 - mm2)/(mmi2 + 2.0_dp*mm2)
+      end do
+
+      FF(1) = real(fun,kind=dp)
+      FF(2) = aimag(fun)
+
+      end subroutine Bruggeman
+
+      ! Pull Back Eff
+      pure subroutine eff_pullback(N,xx,dx,Fold,
+     > xnew,unphysical,M_inc,V_inc)
+      implicit none
+
+      integer, intent(in) :: N
+      integer, parameter :: itmax = 20
+      integer :: it
+      real(kind=dp), dimension(:),intent(in) :: V_inc
+      real(kind=dp), dimension(N), intent(in) :: xx,Fold
+      real(kind=dp), dimension(N), intent(inout) :: dx
+      real(kind=dp), dimension(N), intent(out) :: xnew
+      real(kind=dp), dimension(2) :: Fnew(2)
+      real(kind=dp) :: fac,qold,qnew
+      complex(kind=dp), dimension(:),intent(in) :: M_inc
+      complex(kind=dp) :: mm
+      logical, intent(out) :: unphysical
+
+      qold = Fold(1)*Fold(1)+Fold(2)*Fold(2)
+      fac = 1.0_dp
+
+      do it = 1, itmax
+            xnew = xx + fac*dx
+
+            if ((xnew(1) > 0.0_dp).and.(xnew(2) > 0.0_dp)) then
+            mm = cmplx(xnew(1),xnew(2),kind=dp)
+            call Bruggeman(mm,M_inc,V_inc,Fnew)
+            qnew = Fnew(1)*Fnew(1)+Fnew(2)*Fnew(2)
+            !write(*,*) it,qold,qnew
+            unphysical = .False.
+            if (qnew < qold) then
+            exit
+            end if
+            else
+            !write(*,*) it,"negative (n,k)",xnew
+            unphysical = .True.
             endif
-              ! Data is availible in the required wavelength range - log-log interpolation
-       else
-              ! Loop across work arrays untill straddle point is point then interpolate
-            do l1 = 1, n_lines - 1
-              if (wlos(l) >= wl_work(l1) .and. 
-     *         wlos(l) <= wl_work(l1+1)) then
 
-                  fac = log(wlos(l)/wl_work(l1))/
-     *             log(wl_work(l1+1)/wl_work(l1))
-                  ndata(i,l) = exp(log(n_work(l1)) 
-     *             + fac*log(n_work(l1+1)/n_work(l1)))
-                  if (k_work(l1) <= 0.0D+0 .or. 
-     *             k_work(l1+1) <= 0.0) then
-                    kdata(i,l) = 0.0D+0
-                  else
-                    kdata(i,l) = exp(log(k_work(l1)) 
-     *                      + fac*log(k_work(l1+1)/k_work(l1)))
-                  endif
-                  exit
-              endif
-            enddo
-       endif
+            fac = fac*0.7_dp
       enddo
 
-      deallocate(wl_work,n_work, k_work)
-      
-      end do
+      end subroutine eff_pullback
 
-      do i=1,nwtot
-        M_inc(1:n_inc,i) = dcmplx(ndata(1:n_inc,i),kdata(1:n_inc,i))
-      end do
-      
-      end
-
-
-
-      
-!-----------------------------------------------------------------------
-! Minimizes a multidimensional function using the Newton-Raphson method
-! Juncher 2015
-!-----------------------------------------------------------------------   
-      subroutine NR(M_inc,V_inc,M_eff0,M_eff,n_inc)
-      
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      integer,parameter :: itmax = 30
-      complex*8 :: M_inc(n_inc), M_eff0, M_eff
-      real*8 :: V_inc(n_inc),F(2),F1(2),F2(2),J(2,2)
-      real*8 :: corr(2),xold(2),xnew(2)
-      
-      do i=1,itmax
-        call bruggeman(M_eff0,M_inc,V_inc,n_inc,F)
-
-        if(F(1)**2+F(2)**2 .lt. 1e-13) exit
-        call jacobian(M_eff0,M_inc,V_inc,J,n_inc)
-        call gauss(2,J,corr,F)
-        corr = -corr
-        
-        xold(1) = real(M_eff0)
-        xold(2) = imag(M_eff0)
-        xnew = xold + corr
-        
-        if(xnew(1).gt.0 .and. xnew(2).gt.0) then
-          M_eff0 = cmplx(xnew(1),xnew(2))
-        else
-          print *, 'xnew is unphysical: ', xnew(1),xnew(2)
-          stop
-        end if
-        
-        if(i .eq. itmax) then
-          print *, 'Reached max number of iterations.'
-          print *, '|F| = ', F(1)**2+F(2)**2
-        end if
-
-      end do
-      
-      M_eff = M_eff0
-      
-      return
-      end
-
-
-!-----------------------------------------------------------------------
-! Finds the Jacobian of F(M_eff0)
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine jacobian(M_eff0,M_inc,V_inc,J,n_inc)
-
+      !**********************************************************************
+      pure subroutine gauss(Nd,N,a,x,b)
       implicit none
-      integer :: n_inc
-      real*8 :: dx, dy, V_inc(n_inc), J(2,2), F1(2), F2(2)
-      complex*8 :: M_eff0, M_inc(n_inc)
+      !**********************************************************************
+      !*****                                                            *****
+      !*****   Diese Routine loesst ein lineares Gleichungssystem       *****
+      !*****   der Form    (( a )) * ( x ) = ( b )     nach x auf.      *****
+      !*****   Der Algorithmus funktioniert, indem die Matrix a         *****
+      !*****   auf Dreiecksform gebracht wird.                          *****
+      !*****                                                            *****
+      !*****   EINGABE:  Nd = Dimension der Vektoren, der Matrix        *****
+      !*****              N = Dimension der Gl-Systems (N<=Nd)          *****
+      !*****              a = (N x N)-Matrix                            *****
+      !*****              b = (N)-Vektor                                *****
+      !*****   AUSGABE:   x = (N)-Vektor                                *****
+      !*****                                                            *****
+      !**********************************************************************
+      !*
+      integer, intent(in) :: Nd, N
+      integer :: i, j, k, kmax
+      real(kind=dp), dimension(Nd,Nd), intent(inout) :: a
+      real(kind=dp), dimension(Nd), intent(inout) :: b
+      real(kind=dp), dimension(Nd), intent(out) :: x
+      real(kind=dp) :: c, amax
 
-      dx = 1.e-5*real(M_eff0)
-      call bruggeman(M_eff0+cmplx(dx,0.0),M_inc,V_inc,n_inc,F1)
-      call bruggeman(M_eff0-cmplx(dx,0.0),M_inc,V_inc,n_inc,F2)
-      J(1,1) = (F1(1)-F2(1))/(2.0*dx)
-      J(2,1) = (F1(2)-F2(2))/(2.0*dx)
-
-      dy = 1.e-5*imag(M_eff0)
-      call bruggeman(M_eff0+cmplx(0.,dy),M_inc,V_inc,n_inc,F1)
-      call bruggeman(M_eff0-cmplx(0.,dy),M_inc,V_inc,n_inc,F2)
-      J(1,2) = (F1(1)-F2(1))/(2.0*dy)
-      J(2,2) = (F1(2)-F2(2))/(2.0*dy)
-
-      return
-      end
-      
-!-----------------------------------------------------------------------
-! Bruggeman's equation for F
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine bruggeman(M_eff0,M_inc,V_inc,n_inc,F)
-
-      implicit none
-      integer :: i, n_inc
-      real*8  :: V_inc(n_inc), F(2)
-      complex*8 :: M_eff0, M_inc(n_inc), Fcmplx
-      
-      Fcmplx = cmplx(0.0,0.0)
-      do i=1,n_inc
-        Fcmplx = Fcmplx + V_inc(i)*(M_inc(i)**2-M_eff0**2)/
-     *                    (M_inc(i)**2+2.*M_eff0**2)
-      end do
-
-      F(1) = real(Fcmplx)
-      F(2) = imag(Fcmplx)
-
-      return
-      end
-
-!-----------------------------------------------------------------------
-! Solves a matrix equation of the form: A*x = b using Gaussian 
-! elimination and back-substitution
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine gauss(N,a,x,b)
-
-      implicit none
-      integer :: N,i,j,k,kmax,piv(N),istat
-      real*8  :: a(N,N),x(N),b(N),c,amax
-
-      do i=1,N-1
-        kmax = i
-        amax = ABS(a(i,i))
-        do k=i+1,N
-          if(ABS(a(k,i)) .gt. amax) then
+      do i = 1, N-1
+      !*       ------------------------------------------
+      !*       ***  MAX-Zeilentausch der i-ten Zeile  ***
+      !*       ------------------------------------------
+            kmax = i
+            amax = abs(a(i,i))
+            do k = i+1, N
+            if (abs(a(k,i)) > amax) then
+            amax = abs(a(k,i))
             kmax = k
-            amax = ABS(a(k,i))
-          endif
-        end do
-  
-        if(kmax.ne.i) then
-          do j=1,N
-            c         = a(i,j)
-            a(i,j)    = a(kmax,j)
-            a(kmax,j) = c 
-          end do
-          c       = b(i)
-          b(i)    = b(kmax)
-          b(kmax) = c 
-        endif
+            endif
+            end do
 
-        do k=i+1,N
-          c = a(k,i) / a(i,i)
-          a(k,i) = 0.e0
-          do j=i+1,N
+            if (kmax /= i) then
+            do j = 1, N
+            c = a(i,j)
+            a(i,j) = a(kmax,j)
+            a(kmax,j) = c
+            end do
+            c = b(i)
+            b(i) = b(kmax)
+            b(kmax) = c
+            end if
+      !*
+      !*       ---------------------------------
+      !*       ***  bringe auf Dreiecksform  ***
+      !*       ---------------------------------
+            do k = i+1, N
+            c = a(k,i) / a(i,i)
+            a(k,i) = 0.0_dp
+            do j = i+1, N
             a(k,j) = a(k,j) - c * a(i,j)
-          end do
-          b(k) = b(k) - c * b(i)
-        end do
+            end do
+            b(k) = b(k) - c * b(i)
+            end do
+      !*
       end do
-
-      do i=N,1,-1
-        c = 0.e0
-        if (i.lt.N) then
-          do j=i+1,N
+      !*
+      !*     --------------------------
+      !*     ***  loese nach x auf  ***
+      !*     --------------------------
+      do i = N, 1, -1
+            c = 0.0_dp
+            if (i < N) then
+            do j = i+1, N
             c = c + a(i,j) * x(j)
-          end do
-        end if
-        x(i) = (b(i) - c) / a(i,i)
+            end do
+            end if
+            x(i) = (b(i) - c) / a(i,i)
       end do
 
-      return
-      end 
-
-      
-      
-!-----------------------------------------------------------------------
-! Calculates the calculates efficiency factors for absorption and
-! scattering (based on the Bohren-Huffman Mie subroutine)
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine mie(M_eff,x,q_abs,q_sca, gsca)
-      
-      implicit real*8 (a-h,o-z)
-      complex*8 refrel,M_eff,d(2000000),xi,xi1,an,bn
-      complex*8 en,fn, an1, bn1
-      real*8 g_sca
-      refrel = M_eff/1.   ! ref. index of sphere / ref. index of medium
-      q_sca = 0.
-      q_ext = 0.
-      q_sca1 = -1.
-      q_ext1 = -1.
-      
-      npoints = max(x+4.*x**(1./3.)+2.,abs(x*refrel))
-      if(npoints .gt. 2000000) then
-        print *, 'increase max dimension of d'
-        stop
-      end if
-      d(npoints+15) = (0.,0.)
-      do i=npoints+14,1,-1
-        d(i) = (i+1)/(x*refrel) - 1./(d(i+1)+(i+1)/(x*refrel))
-      end do
-
-      psi0 = cos(x)
-      psi1 = sin(x)
-      chi0 = -sin(x)
-      chi1 = cos(x)
-      xi1 = dcmplx(psi1,-chi1)
-      gsca = 0.0
-      do i=1,npoints
-        en = i *1.0
-        fn = (2.0*en + 1.) / (en*(en+1.))
-        
-        psi = (2.0*i-1.)*psi1/x-psi0
-        chi = (2.0*i-1.)*chi1/x-chi0
-        xi = dcmplx(psi,-chi)
-        if (i >1) then
-        an1 = an
-        bn1 = bn
-        end if
-        an = ((d(i)/refrel+i/x)*psi-psi1)/((d(i)/refrel+i/x)*xi-xi1)
-        bn = ((d(i)*refrel+i/x)*psi-psi1)/((d(i)*refrel+i/x)*xi-xi1)
-
-        q_sca = q_sca + (2.*i+1)*(abs(an)**2+abs(bn)**2)
-        q_ext = q_ext + (2.*i+1)*real(an+bn)
-        gsca = gsca + real(((2.*en+1.)/(en*(en+1.)))*
-     &        (real(an)*real(bn)+aimag(an)*aimag(bn)))   
-        
-        if (i>1) then
-        gsca = gsca+real(((en-1.)*(en+1.)/en)*
-     &      (real(an1)*real(an)+aimag(an1)*aimag(an)+
-     &      real(bn1)*real(bn)+aimag(bn1)*aimag(bn)))
-        end if
-
-
-
-        if(abs(q_sca-q_sca1).lt.1e-8.and.abs(q_ext-q_ext1).lt.1e-8) then
-          exit
-        end if
-    
-        psi0 = psi1
-        psi1 = psi
-        chi0 = chi1
-        chi1 = chi
-        xi1  = dcmplx(psi1,-chi1)
-    
-        q_sca1 = q_sca
-        q_ext1 = q_ext
-      end do
-      if (q_sca == 0.0) then
-            gsca = 0.0
-      else
-            gsca = real(2.0*gsca/q_sca)
-      end if
-      q_sca = (2./x**2)*q_sca
-      q_ext = (2./x**2)*q_ext
-      if(aimag(refrel) .eq. 0.) then
-        q_abs = 0.
-      else
-        q_abs = q_ext - q_sca
-      end if
-      !print*, "gsca ", gsca
-      return
-      end
+      end subroutine gauss
+      end module mie_opacity
 
 !-----------------------------------------------------------------------
 ! Calculates the dust opacity for each wavelength at each depth layer 
-! by interpolating the dust opacity table.
-! Juncher 2015
+! by interpolating the dust opacity table. 
+! Using interpolation scheme from petitRadtrans. 
+! BCE 2022
 !-----------------------------------------------------------------------
-      subroutine dust_opac_init
+      subroutine dust_opac_eps_interp
 
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
+
+      ! internal variables)
+      DOUBLE PRECISION:: kappa_abs_0(nwl), 
+     * kappa_abs_1(nwl), kappa_sca_0(nwl),
+     * kappa_sca_1(nwl), abs_r(nwl),
+     * sca_r(nwl), eps_0(max_eps),
+     * eps_1(max_eps), eps_r(max_eps),
+     * rhod_0(max_eps), rhod_1(max_eps)
+      double precision:: kappa_cloud, kappa_cloud_old, 
+     * edepletion, kappa_cloud_diff, epsilon_cloud,
+     * kappa_cloud_abs, kappa_cloud_int
+      dimension edepletion(max_eps, ndp)
+      dimension kappa_cloud_diff(ndp), kappa_cloud_old(ndp)
+      dimension kappa_cloud_abs(ndp)
+      dimension kappa_cloud_int(ndp)
+      dimension pgmarcs(ndp), ptot(ndp)
       dimension a1(nwl), a2(nwl), s1(nwl), s2(nwl)
-      dimension rho(ndp);
+      dimension rho(ndp)
+      dimension icloud_diff(ndp)
+      COMMON /CSTYR/MIHAL,NOCONV
       common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
      * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
      * ntau,iter
@@ -14736,282 +15219,220 @@ C
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
+      common/ci9/ai(16)
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
-      dimension pg(ndp),diff(ndp,max_lay),imin(ndp),itemp(12),
-     *      imin2(ndp) 
-      dimension dust_opac_int(ndp)
-      dimension f_abs(nwl), f_sca(nwl)
-      
-      dust_abs_init(1:ntau,1:nwtot) = 0.
-      dust_sca_init(1:ntau,1:nwtot) = 0.
-      dust_opac_int(1:ntau) = 0.
-      rho_dtg(1:ntau) = 0.
-      
-      do i=1,ntau  
-        if (tt(i) <= temp(n_lay)) then
-        do j=1,n_lay
-          diff(i,j) = abs((tt(i)-temp(j))/tt(i)) + 
-     *                abs((pg_read(i)-pgas(j))/pg_read(i))
-        end do
-        imin(i) = minloc(diff(i,1:n_lay),1)
-        rho_dtg(i) = rhod(imin(i))
-        if (rho_dtg(i) > 1.0e-40) then
-        dust_abs_init(i,1:nwtot) = rho_dtg(i)*dabstable(imin(i),1:nwtot)
-        dust_sca_init(i,1:nwtot) = rho_dtg(i)*dscatable(imin(i),1:nwtot)
-        end if
-          
-        end if
-      end do
-
-c        do k=1, nwl
-c             dust_opac_int(1:ntau) = dust_opac_int(1:ntau) 
-c      *       + dust_abs_init(1:ntau, k)*wlstep(k)
-c      *       + dust_sca_init(1:ntau, k)*wlstep(k)
-c       end do
-c       open(unit=946, file='dust_opac.dat', status='unknown')
-c       do n=1, ntau
-      
-c        write(946, '(1E16.8,2x,1E15.6)') tt(n), 
-c      * dust_opac_int(n)*(1e-8)*rho_dtg(n)
-      
-c       end do
-c       close(946)
-            
-      return
-      end
-      
-      subroutine dust_opac(iwl)
-
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     * ntau,iter
-      common/ci1/fl2(5),parco(45),parq(180),shxij(5),tparf(4),
-     *  xiong(16,5),eev,enamn(ndp),sumh(ndp),xkbol,nj(16),iel(16),
-     *  summ(ndp),nel
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      dimension pg(ndp),diff(ndp,max_lay),imin(ndp), 
-     * imin2(ndp),itemp(12)
-      common /cmolrat/ fold(ndp,8),molold,kl
-      
-      dust_abs(1:ntau,iwl) = 0.
-      dust_sca(1:ntau,iwl) = 0.
-      
-      if (iwl == 1) then
-      do i=1,ntau  
-      if (tt(i) <= temp(n_lay)) then
-        do j=1,n_lay
-          diff(i,j) = abs((tt(i)-temp(j))/tt(i)) + 
-     *                abs((pp(i)-pgas(j))/pp(i))
-        end do
-        imin(i) = minloc(diff(i,1:n_lay),1)
-        rho_dtg(i) = rhod(imin(i))
-      end if
-      end do
-      end if
-      do i=1, ntau
-            if (tt(i) <= temp(n_lay)) then
-            if (rho_dtg(i) > 1.0e-40) then
-                  dust_abs(i,iwl) = rho_dtg(i)*dabstable(imin(i),iwl)
-                  dust_sca(i,iwl) = rho_dtg(i)*dscatable(imin(i),iwl)
-            end if
-            end if 
-      end do 
-      return
-      end
-
-!-----------------------------------------------------------------------
-! Updates the initial element abundances (read from elabund.dat) with
-! the dust depleted abundances
-! From DRIFT: Mg Si Ti O Fe Al
-! 17 MARCS: H HE C N O NE NA MG AL SI S K CA CR FE NI Ti
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine dust_eps
-      
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-
-      common/statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),ntau,iter
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *  kos_step,nwtot,nosmol,newosatom,newosatomlist,
-     *  nchrom,osfil(60),molname(60),sampling
-      common /cdrift/ idust, ieps
-      common/ci5/abmarcs(18,ndp),anjon(17,5),h(5),part(17,5),dxi,
+      common/cabinit/abinit(natms),kelem(natms),nelem
+      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),dxi,
      *           f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       common/ci1/fl2(5),parco(45),parq(180),shxij(5),tparf(4),
      *  xiong(16,5),eev,enamn(ndp),sumh(ndp),xkbol,nj(16),iel(16),
      *  summ(ndp),nel
-      common/ci9/ai(16)
-      common/cabinit/abinit(natms),kelem(natms),nelem
-      common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
-      dimension pg(ndp),diff(ndp,max_lay),imin(ndp),imin2(ndp),sum(ndp)
-      common /cmolrat/ fold(ndp,8),molold,kl
-      common /cmetpe/ ppel(ndp), metpe
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_init(ndp,nwl), dust_sca_init(ndp,nwl),
-     *      rhod_m(ndp), rhod_m_init(ndp)
-      dimension dust_opac_int(ndp)
+      common /cdusteps/ ielnr(max_eps)
+      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
+     * isw(max_eps)
+      common /dpeset/ dpein,dtin, pe_corr(ndp)
+      dimension sum(ndp)
+      dimension pg(ndp),diff(ndp,max_lay),imin(ndp),itemp(12),
+     *      imin2(ndp) 
+      dimension f_abs(nwl), f_sca(nwl)
+      dimension diff_Ps_vals(max_lay), diff_Ts_vals(max_lay)
       dimension mx_elm(18)
       data eev/1.602095e-12/,xmh/1.67339e-24/ 
-      data mx_elm /1, 2,6,7,8,10,11,12,13,14,16,19,20,23,25,27,21,17/
-      open(unit=976, file='opac_frac.in')
-      read(976,*) f_eps
-      print*, "Opac fraction ", f_eps
+      data mx_elm /1, 2,6,7,8,10,11,12,13,14,16,19,20,23,26,27,22,17/
+            
+      dust_abs(1:ntau,1:nwtot) = 0.
+      dust_sca(1:ntau,1:nwtot) = 0.
+      
+      if (idustopac==1) then
+      open(unit=976, file='f_cloud.in')
+      read(976,*) f_opac
+      print*, "f is ", f_opac
       close(976)
 
+      open(unit=389, file='./data/abinit_abmarcs.dat')
+      read(389,*)
+      do n=1, max_eps !dependent on amount of elements in abinit_abmarcs.dat
+        read(389, '(12x,i2,8x,i2,4x,i2)') 
+     >       iabinit(n), iabmarcs(n), isw(n) 
+      
+      end do
+      close(389)  
+      end if
       do i=1,18
             abmarcs(i,1:ntau) = abinit(mx_elm(i))
       end do
+      istruc_len = ntau
+      if (n_lay > 0) then
+      p_min = MINVAL(pgas(1:n_lay))
+      p_max = MAXVAL(pgas(1:n_lay))
 
-      do i=1,ntau 
-        if (tt(i) > temp(n_lay)) then 
-         do n=1,8
-              eps_new(n,i) = -99.0
-          end do
-        else
-        do j=1,n_lay
-        if (ieps == 0) then
-          diff(i,j) = abs((tt(i)-temp(j))/tt(i)) + 
-     *                abs((pg_read(i)-pgas(j))/pg_read(i))
-        else
-          diff(i,j) = abs((tt(i)-temp(j))/tt(i)) + 
-     *                abs((pp(i)-pgas(j))/pp(i))
-        end if
-        end do
-        imin(i) = minloc(diff(i,1:n_lay),1)
-        do n=1, 8
-              eps_new(n,i) = eps(n,imin(i))      
-        end do
-        end if
-      end do
       
+      if (idustopac ==1) then
+            pgmarcs(1:istruc_len) = pg_read(1:istruc_len) 
+      else 
+            do k=1,istruc_len
+                  ptot(k)=pp(k)-ppr(k)-ppt(k)+pe_corr(k)   
+            end do
+            pgmarcs(1:istruc_len) = ptot(1:istruc_len)
+      end if
+      icloud_count = 0
+
+      do i_str=1, istruc_len
+        call search_intp_ind(pgas, n_lay, pgmarcs(i_str), 1, m)
+        if (pgmarcs(i_str) <= pgas(m) .and. (m==1)) then
+           
+            dust_abs(i_str, 1:nwtot) = 
+     >      dabstable(m, 1:nwtot)  
+
+            dust_sca(i_str, 1:nwtot) =   
+     >      dscatable(m, 1:nwtot) 
+
+
+            eps_new(1:n_eps, i_str) = 
+     >      eps(1:n_eps, m) 
+
+
+        else if ((pgmarcs(i_str)>= pgas(m)) .and. 
+     >         (pgmarcs(i_str)<= pgas(m+1))) then
+
+            kappa_abs_0(1:nwtot) = dabstable(m, 1:nwtot)
+            kappa_abs_1(1:nwtot) = dabstable(m+1, 1:nwtot)
+
+            kappa_sca_0(1:nwtot) = dscatable(m, 1:nwtot)
+            kappa_sca_1(1:nwtot)= dscatable(m+1, 1:nwtot)
+
+            eps_0(1:n_eps) = eps(1:n_eps, m)
+            eps_1(1:n_eps) = eps(1:n_eps, m+1)
+
+            p0 = pgas(m)
+            p1 = pgas(m+1)
+            pmarcs = pgmarcs(i_str)
+
+            p1_p0 = p1/p0 
+            p1_p = p1/pmarcs
+            p_p0 = pmarcs/p0
+
+            dust_abs(i_str, 1:nwtot) = 
+     >       kappa_abs_0(1:nwtot)**(log10(p1_p)/log10(p1_p0)) * 
+     >       kappa_abs_1(1:nwtot)**(log10(p_p0)/log10(p1_p0))
+
+            dust_sca(i_str, 1:nwtot) =   
+     >       kappa_sca_0(1:nwtot)**(log10(p1_p)/log10(p1_p0)) * 
+     >       kappa_sca_1(1:nwtot)**(log10(p_p0)/log10(p1_p0))
+
+            eps_new(1:n_eps, i_str) = 
+     >       eps_0(1:n_eps)**(log10(p1_p)/log10(p1_p0)) * 
+     >       eps_1(1:n_eps)**(log10(p_p0)/log10(p1_p0))
+
+            else if (pgmarcs(i_str)>pgas(m+1)) then
+            if (icloud_count==0) then
+            ncloud = i_str-1
+            icloud_count = 1
+            end if
+            dust_abs(i_str,1:nwtot) = 0.0
+            dust_sca(i_str,1:nwtot) = 0.0
+            eps_new(1:n_eps, i_str) = -1.0
+
+            end if
+
+        
+      end do
+      else if (n_lay <= 0) then
+      print*, "0 layers in DRIFT - no cloud!"
+      do i_str=1, istruc_len
+            dust_abs(i_str,1:nwtot) = 0.0
+            dust_sca(i_str,1:nwtot) = 0.0
+            eps_new(1:n_eps, i_str) = -1.0
+      end do
+      ncloud = 0
+      !idust =0
+      end if
 
       do i=1, ntau
-      !print*, "layer ", i
-      !Magnesium
-      if (eps_new(1,i) == -99.0 ) then 
-            eps_new_Mg = 10.0**(abinit(12)-12.0)
-      else
-            eps_init_Mg = 10.0**(abinit(12)-12.0)
-            eps_new_Mg = eps_init_Mg   
-     *       - f_eps*(eps_init_Mg -eps_new(1,i)) 
-      end if
-            abmarcs(8,i) = log10(eps_new_Mg) +12.0
-            !print*, "Mg ", abmarcs(8,i)
-            
-      !Silicone
-      if (eps_new(2,i) == -99.0 ) then 
-            eps_new_Si = 10.0**(abinit(14)-12.0)
-      else
-            eps_init_Si = 10.0**(abinit(14)-12.0)
-            eps_new_Si = eps_init_Si  
-     *      - f_eps*(eps_init_Si - eps_new(2,i))
-      end if
-            abmarcs(10,i) = log10(eps_new_Si) +12.0     
-            !print*, "Si ", abmarcs(10,i)  
-      !Titanium
-      if (eps_new(3,i) == -99.0 ) then
-            eps_new_Ti =  10.0**(abinit(21)-12.0)
-      else
-            eps_init_Ti = 10.0**(abinit(21)-12.0)
-            eps_new_Ti = eps_init_Ti
-     *      - f_eps*(eps_init_Ti - eps_new(3,i))
-      end if
-            abmarcs(17,i) = log10(eps_new_Ti) + 12.0  
-            !print*, "Ti ", abmarcs(17,i)     
-      !Oxygen
-      if (eps_new(4,i) == -99.0) then
-            eps_new_O  = 10.0**(abinit(8)-12.0)
-      else
-            eps_init_O = 10.0**(abinit(8)-12.0)
-            eps_new_O = eps_init_O
-     *      - f_eps*(eps_init_O - eps_new(4,i))      
-      end if 
-            abmarcs(5,i) = log10(eps_new_O) + 12.0
-            !print*, "layer ", i, " O ", abmarcs(5,i)
-            !print*, "O ", abmarcs(5,i)
-      !Iron
-      if (eps_new(5,i) == -99.0) then
-            eps_new_Fe = 10.0**(abinit(25)-12.0)
-      else
-            eps_init_Fe = 10.0**(abinit(25)-12.0)
-            eps_new_Fe = eps_init_Fe
-     *      - f_eps*(eps_init_Fe - eps_new(5,i))      
-      end if
-            abmarcs(15,i) = log10(eps_new_Fe) + 12.0
-            !print*, "Fe ", abmarcs(15,i)
-            
-      !Aluminium
-      if (eps_new(6,i) == -99.0) then
-            eps_new_Al =  10.0**(abinit(13)-12.0)
-      else
-            eps_init_Al = 10.0**(abinit(13)-12.0)
-            eps_new_Al = eps_init_Al
-     *      - f_eps*(eps_init_Al - eps_new(6,i))  
-      end if     
-            abmarcs(9,i) = log10(eps_new_Al) + 12.0
-            !print*, "Al ", abmarcs(9,i)
-      !Calcium
-      if (eps_new(7,i) == -99.0) then
-            eps_new_Ca = 10.0**(abinit(20)-12.0)
-      else
-            eps_init_Ca = 10.0**(abinit(20)-12.0)
-            eps_new_Ca = eps_init_Ca
-     *      - f_eps*(eps_init_Ca - eps_new(7,i))       
-      end if
-            abmarcs(13,i) = log10(eps_new_Ca) + 12.0
-            !print*, "Ca ", abmarcs(13,i)
-            
-      !Sulfur
-      if (eps_new(8,i) == -99.0) then
-            eps_new_S = 10.0**(abinit(16)-12.0)
-      else
-            eps_init_S = 10.0**(abinit(16)-12.0)
-            eps_new_S = eps_init_S
-     *      - f_eps*(eps_init_S - eps_new(8,i))    
-      end if   
-            abmarcs(11,i) = log10(eps_new_S) + 12.0
-            !print*, "S ", abmarcs(11,i)
-            !print*, "*******************"
+        do m=1, n_eps
+         do n=1, max_eps
+            if (ielnr(m)==isw(n)) then
+              eps_init_el = 10.0**(abinit(iabinit(n))-12.0)
+              if (eps_new(m,i) <0.0) then
+                  eps_new(m,i) = eps_init_el
+                 
+              end if             
+            exit
+            end if   
+          end do
+        end do
+      end do
 
+      do m=1, n_eps
+      epsilon_cloud(m, 1:ntau) = eps_new(m,1:ntau)
       end do
       
-      sum(1:ntau)=0.
-      do i=1,17
-        abmarcs(i,1:ntau)=10.**abmarcs(i,1:ntau)
-        sum(1:ntau)=SUM(1:ntau)+abmarcs(I,1:ntau)
+      
+      if (idustopac==1) then
+      do i=1, ntau
+      kappa_cloud(i, 1:nwtot) = 0.0
+      do j=1, nwtot
+            kappa_cloud(i,j) = 
+     *       dust_abs(i,j) + dust_sca(i,j)
+      !print*, dust_abs(i,j) + dust_sca(i,j)
+     
       end do
-       !Ti
+      end do
+      kappa_cloud_int(1:ntau) = 0.0
+      do i=1, nwtot
+      kappa_cloud_int(1:ntau) = kappa_cloud_int(1:ntau)+
+     *  kappa_cloud(1:ntau, i)*wlstep(i)*1.0e-4
+      end do
+c       open(unit=0302, file='kappa_cloud_lay.dat', status="replace", 
+c      *       position="append", action="write")
+c       !print*, "Integrated cloud opacity"
+c       do i=1, ntau
+      
+c       write(0302, *) kappa_cloud_int(i)
+c       end do
+c       close(0302)
 
-      xmy(1:ntau)=0.
+      open(unit=880, file='driftmarcs_it.in')
+      read(880,*) it_driftmarcs
+      close(880)
+
+      end if
+      
+      !if (icloud_conv == 0) then
+
+      call cloud_opac(f_opac)
+
+      do i=1, ntau
+        do m=1, n_eps
+         do n=1, max_eps
+            if (ielnr(m)==isw(n)) then
+              abmarcs(iabmarcs(n),i) = 
+     *         log10(epsilon_cloud(m,i)) + 12.0  
+            exit
+            end if   
+          end do
+        end do
+      end do
+      
+      
+      sum(1:ntau)=0.0
+      xmy(1:ntau)=0.0
+      summ(1:ntau)=0.0
+      sumh(1:ntau)=0.0
+      enamn(1:ntau)=0.0
+      do i=1,16
+        abmarcs(i,1:ntau)=10.**abmarcs(i,1:ntau)
+        sum(1:ntau)=sum(1:ntau)+abmarcs(I,1:ntau)
+      end do
+      abmarcs(17,1:ntau)=10.**abmarcs(17,1:ntau)
+      abmarcs(18,1:ntau)=10.**abmarcs(18,1:ntau)
       aha=abmarcs(1,1)
       do i=1,16
         abmarcs(i,1:ntau)=abmarcs(i,1:ntau)/aha
@@ -15019,6 +15440,7 @@ c       close(946)
         xmy(1:ntau)=xmy(1:ntau)+abmarcs(i,1:ntau)*ai(i)
       end do
       abmarcs(17,1:ntau)=abmarcs(17,1:ntau)/aha
+      abmarcs(18,1:ntau)=abmarcs(18,1:ntau)/aha
       xmy(1:ntau)=xmy(1:ntau)/ai(1)
       sumh(1:ntau)=sum(1:ntau)/aha-1.
       summ(1:ntau)=summ(1:ntau)-abmarcs(1,1:ntau)-abmarcs(3,1:ntau)-
@@ -15026,9 +15448,258 @@ c       close(946)
      
       enamn(1:ntau) = eev/(xmh*xmy(1:ntau))
       
-      ieps = 1
-       return
+      idustopac = 0
+
+      do i=1, ntau
+      kappa_cloud(i, 1:nwtot) = 0.0
+      do j=1, nwtot
+            kappa_cloud(i,j) =  
+     *       dust_abs(i,j) + dust_sca(i,j)
+      end do
+      end do
+      kappa_cloud_int(1:ntau) = 0.0
+      do i=1, nwtot
+      kappa_cloud_int(1:ntau) = kappa_cloud_int(1:ntau)+
+     *  kappa_cloud(1:ntau, i)*wlstep(i)*1.0e-4
+      end do
+      open(unit=0307, file='kappa_cloud_lay.dat', status="replace", 
+     *       position="append", action="write")
+
+      do i=1, ntau
+      write(0307, *) kappa_cloud_int(i)
+      end do
+      close(0307)
+
+      open(unit=0407, file='dust_abs.dat', status="replace", 
+     *       position="append", action="write")
+
+      do i=1, ntau
+      write(0407, *) dust_abs(i, 1:nwtot)
+      end do
+      close(0407)
+      open(unit=0507, file='dust_sca.dat', status="replace", 
+     *       position="append", action="write")
+
+      do i=1, ntau
+      write(0507, *) dust_sca(i, 1:nwtot)
+      end do
+      close(0507)
+      open(unit=0707, file='epsilon_cloud.dat', status='replace',
+     * position='append', action='write' )
+      do m=1, n_eps
+      write(0707, *) ielnr(m), epsilon_cloud(m,1:ntau)
+      end do
+      close(0707)    
+
+      if (it_driftmarcs>1) then
+      print*, 'Checking for opacity differences.'
+      
+      open(0302,file='kappa_cloud_lay_old.dat',
+     &  status='old',readonly)
+      do i=1, ntau
+            read(0302,*) kappa_cloud_old(i)
+      end do
+      close(0302)
+      !do i=1, ncloud
+      !print*, i
+      !print*, 'new ', kappa_cloud_int(i)
+      !print*, 'old ', kappa_cloud_old(i)
+      !end do
+      do i=1, ncloud
+      
+       if (kappa_cloud_int(i)>0.0) then
+       mag1 = nint(log10(kappa_cloud_int(i)))
+       else
+       mag1 = 0
+       end if
+      if (kappa_cloud_old(i)>0.0) then
+      mag2 = nint(log10(kappa_cloud_old(i)))
+      else
+      mag2=0
+      end if
+      
+      if (kappa_cloud_old(i)<=1.0e-20)  then
+        if (mag1 == mag2 .or. mag1 == mag2-1 .or. 
+     *   mag1 == mag2+1) then
+          kappa_cloud_diff(i) = 0.0
+          icloud_diff(i) = 0
+        else
+          if(kappa_cloud_old(i)==0.0) then
+            kappa_cloud_old(i)=1.0e-30
+            kappa_cloud_diff(i) = 
+     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
+     * kappa_cloud_old(i)
+          else
+          kappa_cloud_diff(i) = 
+     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
+     * kappa_cloud_old(i)
+          end if
+      !     if (kappa_cloud_diff(i)<=1.0e-1) then
+      !       icloud_diff(i) = 0
+      !       else
+      !       icloud_diff(i) = 1
+      !     end if
+        end if 
+      else 
+      !if (i==1) then
+      kappa_cloud_diff(i) = 
+     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
+     * kappa_cloud_old(i)
+      !if (mag1==mag2) then
+      !icloud_diff(i) = 0
+      !else
+      !icloud_diff(i) = 1
+      !end if
+
+      !else
+      !kappa_cloud_diff(i) = 
+      !* (abs(kappa_cloud_int(i) - kappa_cloud_old(i)))/
+      !* kappa_cloud_old(i)
+      !if (kappa_cloud_diff(i)<=1.0e-1) then
+      !icloud_diff(i) = 0
+      !else
+      !icloud_diff(i) = 1
+      !end if
+      end if
+
+      !else
+      !kappa_cloud_diff(i) = 
+      !* (abs(kappa_cloud_int(i) - kappa_cloud_old(i)))/
+      !* kappa_cloud_old(i)
+      !if (kappa_cloud_diff(i)<=5.0e-2) then
+      !icloud_diff(i) = 0
+      !else
+      !icloud_diff(i) = 1
+      !end if
+      !end if
+      end do
+      
+      ! do i=1, ntau
+      ! print*, i, kappa_cloud_diff(i)
+      ! end do
+      do i=1, ntau
+      kappa_cloud_abs(i) = abs(kappa_cloud_diff(i))
+      end do
+
+      !idiff_kappa = maxval(abs(icloud_diff(1:ntau)))
+      index_kappa = maxloc(kappa_cloud_abs(1:ntau), dim=1)
+      print*, "Max cloud opacity difference was ", 
+     * kappa_cloud_diff(index_kappa)
+      open(unit=990, file='kappa_diff.dat', status='replace')
+      write(990,*) kappa_cloud_diff(index_kappa)
+      close(990)
+      end if
+      return
       end
+!-----------------------------------------------------------------------
+      subroutine cloud_opac(f_dust)
+      implicit real*8 (a-h,o-z)
+      include 'parameter.inc'
+      integer:: i, ielnr, n_eps, ntau, nwtot
+      real*8 :: kappa_cloud, epsilon_cloud,f_dust
+      real*8 :: epsilon_cloud_old, 
+     * dust_abs, dust_sca
+
+      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
+      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
+     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
+     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
+     *    z_sw(max_lay),z_marcs_init(ndp), 
+     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
+     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
+     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
+     & ntau,iter
+      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
+     *    kos_step,nwtot
+
+      
+      open(0207,file='dust_abs_old.dat',
+     &  status='old',readonly)
+      do i=1, ntau
+            read(0207,*) dust_abs_old(i, 1:nwtot)
+      end do
+      close(0207)
+      open(0107,file='dust_sca_old.dat',
+     &  status='old',readonly)
+      do i=1, ntau
+            read(0107,*) dust_sca_old(i, 1:nwtot)
+      end do
+      close(0107)
+
+      open(0507,file='epsilon_cloud_old.dat',
+     &  status='old',readonly)
+      do i=1, n_eps
+            read(0507,*) ielnr, epsilon_cloud_old(i, 1:ntau)
+      end do
+      close(0507)
+      do i=1, ntau
+
+      dust_abs(i, 1:nwtot) = 
+     *   f_dust* dust_abs(i, 1:nwtot) + 
+     *   (1.0-f_dust)*dust_abs_old(i,1:nwtot)
+
+      dust_sca(i, 1:nwtot) = 
+     *   f_dust* dust_sca(i, 1:nwtot) + 
+     *   (1.0-f_dust)*dust_sca_old(i,1:nwtot)
+      end do
+      
+      do i=1, n_eps
+      epsilon_cloud(i, 1:ntau) = 
+     *       f_dust*epsilon_cloud(i,1:ntau) +
+     *       (1.0-f_dust)*epsilon_cloud_old(i, 1:ntau)
+      end do
+
+      return
+      end 
+!-----------------------------------------------------------------------
+      subroutine search_intp_ind(binbord,binbordlen,arr,arrlen,intpint)
+
+      implicit none
+
+      INTEGER            :: binbordlen, arrlen, intpint(arrlen)
+      DOUBLE PRECISION   :: binbord(binbordlen),arr(arrlen)
+      INTEGER            :: i_arr
+      INTEGER            :: pivot, k0, km
+
+      ! carry out a binary search for the interpolation bin borders
+
+      do i_arr = 1, arrlen
+
+      if (arr(i_arr) >= binbord(binbordlen)) then
+            intpint(i_arr) = binbordlen - 1
+      else if (arr(i_arr) <= binbord(1)) then
+            intpint(i_arr) = 1
+      else
+
+            k0 = 1
+            km = binbordlen
+            pivot = (km+k0)/2
+
+            do while(km-k0>1)
+
+            if (arr(i_arr) >= binbord(pivot)) then
+                  k0 = pivot
+                  pivot = (km+k0)/2
+            else
+                  km = pivot
+                  pivot = (km+k0)/2
+            end if
+
+            end do
+
+            intpint(i_arr) = k0
+
+      end if
+
+      end do
+      return
+      end
+
 
 !-----------------------------------------------------------------------
 ! Writes a MARCS output file to be read by DRIFT
@@ -15041,6 +15712,8 @@ c       close(946)
       character flag(ndp)
       dimension pg(ndp),surfgrav(ndp),v(ndp),emu(ndp),rad(ndp)
       dimension flip_rad(ndp), abundances(ndp,100), pg2(ndp)
+      dimension kappa_cloud_int(ndp)
+      real*8 :: kappa_cloud, kappa_cloud_int
       common /tauc/tau(ndp),dtauln(ndp),jtau
       common /cg/grav,konsg /cteff/teff,flux
       common /masse/relm
@@ -15058,10 +15731,32 @@ c       close(946)
      *    z_sw(max_lay),z_marcs_init(ndp), 
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps, n_lay
-      common /cdrift/ idust, ieps
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdrift/ idust, ieps, idustopac
       common /cmolrat/ fold(ndp,8),molold,kl
       common /cmetpe/ ppel(ndp), metpe
+      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
+     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
+     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
+     *      epsilon_cloud_old(max_eps,ndp)
+      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
+     * isw(max_eps)
+      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
+     *    kos_step,nwtot
+      open(unit=389, file='./data/abinit_abmarcs.dat')
+      read(389,*)
+      do n=1, max_eps !dependent on amount of elements in abinit_abmarcs.dat
+        read(389, '(12x,i2,8x,i2,4x,i2)') 
+     >       iabinit(n), iabmarcs(n), isw(n) 
+      
+      end do
+      close(389)
+
+      open(unit=2873, file='nlay_nwtot.in', status="replace", 
+     *       position="append", action="write")
+      write(2873,*) ntau
+      write(2873,*) nwtot
+      close(2873)
 
       !print*, "at marcs2drift"
 
@@ -15090,7 +15785,6 @@ c       close(946)
       if(metpe.eq.1) then
         call jon(tt(k),ppe(k),1,pgx,rox,dumx,0)
       else if(metpe.eq.2) then
-        
         pgx =  pp(k)-ppr(k)-ppt(k)
         !call jon(tt(k),ppel(k),1,pgx,rox,dumx,0)
       end if
@@ -15189,7 +15883,47 @@ c       close(946)
         end if
       end do
       close(33)
+      if (idust == 0) then
+      open(unit=0307, file='kappa_cloud_lay.dat', status="replace", 
+     *       position="append", action="write")
+
+      do i=1, ntau
+      kappa_cloud_int(i) = 0.0
+      write(0307, *) kappa_cloud_int(i)
+      end do
+      close(0307)
+
+      open(unit=0407, file='dust_abs.dat', status="replace", 
+     *       position="append", action="write")
+
       
+      do i=1, ntau
+      dust_abs(i, 1:nwtot) = 0.0
+      write(0407, *) dust_abs(i, 1:nwtot)
+      end do
+      close(0407)
+      open(unit=0507, file='dust_sca.dat', status="replace", 
+     *       position="append", action="write")
+
+      do i=1, ntau
+      dust_sca(i, 1:nwtot) = 0.0
+      write(0507, *) dust_sca(i, 1:nwtot)
+      end do
+      close(0507)
+
+      do m=1, max_eps
+              eps_init_el = 10.0**(abinit(iabinit(m))-12.0)
+              epsilon_cloud(m,1:ntau) = eps_init_el            
+      end do
+
+
+      open(unit=0707, file='epsilon_cloud.dat', status='replace',
+     * position='append', action='write' )
+      do m=1, max_eps
+      write(0707, *) isw(m), epsilon_cloud(m,1:ntau)
+      end do
+      close(0707)    
+      end if
       return 
       end
 
@@ -15216,14 +15950,18 @@ c
 c GGchem_ppel contains overall output from GGchem (it is written in
 c ggchems main.f ) such as total electron pressure, total atom pressure
 c and total molecular pressure. 
+!
+! Updated by BCE oct 22 to compute atomic fractions for continuum
+! correctly
+!
 ************************************************************************
 
       subroutine GGCHEM(k,temp,pgas)
       
       implicit real*8 (a-h, o-z)
       include 'parameter.inc'
-      integer, dimension(75) :: idmarcspart, idggchempart
-      integer, dimension(32) :: idmarcspres, idggchempres
+      !integer :: idmarcspart, idggchempart
+      !integer :: idmarcspres, idggchempres      
       character*2, dimension(17) :: atmarcsnames
       character*2, dimension(83) :: atnames_gg
       character*4 abcname
@@ -15236,7 +15974,6 @@ c and total molecular pressure.
      > C_id, Mg_id,H_id
       real*8, dimension(500) :: Al_x, He_x, Si_x, C_x, 
      > Mg_x, H_x 
-
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
@@ -15244,57 +15981,63 @@ c and total molecular pressure.
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
-     >                ,idmarcspres,idggchempres
-     >                ,idmarcspart,idggchempart
-     >                ,atnames(22),molnames(543), molnames2(75)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)     
+     >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
       
-      common /cdrift/ idust
-      common/ci5/abmarcs(18,ndp),anjon(17,5),h(5),part(17,5),dxi,
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
+      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),dxi,
      *           f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       common/ci1/fl2(5),parco(45),parq(180),shxij(5),tparf(4),
      *  xiong(16,5),eev,enamn(ndp),sumh(ndp),xkbol,nj(16),iel(16),
      *  summ(ndp),nel
       common/cabinit/abinit(natms),kelem(natms),nelem
       common/cabnames/abcname(natms)
+      logical ggchem_mol(maxosmol), ggchem_index_read
+      integer ggchem_index(maxosmol), molno
+      character(len=5) molnames_new(maxosmol)
+      common /molupdate/ molnames_new, 
+     * ggchem_index,
+     * molno, ggchem_mol, ggchem_index_read
+      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
+     *    eps(max_eps,max_lay),temp_sw(max_lay),pgas_sw(max_lay), 
+     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
+     *    z_sw(max_lay),z_marcs_init(ndp), 
+     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
+     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdusteps/ ielnr(max_eps)
+      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
+     * isw(max_eps)
 
       bar=1.Q+6
       
-      if (k==1) then
       
       do n=1, 48
             abundforgg(n) = abinit(n)
       end do
-      end if
-      !print*, "idust in gg ", idust
+      
+      
       if (idust ==1) then
-            abundforgg(12) = log10(abmarcs(8, k))+12. !Mg
-            !print*, "Mg gg ", abundforgg(12)
-            abundforgg(14) = log10(abmarcs(10, k))+12. !Si
-            !print*, "Si gg ", abundforgg(14)
-            abundforgg(21) = log10(abmarcs(17, k))+12. !Ti
-            !print*, "Ti gg ", abundforgg(21)
-            abundforgg(8) =  log10(abmarcs(5, k))+12. !O
-            !print*, "O gg ", abundforgg(8)
-            abundforgg(25) = log10(abmarcs(15, k))+12. !Fe
-            !print*, "Fe gg ", abundforgg(25)
-            abundforgg(13) = log10(abmarcs(9, k))+12. !Al
-            !print*, "Al gg ", abundforgg(13)
-            abundforgg(20) = log10(abmarcs(13, k))+12. !Ca
-            !print*, "Ca gg ", abundforgg(20)
-            abundforgg(16) = log10(abmarcs(11, k))+12. !S
-            !print*, "S gg ", abundforgg(16)
-
-
-
+      do m=1, n_eps
+         do n=1, max_eps
+            if (ielnr(m)==isw(n)) then
+            abundforgg(iabinit(n)) = 
+     >       log10(abmarcs(iabmarcs(n), k))+12.
+             
+              exit
+            end if
+          end do
+      end do
       end if
 
       open(unit=546, file='abund_drift.in', status='replace')
       do n=1, 48
             if (n <36  .or. n==44 ) then
             write(546,'(a5f6.2)') (abcname(n),abundforgg(n))
-            !print*, abcname(n), abundforgg(n)
+            
             end if
       end do
       close(546)
@@ -15327,17 +16070,14 @@ c and total molecular pressure.
       call system('./GGchem/ggchem marcs2ggchem.in > ggchem_out.txt')
 
       open(unit=990,file='GGchem_ppel')
-        read(990,*) Tg,pges,ppelGG,ggmuk,ggrhok,ggrhodust,ppsumk
+        read(990,*) Tg,pgesk,ppelGG,ggmuk,ggrhok,ggrhodust,ppsumk
      &     ,ppappsumk,ppnonappsumk,ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total
       close(990)
-       !print*, "pgas before gg ", pgas
-       !print*, "pgas in gg ", pges
       open(unit=809, file='./marcs2gg_partpp.dat')
              read(809,124) 
      * ((idmarcspart(m), idggchempart(m),molnames2(m)), m=1, 75)
 124          format(i4,3x,i3,4x,a4)
-      close(809)
-
+      close(809)      
         open(unit=321, file='ndensity.dat')
             read(321,*) (rhonallat(k,m),m=1,22)
             read(321,*) (rhonallmol(k,m), m=1,543)
@@ -15352,11 +16092,13 @@ c and total molecular pressure.
                 read(707,*)
                 read(707,709) (molnames(m),m=1,543)
 
+
 708             format(i4,18x,a2)
 709             format(10a8)
               
         close(707)
-
+        
+        
 
         Al = 'AL'
         He = 'HE'
@@ -15521,163 +16263,280 @@ c and total molecular pressure.
         f4gg = ppallmol(k,15) / phydrototal
         f5gg = ppallmol(k,1) / phydrototal
 
-        do n =1,75
-              gg_partpp(k,idmarcspart(n)) = ppallmol(k,idggchempart(n))
-        enddo
+C       do n =1,imarcs2gg
+C              gg_partpp(k,idmarcspart(n)) = ppallmol(k,idggchempart(n))
+C       enddo
       
-      iggcall = 1
+        iggcall = 1
       return
       end
-      
-C---------------------------------------------
-!!Subroutine IRRAD obtains the change in energy (EJ(k)) from stellar irradiation
-!!at a given atmospheric layer (k) and wavelength (wlos(j)).
-      SUBROUTINE IRRAD(K,J)
+
+!-----------------------------------------------------------------------
+! Reads in the dust data from the DRIFT output file and makes a table
+! of dust opacities
+! Juncher 2015
+! BCE 2023 updats to use new mie routine
+!-----------------------------------------------------------------------
+      subroutine drift2marcs
+      use mie_precision,only: sp,dp,qp
+      use mie_data
+      use mie_opacity
       implicit real*8 (a-h,o-z)
-!--------------------------------------------
-C STATE VARIABLES
       include 'parameter.inc'
-C DIMENSIONS
-      real*8 THETA,MUIR
-      real*8 Rstar_au, Rsun_au
-      integer :: K 
-C COMMONS
-      COMMON /CTRAN2/EJ(NDP),TOTEJ(NDP),TOTIR(NDP),E(NDP),TOTE(NDP),
-     & E_P(NDP),EJ_P(NDP), EJ_PLANET(NDP), E_PLANET(NDP), f(nwl)
-      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
-     * STEFAN
-      
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *  kos_step,nwtot,nosmol,newosatom,newosatomlist,
-     *  nchrom,osfil(60),molname(60),sampling
+      real*8    :: L0(max_lay), L1(max_lay), 
+     * L2(max_lay), L3(max_lay), object
+      !real*8, parameter :: pi = 3.14159265
+      character (len=50) :: dust_names, dust_files
+      character (len=50) :: find_dust, dname
+      character(99) get_path
+      character(:), allocatable :: path
+      complex(kind=dp) :: cri_inc
+      logical   :: first
+      complex(kind=dp), dimension(nwl) :: N_eff
+      real(kind=dp), dimension(4) :: LL
+      real(kind=dp),dimension(nwl) :: k_ext_lay, g_lay, a_lay,
+     > kabs_dust, ksca_dust
+
+      dimension :: V_inc(max_inc,max_lay),
+     *             a(max_lay)
+      dimension :: tt_read(ndp),rad_read(ndp),
+     *  ro_read(ndp), surfgrav_read(ndp), v_read(ndp), 
+     *  flag_read(ndp), emu_read(ndp)
+
+
+      dimension :: wn(2000),p(2),step(2),var(2)
       common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     & ntau,iter
-      COMMON /CIR/TAUIR(NDP),XIR(NDP,NWL),SIR(NDP,NWL),synspec(nwl),
-     * DTAUIR(NDP), DTAUPLANET(NDP), DTAUP(NDP)
-      COMMON /CTRAN/X(NDP),S(NDP),BPLAN(NDP),XJ(NDP),XH(NDP),XK(NDP)
-     &  ,dumtran(4*ndp),idumtran(3)
-      common /cirinp/steff, reflect,irrinp,irrin
-      common /irradcs/rstar, semimajor,tbottom   
-      COMMON /ROSSC/XKAPR(NDP),CROSS(NDP) 
-      COMMON /CSTYR/MIHAL,NOCONV 
-      COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
-C
-C     STEFF:    Effective T of star in K
-C     R:        Distance from star to planet in AU
-C     RS:       Stellar radius in AU
+     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
+     * ntau,iter
+      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
+     *    kos_step,nwtot
+      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
+     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
+     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
+     *    z_sw(max_lay),z_marcs_init(ndp), 
+     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
+     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
+     *      r_null,f_eps,f_opac, n_lay, n_eps
+      common /cdustdata2/ dust_names(max_inc), dust_files(max_inc)
+      common /cdusteps/ ielnr(max_eps)
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
+      common /cdustnew/ cri_inc(max_inc,nwl), n_dust
 
-      Rsun_au=0.00465047
-      Rstar_au= rstar*Rsun_au
-
-      THETA=0.
-      MUIR=SIN((PI/2.)-THETA)
-C
-
-      IF(K.GT.1) GO TO 101
-      
-      E(K)= BPL(STEFF,WLOS(J))*(Rstar_au/semimajor)**2/(4.)
-
-      EJ(K) = E(K)-E(K) *EXP(-TAU(1)*(X(1)+S(1))/MUIR)
-      E(K) = E(k) *EXP(-TAU(1)*(X(1)+S(1))/MUIR)
-      
-      if (ABS(EJ(K)) < 1e-33) then 
-            E(K) = 0.0
-            EJ(k)= 0.0
+! Read in dust data from DRIFT
+      open(110,file='./out_default/drift2marcs.dat',
+     &  status='old',readonly)
+      do i=1,50
+        read(110,'(A)') find_dust
+        if (find_dust(5:17) == ' dust species') then
+            read (find_dust(:4),'(i4)') n_dust
+            exit
+        end if
+      end do
+      print*, "Number of dust species: ", n_dust
+      if(n_dust .gt. max_inc) then
+        print *, 'Error: increase max_inc.'
+        stop
       end if
-
-      GO TO 103
-101   CONTINUE
-      if (ABS(EJ(K-1)) < 1e-33) then
-            E(k) = 0.0 
-            EJ(k)=0.0
-      else
-            E(K)=E(K-1)*EXP(-TAU(K)*(X(K)+S(K))/MUIR)     
-            EJ(K)=E(K-1)-E(K)
-            if (ABS(EJ(K)) < 1e-33) then 
-                  EJ(K)=0.0
-            end if
+      do i=1,n_dust
+        read(110,*) dust_names(i)
+        !print*, dust_names(i)
+      end do
+      read(110,'(i4)') n_eps
+      if (n_eps>max_eps) then 
+      print*, 'Error: increase max_eps'
+      stop
       end if
-            
+      print*, "Number of affected elements by cloud formation: ", n_eps
+      !if(n_eps .gt. max_eps) then
+       ! print *, 'Error: increase max_eps.'
+       ! stop
+      !end if
+      do i=1,n_eps
+        read(110,*) ielnr(i)
+      end do
+      read(110,*)
+      read(110,*)
+      i = 1
+      do
+        read(110,'(8e20.12,99e20.12)',iostat=io) 
+     *    z_sw(i),temp(i),rho_sw(i),pgas(i),L0(i),L1(i),
+     *    L2(i), L3(i), rhod(i), V_inc(1:n_dust,i),
+     *    eps(1:n_eps,i)
+        if(io .lt. 0) exit
+        if(L0(i) .le. 0.) then
+            exit
+        else
+          a(i) = (3./4./pi)**(1./3.)*L1(i)/L0(i) 
+        end if
+        i = i + 1
+      end do
+      close(110)
+      n_lay = i-1
+      print*, "DRIFT layers #", n_lay
+      open(unit=189, file='dust_file.dat', readonly)
+      do n=1, max_inc
+            read(189,'(A)') dname
+            !print*, 'dust in dust file ', trim(dname)
+            n_on = 0
+            do i=1, n_dust
+              if (trim(dname)== dust_names(i)) then
+                  !print*, "dust present ", dust_names(i)
+                  read(189, '(A)') get_path
+                  path= trim(get_path)
+                  dust_files(i) = path
+                  n_on =1
+                  exit
+              end if
+            end do
+            if (n_on == 0) read(189, *) 
+      end do
+      close(189)
+
+      open(unit=33, file='marcs2drift.dat')
+      do i=1,22
+            read(33,*)
+      end do
+      do k=1,ntau
+        
+        read(33,'(i5,6e16.8,a6,e16.8)') k_read, rad_read(k), 
+     *  tt_read(k), pg_read(k), ro_read(k),
+     *  surfgrav_read(k), v_read(k), flag_read(k), emu_read(k)
+      if (k==1) r_null = rad_read(k)
       
-
-103   CONTINUE
+      end do
+      close(33)
+      if(n_lay .gt. max_lay) then
+        print *, 'Warning: only used the first 1000 layers from DRIFT.'
+      end if
       
-      RETURN
-      END
+! Read in optical constants
+      
+      call optical_data(n_dust, cri_inc)
 
+! Make opacity table
+      do j=1,n_lay
+      !calculate effective medium theory
+      call calc_emt(V_inc(:,j), N_eff)
+      LL(1) = L0(j)
+      LL(2) = L1(j)
+      LL(3) = L2(j)
+      LL(4) = L3(j)
+      call calc_Mie(LL,N_eff,k_ext_lay,g_lay,
+     > a_lay, kabs_dust, ksca_dust)
+      dabstable(j, :) = kabs_dust
+      dscatable(j, :) = ksca_dust
+      end do
+     
 
+      return
+      end
 
-
-
-!!Subroutine REFLECTED_IRRAD obtains the change in energy (EJ_P(k)) from the planet's surface
-!!reflected radiation at a given atmospheric layer (k) and wavelength (wlos(j)). 
-      SUBROUTINE REFLECTED_IRRAD(K,J)
+      !-----------------------------------------------------------------------
+! Reads in optical data for solids
+! Juncher 2015
+! BCE 2023 updated for different interpolation/extrapolation
+!-----------------------------------------------------------------------
+      subroutine optical_data(n_dust, cri_inc)
+      use mie_precision,ONLY: sp,dp,qp
       implicit real*8 (a-h,o-z)
-!--------------------------------------------
-C STATE VARIABLES
       include 'parameter.inc'
-C DIMENSIONS
-      real*8 THETA,MUIR
-      real*8 Rstar_au, Rsun_au
-      integer :: K 
-      dimension TAUIR_P(NDP)
-C COMMONS
-      COMMON /CTRAN2/EJ(NDP),TOTEJ(NDP),TOTIR(NDP),E(NDP),TOTE(NDP),
-     & E_P(NDP),EJ_P(NDP), EJ_PLANET(NDP), E_PLANET(NDP), f(nwl)
-      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
-     * STEFAN
+      integer :: i, j, k, io, u, nlines, counter, n_dust, n_lines
+      real*8, allocatable, dimension(:) :: wl_work, n_work, k_work
+      real*8  :: a, b, nkdata(3,3000)
+      real*8  :: ndata(max_inc,nwl), kdata(max_inc,nwl)
+      complex(kind=dp) :: cri_inc(max_inc, nwl)
+      character :: filename(16)*50
+      character(len=200) :: info
+      logical :: conducting,ex
+      character (len=50) :: dust_names, dust_files
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *  kos_step,nwtot,nosmol,newosatom,newosatomlist,
-     *  nchrom,osfil(60),molname(60),sampling
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     & ntau,iter
-      COMMON /CIR/TAUIR(NDP),XIR(NDP,NWL),SIR(NDP,NWL),synspec(nwl),
-     * DTAUIR(NDP), DTAUPLANET(NDP), DTAUP(NDP)
-      common /cirinp/steff,reflect
-      common /irradcs/rstar, semimajor,tbottom  
-      COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)   
-C
-C     STEFF:    Effective T of star in K
-C     R:        Distance from star to planet in AU
-C     RS:       Stellar radius in AU
-
-      Rsun_au=0.00465047
-      Rstar_au= rstar*Rsun_au
-
-      THETA=0.
-      MUIR=SIN((PI/2.)-THETA)
-
-      if (K==NTAU) then
-            E_P(K) = reflect*EJ(K)
-            EJ_P(K) = e_p(k)
-            if (ABS(EJ_P(K)) < 1e-33) then
-                  e_p(k) = 0.0
-                  EJ_P(K) = 0.0
-            end if
+     *    kos_step,nwtot
+      common /cdustdata2/ dust_names(max_inc), dust_files(max_inc)
+      !common /cdustnew/ cri_inc(max_inc,nwl), n_dust
       
-      else 
-            if (ABS(EJ_P(K+1)) < 1e-33) then
-                  E_P(k) = 0.0 
-                  EJ_P(k)=0.0
-            else
-                  dc2 = (XIR(K,J)+SIR(K,J)+ XIR(K+1,J)+SIR(K+1,J))/2.
-                  dro2 = (ro(k+1)+ro(k))/2.
-                  dkappa2 = (xkapr(k+1)+xkapr(k))/2.
-                  DTAUP(K) = dc2 * dro2* dkappa2 * abs(ZZ(K)-ZZ(K+1))
+      do i=1, n_dust
+        u = 6785
+        !print*, dust_files(i)
+        open(unit=u,file=dust_files(i))
+        
+        read(u,*) n_lines, conducting
+        read(u,*) ; read(u,'(A200)') info; 
+     *  read(u,*) ; read(u,*)
+        allocate(wl_work(n_lines),n_work(n_lines),k_work(n_lines))
 
-                  E_P(K)=E_P(K+1)*EXP(-DTAUP(K)/MUIR)     
-                  EJ_P(K)=E_P(K+1)-E_P(K)
-                  if (ABS(EJ_P(K)) < 1e-33) then 
-                        EJ_P(K)=0.0
-                  end if
+        do l = 1, n_lines
+            read(u,*) wl_work(l),n_work(l),k_work(l)
+            !print*, wl_work(l),n_work(l),k_work(l)
+            n_work(l) = max(0.0D+0, n_work(l))
+            k_work(l) = max(0.0D+0, k_work(l))
+            if (dust_names(i) == 'CaSiO3[s]') then
+            n_work(l) = 1.0
+            k_work(l) = 0.0
             end if
-      end if
-      
-      RETURN
-      END
+        enddo
+        close(u)
 
+        wl_work(:) = wl_work(:)*1.0e+4
+        do l = 1, nwtot
+            !if (i==4) print*, wlos(l)
+            ! If required wavelength is less than available data - keep constant
+         if (wlos(l) < wl_work(1)) then
+            !if (i==4) print*, "first wl smaller for SiO2"
+            ndata(i,l) = n_work(1)
+            kdata(i,l) = k_work(1)
+            ! If required wavelength is greater than available data - extrapolate
+            ! Non conducting: n is constant - k is linear decreasing
+            ! Conducting: n and k are log-log extrapolated
+         else if (wlos(l) > wl_work(n_lines)) then
+            !if (i==4) print*, "extrapolation!"
+            if (conducting .eqv. .False.) then
+                ndata(i,l) = n_work(n_lines)
+                kdata(i,l) = k_work(n_lines)*wl_work(n_lines)/wlos(l)
+            else if (conducting .eqv. .True.) then
+                do l1 = n_lines,1,-1
+                  if (wl_work(l1) < 0.7D+0*wl_work(n_lines)) then  ! data can be noisy, so
+                    exit                                           ! it's safer to use larger
+                  endif                                            ! region to get the slope
+                enddo
+                fac = log(wlos(l)/wl_work(n_lines))/
+     *           log(wl_work(l1)/wl_work(n_lines))
+                ndata(i,l) = exp(log(n_work(n_lines)) 
+     &            + fac*log(n_work(l1)/n_work(n_lines)))
+                kdata(i,l) = exp(log(k_work(n_lines)) 
+     &            + fac*log(k_work(l1)/k_work(n_lines)))
+            endif
+              ! Data is availible in the required wavelength range - log-log interpolation
+              
+       else
+              ! Loop across work arrays untill straddle point is point then interpolate
+            do l1 = 1, n_lines - 1
+              if (wlos(l) >= wl_work(l1) .and. 
+     *         wlos(l) <= wl_work(l1+1)) then
+                  fac = log(wlos(l)/wl_work(l1))/
+     *             log(wl_work(l1+1)/wl_work(l1))
+                  ndata(i,l) = exp(log(n_work(l1)) 
+     *             + fac*log(n_work(l1+1)/n_work(l1)))
+                  if (k_work(l1) <= 0.0D+0 .or. 
+     *             k_work(l1+1) <= 0.0) then
+                    kdata(i,l) = 0.0D+0
+                  else
+                    kdata(i,l) = exp(log(k_work(l1)) 
+     *                      + fac*log(k_work(l1+1)/k_work(l1)))
+                  endif
+                  exit
+              endif
+            enddo
+       endif
+      enddo
+      deallocate(wl_work,n_work, k_work)
+      
+      end do
+      do i=1,nwtot
+        cri_inc(1:n_dust,i) = 
+     >   dcmplx(ndata(1:n_dust,i),kdata(1:n_dust,i))
+      end do
+      
+      end
 !--------------------------------------------
       subroutine krome_routine(ntau,T,ptot)
 !--------------------------------------------
@@ -15700,30 +16559,49 @@ C      implicit none
       integer,dimension(543,2):: index_mol !indices of mol specs, first index marcs, second index krome   
       integer,dimension(75,2) :: index_mol2!indices of mol specs, first index marcs, second index krome        
       integer,dimension(1000) :: index_not !indices of species NOT found in marcs mols and atoms, only krome index needed
+      integer:: M_index
       integer:: atom_counter,mol_counter,mol2_counter,not_counter !counters for different kinds of species
       integer:: buffer
       logical:: not_found
+      logical:: first_call = .True.
+      logical:: first_not_call = .True.
+      logical:: full_output = .True.
+      logical:: final_output = .False.
+      integer:: return_marcs
+      integer:: photo_on
       real*8::Tgas,dt,num_den(ntau,nsp),spy
-      real*8::R, Na, Pcon(ntau), T(ntau), ptot(ndp)
+      real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
       real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
       real*8::mix_rat(ntau,nsp)
-      real*8::num_den_cont(5000,nsp),time_cont(5000)
-      real*8::time,tmax,dtmax
+      real*8::num_den_cont(100000,nsp),time_cont(100000)
+      real*8::time,dtmax,dt_inc
       real*8::ss_time(ntau)
+      real*8::user_JO2, user_JO3
+      real*8::krome_tmax
       character(len=100)::spec_name
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
+      REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
+      real*8 :: pp_sum,num_sum
+      common /Chapvar/J_O2, J_O3
+      !COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
+      !&   VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAUo,ITER
+C NTAUo above is labelled that to avoid conflict
+
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
-     >                ,presmogg(33),ppat(22),ppmol(543)
+     >                ,ppat(22),ppmol(543)
      >                ,idmarcspres(32),idggchempres(32)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
-      
+      common /noneq/ krome_on,photo_on
+      common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
+      common /noneq_output/ output_freq,krome_output,krome_return
       call krome_init() !init krome (mandatory)
 
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
+      R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
@@ -15744,17 +16622,22 @@ C      implicit none
         endif 
       enddo
       close(12)
-      write(*,*) nsp,'Species are found'
-      write(*,*) 'The following species are found in your krome build'
-      write(*,*) chem_spec(1:nsp)
-
+      if (first_call.eq..True.) then
+        !write(*,*) nsp,'Species are found'
+        write(*,*) 'The following',nsp,
+     >   'species are found in your krome build'
+        write(*,*) chem_spec(1:nsp)
+        first_call = .False.
+      endif      
       !check if species is in atomnames, molnames, molnames2 and safe indices
       !check also if speices not in MARCS database
       atom_counter=0
       mol_counter=0
       mol2_counter=0
       not_counter=0
-
+      !write(*,*) atomnames
+      !write(*,*) molnames
+      !write(*,*) molnames2
       do i=1,krome_nmols
        not_found=.True.
        do k=1,22 !number of atoms    
@@ -15783,18 +16666,32 @@ C      implicit none
          not_found=.False.    
          cycle     
         endif        
-       enddo  
+       enddo
+       if (trim(chem_spec(i)).eq.'M') then
+        !write(*,*) 'M identified as', i
+        M_counter=1
+        M_index = i
+        not_found=.False.
+        cycle
+       endif  
        if (not_found==.True.) then
         not_counter=not_counter+1
         index_not(not_counter)= i
+        if (first_not_call.eq. .True.) then
         write(*,*) trim(chem_spec(i)),
-     >  ' has not been found in MARCS database' 
+     >  ' has not been found in MARCS' 
+        endif
        endif  
       enddo
+      
       if (not_counter.gt.0) then
-       write(*,*) 'Species not found in MARCS database will be set to ',
+       if (first_not_call.eq..True.) then
+       write(*,*) 'Species not found in MARCS will be set to ',
      > 'default abundance of 1E-20'  
+       first_not_call=.False.
+       endif
       endif
+
       do k = 1,ntau
         Pcon(k) = 0.1*Na/(R*T(k))*1E-6
         num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
@@ -15814,41 +16711,57 @@ C      implicit none
         do i=1,not_counter
          num_den(k,index_not(i)) = 1d-20
         enddo
+        if (M_counter==1) then
+         num_den(k,M_index) = ptot(k)*Pcon(k)
+        endif
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
-      enddo
-      
-      spy = 3.65d2 * 2.4d1 * 3.6d3 !seconds per year
-      dtmax = 1E18
-      tmax = 1d12
 
-      !write header of output file
-      open(unit=13,file='krome_output.dat')
-      write(13,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ','Time [s] ',
-     >'Timestep [s] ','Temperature [K] '
-      do i=1,nsp
-        write(13,'(A8,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
       enddo
-      write(13,'(A,/)') ' '
+      !write header of full output file
+      if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+        open(unit=13,file='krome_full_output.dat')
+        write(13,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ','Time [s] ',
+     >'Timestep [s] ','Temperature [K] '
+        do i=1,nsp
+         write(13,'(A8,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
+        enddo
+         write(13,'(A,/)') ' '
+      endif 
       !main loop
       do k=1,ntau
         istep = 1
-        dt = 1E-10
+        dt = dt_start
         time=0.0
+
+        !Kristians photolysis module
+
+        if (photo_on.eq.1) then
+         user_JO2 = J_O2(k)
+         user_JO3 = J_O3(k)
+         call krome_set_user_JO2(user_JO2)
+         call krome_set_user_JO3(user_JO3)
+        endif
+
         do
          call krome(num_den(k,:), T(k), dt) !call KROME
          num_den_cont(istep,:) = num_den(k,:)
          time_cont(istep) = time
-         if(istep==1 .or. istep==2 .or. mod(istep,int(5E2))==0) then
+         if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+          if(istep==1 .or. istep==2 .or. 
+     & mod(istep,int(output_freq))==0) then
            write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
-     >     num_den(k,:)
+     >     num_den(k,:)     
+          end if
          end if
-         dt = min(dt*1.01,dtmax)
+         dt = min(dt*dt_inc,dt_max)
          time = time + dt !increase time
-         if(time>tmax) then 
-           write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
-     >     num_den(k,:)               
+         if(time>krome_tmax) then 
+           if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+            write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
+     >      num_den(k,:)        
+           endif       
            do j = istep,1,-1
-              if (num_den_cont(j,5)<1.01*num_den_cont(istep,5)) then
+              if (num_den_cont(j,nsp)<1.01*num_den_cont(istep,nsp)) then
                     ss_istep(k)=j
                     ss_time(k)=time_cont(j)
               endif
@@ -15858,5 +16771,34 @@ C      implicit none
           istep = istep + 1 !increase timestep
         end do
       end do
-      return
+      !final output
+      if ((krome_output.eq. 2).or.(krome_output.eq. 3)) then
+        open(unit=77,file='krome_final_output.dat')
+        write(77,'(A6,A9,A16)',Advance = 'No') 'Layer ','Time [s] '
+     >,'Temperature [K] '
+        do i=1,nsp
+         write(77,'(A8,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
+        enddo
+         write(77,'(A,/)') ' '
+        do k = 1,ntau
+          write(77,'(I3,3(999E17.8e3))') k,time,T(k),
+     >    num_den(k,:)
+        enddo
+      endif
+    
+C Returning the krome values to MARCS
+      if (krome_return == 1) then
+        do k=1,ntau
+          do i=1,atom_counter
+           num_den_at(k,index_at(i,1)) = num_den(k,index_at(i,2))
+          enddo
+          do i=1,mol_counter
+           num_den_mol(k,index_mol(i,1)) = num_den(k,index_mol(i,2))
+          enddo
+          ppallmol(k,:) = num_den_mol(k,:)/Pcon(k)
+          ppallat(k,:) = num_den_at(k,:)/Pcon(k)
+        enddo
+      endif
+
+      return      
       end
