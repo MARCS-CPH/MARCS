@@ -1,0 +1,11 @@
+#Reactions for the Chapman mechanism KHM from NIST. J's from MARCS via userdiff
+@common:user_JO2, user_JO3
+@format:idx,R,R,R,P,P,P,rate
+1,O2,O,M,O3,M,,2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(8.314E-3*Tgas))
+2,O3,O,,O2,O2,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(8.314E-3*Tgas))
+3,O2,,,O,O,,user_JO2
+4,O3,,,O2,O,,user_JO3
+5,O,O,M,O2,M,,5.21E-35*exp(-900/Tgas)
+6,O2,M,,O,O,M,(5.21E-35*exp(-900/Tgas))/(exp(-(-(5.953360E+04*Tgas**(-1)-1.615166E+00*log(Tgas)-3.609765E+00 + 4.062738E-04*Tgas-1.869462E-08*Tgas**2)*8.314E-3*Tgas)/(8.314E-3*Tgas)))*(1E5/(8.314*Tgas)*6.02214076E+23*1E-6)
+7,O3,M,,O2,O,M,(2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(8.314E-3*Tgas)))/(exp(-((-(7.225562E+04*Tgas**(-1)-2.275012E+00*log(Tgas)-1.492936E+01 + 6.968856E-04*Tgas-3.980600E-08*Tgas**2)*8.314E-3*Tgas)-(-(5.953360E+04*Tgas**(-1)-1.615166E+00*log(Tgas)-3.609765E+00 + 4.062738E-04*Tgas-1.869462E-08*Tgas**2)*8.314E-3*Tgas))/(8.314E-3*Tgas)))*(1E5/(8.314*Tgas)*6.02214076E+23*1E-6)
+8,O2,O2,,O3,O,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(8.314E-3*Tgas))/exp(-(2*(-(5.953360E+04*Tgas**(-1)-1.615166E+00*log(Tgas)-3.609765E+00 + 4.062738E-04*Tgas-1.869462E-08*Tgas**2)*8.314E-3*Tgas)-(-(7.225562E+04*Tgas**(-1)-2.275012E+00*log(Tgas)-1.492936E+01 + 6.968856E-04*Tgas-3.980600E-08*Tgas**2)*8.314E-3*Tgas))/(8.314E-3*Tgas))
