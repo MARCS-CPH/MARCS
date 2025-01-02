@@ -1,0 +1,12 @@
+#Reactions for the Chapman mechanism KHM from NIST. J's from MARCS via userdiff
+@common:user_JO2, user_JO3
+@format:idx,R,R,R,P,P,P,rate
+@var: R = 8.31446261815324E-3
+1,O2,O,M,O3,M,,2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(R*Tgas))
+2,O3,O,,O2,O2,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(R*Tgas))
+3,O2,,,O,O,,user_JO2
+4,O3,,,O2,O,,user_JO3
+5,O,O,M,O2,M,,5.21E-35*exp(-900/Tgas)
+6,O2,M,,O,O,M,5.21E-35*exp(-900/Tgas)
+7,O3,M,,O2,O,M,2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(R*Tgas))
+8,O2,O2,,O3,O,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(R*Tgas))

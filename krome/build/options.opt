@@ -1,8 +1,0 @@
-##############
-#options for test reverse
-
--n networks/react_NO
--reverse
--noSinkCheck
--checkConserv
--n networks/react_NO
