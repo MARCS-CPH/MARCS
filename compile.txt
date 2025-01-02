@@ -1,0 +1,7 @@
+To compile MARCS for a normal run:
+ifort -g -save -O2 -check bounds -mcmodel=medium -align commons -fpe0 marcs.f -o marcs
+executable is then the file 'marcs'
+
+To compile MARCS for debugging: 
+ifort -g -save -O0 -traceback -mcmodel=medium -check bounds -align commons -fpe0 marcs.f -o marcs
+
