@@ -1,0 +1,8 @@
+#This is a test network for the chapman cycle
+@format:idx,R,R,R,P,P,P,rate
+@var: R = 8.31446261815324d-3
+1,O2,O,M,O3,M,,2.21E-34*(Tgas/298)**(-1.4)*exp(1.8/(R*Tgas))
+2,O3,O,,O2,O2,,4.98E-12*(Tgas/298)**(0.5)*exp(-15.89/(R*Tgas))
+3,O,O,M,O2,M,,5.21E-35*exp(-900/Tgas)
+4,O2,M,,O,O,M,1.01E-8*(Tgas/298)**(-1)*exp(-494/(R*Tgas))
+5,O3,M,,O2,O,M,7.16E-10*exp(-93.12/(R*Tgas))

@@ -1,6 +1,0 @@
-##############
-#options for test atmosphere
-DEV
--n networks/react_kast80
--noSinkCheck
--n networks/react_kast80
