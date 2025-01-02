@@ -14,36 +14,35 @@ module load astro gdb
 ### INPUT AND TEMP FOLDERS ###
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
-#in_dir='./models/old_KHM/KHM_email/'
-in_dir='./models/krome_test/krome_on_earth_irrad_on/t700/logg_299/'
-out_dir='./models/krome_test/krome_on_earth_irrad_on/t700/logg_299/'
-in_filename=${in_dir}t070g29exo50Earth_krome_on_irrad_on_higher_noconv
-out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on
-#out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on_higher_noconv_return
-#out_filename_dat=${out_dir}t070g29exo50Earth_krome_off_irrad_on_higher_noconv.dat
+
+in_dir='./models/basic_test/t700g29/'
+out_dir='./models/basic_test/t700g29/'
+in_filename=${in_dir}t070g29exo50Earth_krome_on_irrad_on
+out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on_new
+
 #mkdir ${out_dir}
 mkdir $TMPDIR
 
 ### INPUT FILES ###
 cp marcs.input mxms7.input
-
-#cp ${in_dir}/input.arciv arcivaaa.dat
 cp ${in_filename}.arciv arcivaaa.dat
 
+### COPY FILES TO TEMP DIRECTORY ###
 cp arcivaaa.dat $TMPDIR/
 rm arcivaaa.dat
 #cp *.txt $TMPDIR/
 cp -r data $TMPDIR/
 cp *.inc $TMPDIR/
 cp *.dat $TMPDIR/
-#cp -r ${in_dir} $TMPDIR/
 cp mxms7.input $TMPDIR/
 cp marcs $TMPDIR/
+cp -r GGchem $TMPDIR/
+### FOR NONEQ RUNS
 cp $CWD/reactions_verbatim.dat $TMPDIR/
 cp -r $CWD/krome $TMPDIR
 
 
-cp -r GGchem $TMPDIR/
+
 cd $TMPDIR 
 
 
@@ -58,14 +57,19 @@ cp data/jonabs.dat $CWD/${out_dir}
 cp data/mol_names.dat $CWD/${out_dir}
 cp mxms7.input $CWD/${out_dir}
 cp $CWD/runmarcs    $CWD/${out_dir}
-cp $CWD/runmarcs.add $CWD/${out_dir}
-cp $TMPDIR/pp.dat $CWD/${out_dir}
-cp $TMPDIR/GGchem_ppel $CWD/${out_dir}
-cp $TMPDIR/nasa2ggchem.dat $CWD/${out_dir}
-cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
+
+### THESE ARE OPTIONAL OUTPUTS FOR GGCHEM AND DEBUGGING
+#cp $TMPDIR/pp.dat $CWD/${out_dir}
+#cp $TMPDIR/GGchem_ppel $CWD/${out_dir}
+#cp $TMPDIR/nasa2ggchem.dat $CWD/${out_dir}
+
+### THESE AREA OPTIONAL OUTPUTS FOR KROME
+#cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
 cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat
-if [ -f "KROME_ERROR_REPORT" ] ; then
-cp KROME_ERROR_REPORT $CWD
-fi
+#if [ -f "KROME_ERROR_REPORT" ] ; then
+#cp KROME_ERROR_REPORT $CWD
+#fi
+
+
 
 rm -rf $TMPDIR
