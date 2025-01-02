@@ -1,4 +1,54 @@
 # MARCS
+How to run a marcs model.
+- make sure data files are correct
+- make sure input files are correct
+- make sure model is correct
+- make sure everything is there
+
+# KROME
+Brief description for using KROME with MARCS
+
+Enter the krome subdirectory
+Modify the file run_MARCS_KROME.sh to reflect the network wanted
+Return to "main" directory by cd ../
+Compile the combined MARCS and KROME by running:
+make
+Now you can run MARCS via runmarcs as usual
+
+Changes made to the default Makefile for the linking to MARCS to work as intended
+
+Assumption:
+marcs.f is in the “main” directory and all files related to krome are in a sub-directory called “krome”.
+Inside the krome directory, the files created by running ./krome (or better run_MARCS_KROME.sh) are in MARCS_build 
+Exception: the file “reactions_verbatim.dat” must be in the “main” directory
+Desired result: marcs executable is created in the "main" directory and everything else is kept in "krome/MARCS_build"
+
+Added at the top of the Makefile to tell the compiler to look in this directory
+#Paths
+VPATH = ./krome/MARCS_build
+
+Changed the name of the intended executable
+#executable name
+exec = marcs
+
+Added path for krome_subs.f90 file
+GREP = $(shell grep -i 'dgesv' krome/MARCS_build/krome_subs.f90)
+
+Specified location of module files to be “krome/MARCS_build” directory using “-module krome/MARCS_build”
+switchOPT = -O3 -ipo -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise
+
+All the objects have the path “krome/MARCS_build” added in front of their filenames
+
+Modified the default target
+#default target
+all:  $(objs) marcs.o
+      $(fc) $(objs) marcs.o -o $(exec) $(switch) $(lib)
+
+Included specifically the -save compiler option for the marcs compilation to save variables in static memory to aviod segmentation violation
+#Special rule for marcs
+marcs.o:marcs.f
+      $(fc) -save $(switch) $(nowarn) -c $^ -o $@
+
 
 # SW
 This file explains how to run MARCS with Static Weather,
@@ -46,53 +96,3 @@ The second while loop:
     Loops through MARCS+SW at 100% cloud opacity until the MARCS model previously
     computed has a relative error in temperature of less than 10% - this value can be changed.
     If convergence is not obtained within 20 loops, the code stops. - this value can also be modified.
-
-# KROME
-Brief description for using KROME with MARCS
-
-Enter the krome subdirectory
-Modify the file run_MARCS_KROME.sh to reflect the network wanted
-Return to "main" directory by cd ../
-Compile the combined MARCS and KROME by running:
-make
-Now you can run MARCS via runmarcs as usual
-
-Changes made to the default Makefile for the linking to MARCS to work as intended
-
-Assumption:
-marcs.f is in the “main” directory and all files related to krome are in a sub-directory called “krome”.
-Inside the krome directory, the files created by running ./krome (or better run_MARCS_KROME.sh) are in MARCS_build 
-Exception: the file “reactions_verbatim.dat” must be in the “main” directory
-Desired result: marcs executable is created in the "main" directory and everything else is kept in "krome/MARCS_build"
-
-Added at the top of the Makefile to tell the compiler to look in this directory
-#Paths
-VPATH = ./krome/MARCS_build
-
-Changed the name of the intended executable
-#executable name
-exec = marcs
-
-Added path for krome_subs.f90 file
-GREP = $(shell grep -i 'dgesv' krome/MARCS_build/krome_subs.f90)
-
-Specified location of module files to be “krome/MARCS_build” directory using “-module krome/MARCS_build”
-switchOPT = -O3 -ipo -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise
-
-All the objects have the path “krome/MARCS_build” added in front of their filenames
-
-Modified the default target
-#default target
-all:  $(objs) marcs.o
-      $(fc) $(objs) marcs.o -o $(exec) $(switch) $(lib)
-
-Included specifically the -save compiler option for the marcs compilation to save variables in static memory to aviod segmentation violation
-#Special rule for marcs
-marcs.o:marcs.f
-      $(fc) -save $(switch) $(nowarn) -c $^ -o $@
-
-
-
-
-
-
