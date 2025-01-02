@@ -16,9 +16,9 @@ CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 #in_dir='./models/old_KHM/KHM_email/'
 in_dir='./models/krome_test/krome_on_earth_irrad_on/t700/logg_299/'
-out_dir='./models/krome_debug/'
+out_dir='./models/krome_test/krome_on_earth_irrad_on/t700/logg_299/'
 in_filename=${in_dir}t070g29exo50Earth_krome_on_irrad_on_higher_noconv
-out_filename=${out_dir}new_input_test
+out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on
 #out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on_higher_noconv_return
 #out_filename_dat=${out_dir}t070g29exo50Earth_krome_off_irrad_on_higher_noconv.dat
 #mkdir ${out_dir}
