@@ -16,7 +16,7 @@ Here is a little checklist:
   - runmarcs file in the main directory (make sure all the output you want is comment out/in)
 
 ### Run MARCS
-Afterwards you can compile marcs either with one of the commands from compile.txt, or by executing the "make" command if you use KROME.  
+Afterwards you can compile marcs either with one of the commands listed in the file compile.txt, or by executing the "make" command if you use KROME.  
 Then you can run marcs by either executing runmarcs or by adding it to your HPC queue.  
 (Note that the runmarcs file in this repo assumes you'll do the later so you might need to adjust it if you run marcs locally)
 
