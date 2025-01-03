@@ -28,6 +28,7 @@ If you know which network you want to run you should go to the file "compile_kro
 and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".
 When this is in place make sure the first line "project" also gets an approriate name.
 Then you can execute "compile_krome.sh" and your krome build should get compiled.
+(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)
 When you compiled krome you can switch back to the main directory and compile marcs with krome.
 This is done by simply excuting the "make" command. 
 The relevant compiling options can be found in the makefile.
