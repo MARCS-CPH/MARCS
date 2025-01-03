@@ -1,8 +1,8 @@
 # MARCS
-How to run a marcs model.
-In order to run a marcs model from this repository for the first time a few steps have to be taken.
+How to run a marcs model.  
+In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 Firstly all files with "_basic" should be copied/moved to their respecitve names without "_basic".
-(This is just in place to avoid git tracking of the actual input files)
+(This is just in place to avoid git tracking of the actual input files)  
 Afterwards one should check that all required files are existing and in the right directory for marcs to work.
 Here is a little checklist:
   - elabund.dat in data (make sure it is the right elemental abundace, for example solar or earth like)
@@ -12,29 +12,30 @@ Here is a little checklist:
   - parameter.inc in the main directory
   - marcs.input in the main directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
-  - runmarcs file in the main directory (make sure all the output you want is comment out/in) 
-Afterwards you can compile marcs either with one of the commands from compile.txt or with by making if you use KROME.
-Then you can run marcs by either executing runmarcs or by adding it to your HPC queue.
-(Note that the runmarcs file in this repo assumse youll do the later so you might need to adjust it if you run marcs locally)
+  - runmarcs file in the main directory (make sure all the output you want is comment out/in)
+
+Afterwards you can compile marcs either, with one of the commands from compile.txt or with by making if you use KROME.  
+Then you can run marcs by either executing runmarcs or by adding it to your HPC queue.  
+(Note that the runmarcs file in this repo assumes you'll do the later so you might need to adjust it if you run marcs locally)
 
 # KROME
 Running MARCS with KROME
 
-In order to run KROME with MARCS a few steps have to be added to the above mentioned checklist.
-Before you can run a model with KROME you have to prepare the network you want to run.
-You can find the relevant networks in the folder krome/networks.
-There you can find some already prepared in the subfolder "noneq".
+In order to run KROME with MARCS a few steps have to be added to the above mentioned checklist.  
+Before you can run a model with KROME you have to prepare the network you want to run.  
+You can find the relevant networks in the folder krome/networks.  
+There you can find some already prepared in the subfolder "noneq".  
 If you know which network you want to run you should go to the file "compile_krome.sh"
-and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".
-When this is in place make sure the first line "project" also gets an approriate name.
+and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".  
+When this is in place make sure the first line "project" also gets an approriate name.  
 Then you can execute "compile_krome.sh" and your krome build should get compiled.
-(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)
+(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
 When you compiled krome you can switch back to the main directory and compile marcs with krome.
-This is done by simply excuting the "make" command. 
-The relevant compiling options can be found in the makefile.
-(Note that at this point the debugging flags are very problematic as they also show problems with krome itself. 
-It is highly advised to always use the optimised flags for compiling)
-Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.
+This is done by simply excuting the "make" command.  
+The relevant compiling options can be found in the makefile.  
+(Note that at this point the debugging flags are very problematic as they also show problems with krome itself.
+It is highly advised to always use the optimised flags for compiling)  
+Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.  
 Make sure to comment in/out the krome output that you wanted to see in the runmarcs file.
 
 MARCS Noneq input and KROME compilation flags
