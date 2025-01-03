@@ -28,14 +28,14 @@ In order to run KROME with MARCS a few steps have to be added to the above menti
 ### Prepare network
 Before you can run a model with KROME you have to prepare the network you want to run.  
 You can find the relevant networks in the folder krome/networks.  
-There you can find some already prepared in the subfolder "noneq".  
+There you can find some already prepared in the subfolder "noneq". 
+(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
 If you know which network you want to run you should go to the file "compile_krome.sh"
 and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".  
 When this is in place make sure the first line "project" also gets an approriate name.  
 
 ### Compile and run
-Then you can execute "compile_krome.sh" and your krome build should get compiled.
-(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
+Then you can execute "compile_krome.sh" and your krome build should get compiled.     
 When KROME is compiled, you can switch back to the main directory and compile marcs with krome.
 This is done by simply excuting the "make" command.  
 The relevant compiling options can be found in the makefile.  
