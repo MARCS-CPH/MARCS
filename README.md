@@ -31,7 +31,8 @@ You can find the relevant networks in the folder krome/networks.
 There you can find some already prepared in the subfolder "noneq". 
 (for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
 If you know which network you want to run you should go to the file "compile_krome.sh"
-and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".  
+and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".
+(a number of networks are already found in list).
 When this is in place make sure the first line "project" also gets an approriate name.  
 
 ### Compile and run
