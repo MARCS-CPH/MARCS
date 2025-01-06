@@ -2,7 +2,7 @@
 How to run a marcs model.  
 In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 ### Prepare input files
-Firstly all files with "_basic" should be copied/moved to their respecitve names without "_basic".
+Firstly all files with "_basic", in the main folder and the data folder, should be copied/moved to their respecitve names without "_basic".
 (This is just in place to avoid git tracking of the actual input files)  
 Afterwards one should check that all required files are existing and in the right directory for marcs to work.
 Here is a little checklist:  
