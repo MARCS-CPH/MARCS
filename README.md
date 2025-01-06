@@ -11,6 +11,7 @@ Here is a little checklist:
   - mol_names.dat in **data** (make sure this contains all the molecules and atoms which you want the code to calculate the opacities for)
   - all dispol and DustChem files in **data** (should always be the case)
   - parameter.inc in the main directory
+  - Makefile in the main directory
   - marcs.input in the main directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
   - runmarcs file in the main directory (make sure all the output you want is comment out/in)
