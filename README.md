@@ -1,44 +1,52 @@
 # MARCS
-How to run a marcs model.
-In order to run a marcs model from this repository for the first time a few steps have to be taken.
+How to run a marcs model.  
+In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
+### Prepare input files
 Firstly all files with "_basic" should be copied/moved to their respecitve names without "_basic".
-(This is just in place to avoid git tracking of the actual input files)
+(This is just in place to avoid git tracking of the actual input files)  
 Afterwards one should check that all required files are existing and in the right directory for marcs to work.
-Here is a little checklist:
-  - elabund.dat in data (make sure it is the right elemental abundace, for example solar or earth like)
-  - jonabs.dat in data
-  - mol_names.dat in data (make sure this contains all the molecules and atoms which you want the code to calculate the opacities for)
-  - all dispol and DustChem files in data (should always be the case)
+Here is a little checklist:  
+  - elabund.dat in the **data** directory (make sure it is the right elemental abundace, for example solar or earth like)
+  - jonabs.dat in **data**
+  - mol_names.dat in **data** (make sure this contains all the molecules and atoms which you want the code to calculate the opacities for)
+  - all dispol and DustChem files in **data** (should always be the case)
   - parameter.inc in the main directory
   - marcs.input in the main directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
-  - runmarcs file in the main directory (make sure all the output you want is comment out/in) 
-Afterwards you can compile marcs either with one of the commands from compile.txt or with by making if you use KROME.
-Then you can run marcs by either executing runmarcs or by adding it to your HPC queue.
-(Note that the runmarcs file in this repo assumse youll do the later so you might need to adjust it if you run marcs locally)
+  - runmarcs file in the main directory (make sure all the output you want is comment out/in)
+
+### Run MARCS
+Afterwards you can compile marcs either with one of the commands listed in the file compile.txt, or by executing the "make" command if you use KROME.  
+Then you can run marcs by either executing runmarcs or by adding it to your HPC queue.  
+(Note that the runmarcs file in this repo assumes you'll do the later so you might need to adjust it if you run marcs locally)
 
 # KROME
 Running MARCS with KROME
 
-In order to run KROME with MARCS a few steps have to be added to the above mentioned checklist.
-Before you can run a model with KROME you have to prepare the network you want to run.
-You can find the relevant networks in the folder krome/networks.
-There you can find some already prepared in the subfolder "noneq".
+In order to run KROME with MARCS a few steps have to be added to the above mentioned checklist.  
+
+### Prepare network
+Before you can run a model with KROME you have to prepare the network you want to run.  
+You can find the relevant networks in the folder krome/networks.  
+There you can find some already prepared in the subfolder "noneq". 
+(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
 If you know which network you want to run you should go to the file "compile_krome.sh"
-and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".
-When this is in place make sure the first line "project" also gets an approriate name.
-Then you can execute "compile_krome.sh" and your krome build should get compiled.
-When you compiled krome you can switch back to the main directory and compile marcs with krome.
-This is done by simply excuting the "make" command. 
-The relevant compiling options can be found in the makefile.
-(Note that at this point the debugging flags are very problematic as they also show problems with krome itself. 
-It is highly advised to always use the optimised flags for compiling)
-Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.
+and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE".  
+When this is in place make sure the first line "project" also gets an approriate name.  
+
+### Compile and run
+Then you can execute "compile_krome.sh" and your krome build should get compiled.     
+When KROME is compiled, you can switch back to the main directory and compile marcs with krome.
+This is done by simply excuting the "make" command.  
+The relevant compiling options can be found in the makefile.  
+(Note that at this point the debugging flags are very problematic as they also show problems with krome itself.
+It is highly advised to always use the optimised flags for compiling)  
+Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.  
 Make sure to comment in/out the krome output that you wanted to see in the runmarcs file.
 
-MARCS Noneq input and KROME compilation flags
+### MARCS Noneq input and KROME compilation flags
 
-This part just serves as a quick explanation of the new noneq input parameters and a short summary of important krome flags.
+This part just serves as a quick explanation of the new noneq input parameters found in "marcs.input" and a short summary of important krome flags.
 
 The noneq input parameters are:
  - NONEQ (Basic on/off switch for non equilibrium chemistry. Expects a numeric value of 0 (off) or 1 (on))
@@ -49,11 +57,10 @@ The noneq input parameters are:
  - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTINC (By how much the starting timestep should increase every iteration until DTMAX is reached. Expect a value in the format of X.XX.
          Usually it is advised to have some increase or choose starting timestep and final time wisely to not have your calculation run for too long.)
- - KROMEO (KROME output parameter. Expectes either 1,2 or 3.
-          1 is just a full output at the end. Good for debugging.
-          2 is just the final output. Should be default for normal operations
+ - KROMEO (KROME output parameter. Expectes either 1,2 or 3.  
+          1 is just a full output at the end. Good for debugging.  
+          2 is just the final output. Should be default for normal operations  
           3 is both outputs.)
-
  - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
            Currently still a bit work in progress.)
  - OUTINT (How often should the output be written out in case you choose to the full output. Expects a value in the format X.XE+/-XX.
