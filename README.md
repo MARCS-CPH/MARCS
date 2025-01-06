@@ -34,7 +34,7 @@ There you can find some already prepared in the subfolder "noneq".
 If you know which network you want to run you should go to the file "compile_krome.sh"
 and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE" 
 (a number of networks are already found in list).   
-When this is in place make sure the first line "project" also gets an approriate name.  
+When this is in place, give an appropriate name to the "project" in the first line of "compile_krome.sh".  
 
 ### Compile and run
 Then you can execute "compile_krome.sh" and your krome build should get compiled.     
