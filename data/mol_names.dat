@@ -1,4 +1,4 @@
-70
+72
 SO2  /lustre/astro/aaron/opac/output/marcs_exomol_legacy/SO2_exomol_KHM/
 TiH  /lustre/astro/aaron/opac/output/marcs_exomol_legacy/TiH_exomol_KHM/
 CO2  /lustre/astro/aaron/opac/output/marcs_exomol_legacy/CO2_exomol_KHM/
@@ -69,3 +69,5 @@ S    /lustre/astro/aaron/opac/output/dace/S_VALD/
 Ti   /lustre/astro/aaron/opac/output/dace/Ti_VALD/
 V    /lustre/astro/aaron/opac/output/dace/V_VALD/
 Zr   /lustre/astro/aaron/opac/output/dace/Zr_VALD/
+O2   /groups/astro/kholten/CELS/OPAC-MARCS/opac/marcs_opac_converter/output/Leiden/O2/
+O3   /groups/astro/kholten/CELS/OPAC-MARCS/opac/marcs_opac_converter/output/Leiden/O3/

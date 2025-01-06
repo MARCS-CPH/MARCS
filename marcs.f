@@ -2494,6 +2494,7 @@ C       -----------------------------------
 C       --------------------
 C       Read in the namelist
 C       --------------------
+           !write(*,*) file_nml,file_data,file_wnos
            call read_opac_namelist(file_nml, NOPI, NOTI, kpres, ktemp, 
      &        molid, nwnos, pmol_read, tmol_read)
            crossec_kpres(spec_i) = kpres
@@ -8749,12 +8750,13 @@ C      common /Chap/Chapon
 
       if (krome_on.EQ.1) then
        if (photo_on.EQ.1) then
+
       opjv(:,:) = 0.
-      nm = 51
+      nm = 71
       call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
       Sigma_O2 = opjv
       opjv(:,:) = 0.
-      nm = 52
+      nm = 72
       call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
       Sigma_O3 = opjv
        endif
