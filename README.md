@@ -15,6 +15,8 @@ Here is a little checklist:
   - marcs.input in the main directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
   - runmarcs file in the main directory (make sure all the output you want is comment out/in)
+  - make sure that you have the ifort compiler installed and available to your shell
+    (on the Copenhagen HPC this is done by adding the line "module load intel" to your .bashrc in your home folder. Make sure to restart your terminal/shell after adding the line)
 
 ### Run MARCS
 Afterwards you can compile marcs either with one of the commands listed in the file compile.txt, or by executing the "make" command if you use KROME.  
