@@ -8,7 +8,7 @@ fi
 #./krome -n networks/react_NO -useN -reverse -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-30 -RTOL=1D-6 -useEquilibrium
 #./krome -n networks/react_NO_transport -useN -noSinkCheck -project=$project -noExample -unsafe -nomassCheck -ATOL=1d-30 -RTOL=1D-6
 #./krome -n networks/react_Chapman_incl_photo -useN -noSinkCheck -project=$project -checkConserv -noExample -unsafe -useEquilibrium
-./krome -n networks/react_Chapman_incl_photo -useN -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-40 -RTOL=1D-8
+./krome -n networks/non_eq/react_Chapman_incl_photo -useN -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-40 -RTOL=1D-8
 if [ ! -d MARCS_build ] ; then
 mkdir MARCS_build
 fi
