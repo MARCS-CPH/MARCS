@@ -2456,11 +2456,12 @@ C     Aaron's routines to read two dimensional OS files:
             tgrid(1:ktemp) = crossec_tgrid(spec_i, 1:ktemp)
             opa_in(1:NWL, 1:kpres, 1:ktemp) = 
      &         crossec_data(spec_i, 1:NWL, 1:kpres, 1:ktemp)
-            
+
             ! NOTE: pressure in opacity array is currently in bar !
             call interpol_kappa(press, temp, pgrid, tgrid, 
      &         opa_in, opa_out, 
      &         struc_len, NWL, kpres, ktemp)
+            
          end subroutine get_opac
 
          subroutine read_opac(file_b, spec_i, marcs_wn_grid)   
@@ -2534,7 +2535,32 @@ C       ----------------------------------------------
              if (wn<wnmol(1) .or. wn>wnmol(size(wnmol))) then
                 crossec_data(spec_i, freq_i, 1:kpres,1:ktemp) = 0
              endif
-            end do        
+            end do       
+            !START OF CROSSSEC OUT MODULE
+            !module to write out crossec data in a plotable and visible format
+            !spec_i has to be the number of the desired molecule in mol_names
+            !if (spec_i.eq.71) then
+            !open(unit=777,file="crossec_O2.dat")
+            !do i=1,NWL
+             !do j=1,kpres !comment this and the following if in to get an overview of the prid of the data
+              !do k=1,ktemp !comment this and the following if in to get an overview of the tgrid of the data
+              !if (i.eq.1) then 
+              !write(*,*) crossec_data(spec_i,i,1,1)
+              !write(*,*) i,marcs_wn_grid(i)
+              !write(*,*) crossec_pgrid(spec_i,1)
+              !write(*,*) crossec_tgrid(spec_i,1) 
+              !endif         
+            !  write(777,'(E10.3,A1,E14.6,A1,E10.3,A1,E10.3)') 
+     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
+     >      !    crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
+              !enddo
+             !enddo
+            !enddo
+            !close(777)
+            !stop !this module is designed to just run at the beginning of the simulation to just write out the crossec data
+                  !you can also leave this stop commented out if you want to run afterwards
+            !endif            
+            !END OF CROSSSEC OUT 
 
          end subroutine read_opac
          
@@ -3014,7 +3040,6 @@ C we come here only if dimension for the OS is too small:
          call opac_wrapper_read(trim(filebdir(nm)), nm, wnos) 
       end do
       write(7,*) "OS done with ADS's routine."     
-
       !write(7,245) nwtot,osresl/dfloat(kos_step)
       !& ,kos_step*step,wnos(1),wnos(nwtot)
       !& ,1.e4/wnos(nwtot),1.e4/wnos(1)
@@ -8651,6 +8676,7 @@ C DIMENSIONS
       real*8 a,b,c,aa,bb,cc,aaa,ccc,STBZ,IR,RS,R,TIR, bpl_var
       integer photo_on
       character*24 idmodl
+      logical:: first_call_opac = .True.
 C
 C CONNECTIONS VIA COMMON.
 C THE COMMENTED COMMONS MUST BE INITIATED OUTSIDE THIS ROUTINE BEFORE IT
@@ -8750,15 +8776,19 @@ C      common /Chap/Chapon
 
       if (krome_on.EQ.1) then
        if (photo_on.EQ.1) then
+        if (first_call_opac.EQ..True.) then
+         opjv(:,:) = 0.
+         nm = 71
+         call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+         Sigma_O2 = opjv
 
-      opjv(:,:) = 0.
-      nm = 71
-      call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
-      Sigma_O2 = opjv
-      opjv(:,:) = 0.
-      nm = 72
-      call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
-      Sigma_O3 = opjv
+         opjv(:,:) = 0.
+         nm = 72
+         call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+         Sigma_O3 = opjv
+         
+         first_call_opac=.False.
+        endif
        endif
       endif    
 
@@ -9234,33 +9264,35 @@ C J = photolysis rate coefficient in units of s-1
      & (WLOS(J)-WLOS(J-1))
                J_O3(K) = J_O3(K)+Sigma_O3(nwtot+1-J,K)/Na*Af(K)*
      & (WLOS(J)-WLOS(J-1))
-              !if (k.eq.1) then
+              !if (k.eq.3) then
               !if (j.eq.nwtot) then
               !write(*,*) "J"
               !write(*,*) J
+              !write(*,*) "nwtot"
+              !write(*,*) nwtot
+              !write(*,*) "nwtot+1-J"
+              !write(*,*) nwtot+1-J
+              !write(*,*) "Sigma_O2"
+              !write(*,*) Sigma_O2(nwtot+1-J,K)
+              !write(*,*) "Sigma_O3"
+              !write(*,*) Sigma_O3(nwtot+1-J,K)
               !write(*,*) "K"
               !write(*,*) K
               !write(*,*) "J_O2"
               !write(*,*) J_O2(K)
               !write(*,*) "J_O3"
               !write(*,*) J_O3(K)
-              !write(*,*) "Sigma_O2"
-              !write(*,*) Sigma_O2(nwtot+1-J,K)
-              !write(*,*) "Sigma_O3"
-              !write(*,*) Sigma_O3(nwtot+1-J,K)
+
+              !write(*,*) "Af(K) and WLOS"
+              !write(*,*) Af(K)
+              !write(*,*) WLOS(J),WLOS(J-1)
+              !if (j.eq.nwtot) then
+              !stop
               !endif
-              !endif                       
-C               J_O2(K) = J_O2(K)+Sigma_O2(J)/Na*Af(K)*
-C     & (WLOS(J)-WLOS(J-1))
-C               J_O3(K) = J_O3(K)+Sigma_O3(J)/Na*Af(K)*
-C     & (WLOS(J)-WLOS(J-1))
-C              if (K==1) then
-C            write(*,*) WLOS(J), Sigma_O2(nwtot+1-J,K)/Na, 
-C     & Sigma_O3(nwtot+1-J,K)/Na
-C            write(*,*) WLOS(J), Sigma_O2(J)/Na, 
-C     & Sigma_O3(J)/Na
+              !endif
+              endif                      
+
 C              endif
-              end if
             end do
 C            print*, wlos(J), J_O2(1), J_O3(1)
 C            print*, wlos(J), E(1), EJ(1)
@@ -13169,7 +13201,7 @@ C      write(*,*) x
       !write(*,*) "ppallmol/at"
       !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
       if (krome_on.eq.1) then
-          call krome_routine(ntau,T,ptot)
+          call krome_solve(ntau,T,ptot)
       endif
 
 C      write(*,*) 'X after'
@@ -13326,14 +13358,22 @@ C ....the plot
                         end if
                         ppx_os = ppallmol(it,ggchem_index(nm))
                   else
-                  !if (it.eq.1) then
-                  !if (jv.eq.2) then
+            !      if (it.eq.1) then
+            !      if (jv.eq.2) then
+            !if (ppallmol(it,ggchem_index(nm)).eq.ppallmol(it,5)) then
+            !             write(*,*) "CONOS"
+            !             write(*,*) nm,ggchem_index(nm),ppallmol(it,5)
+            !endif    
+            !if (ppallmol(it,ggchem_index(nm)).eq.ppallmol(it,376)) then
+            !             write(*,*) "CONOS"
+            !             write(*,*) nm,ggchem_index(nm),ppallmol(it,376)
+            !endif                                  
             !if (ppallat(it,ggchem_index(nm)).eq.ppallat(it,5)) then
-                         !write(*,*) "CONOS"
-                         !write(*,*) nm,ggchem_index(nm),ppallat(it,5)
+            !             write(*,*) "CONOS"
+            !             write(*,*) nm,ggchem_index(nm),ppallat(it,5)
             !endif                 
-                  !endif
-                  !endif
+            !      endif
+            !      endif
                         ppx_os = ppallat(it,ggchem_index(nm))
                   endif
                   px_os = ppx_os / TRIX*1.20274D-8    
@@ -13368,6 +13408,7 @@ C ....the plot
       !    conos_sum=conos_sum+conos(it,jv)
       ! enddo
       ! enddo
+      !write(*,*) "consos_sum" 
       !write(*,*) consos_sum
            if (larciv.eq.1) then
               do i=1,11
@@ -16540,12 +16581,11 @@ C       enddo
       
       end
 !--------------------------------------------
-      subroutine krome_routine(ntau,T,ptot)
+      subroutine krome_solve(ntau,T,ptot)
 !--------------------------------------------
       !TODO/TO CONSIDER
       !what if some speciesnames have capitals in them
       !what if speciesnames are ordered differently
-      !make input file for timesteps etc.
 
       use krome_main !use krome (mandatory)
       use krome_user !use utility (for krome_idx_* constants and others)
@@ -16740,6 +16780,9 @@ C NTAUo above is labelled that to avoid conflict
         if (photo_on.eq.1) then
          user_JO2 = J_O2(k)
          user_JO3 = J_O3(k)
+         !write(*,*) "k", k
+         !write(*,*) "J_O2", J_O2(k)
+         !write(*,*) "J_O3", J_O3(k)
          call krome_set_user_JO2(user_JO2)
          call krome_set_user_JO3(user_JO3)
         endif
@@ -16803,4 +16846,7 @@ C Returning the krome values to MARCS
       endif
 
       return      
+      end
+
+      subroutine krome_initialize(ntau,T,ptot)
       end
