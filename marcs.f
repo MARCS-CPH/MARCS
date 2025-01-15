@@ -2551,8 +2551,8 @@ C       ----------------------------------------------
               !write(*,*) crossec_tgrid(spec_i,1) 
               !endif         
             !  write(777,'(E10.3,A1,E14.6,A1,E10.3,A1,E10.3)') 
-     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
-     >      !    crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
+           !>   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
+           !>    crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
               !enddo
              !enddo
             !enddo
@@ -8776,17 +8776,20 @@ C      common /Chap/Chapon
 
       if (krome_on.EQ.1) then
        if (photo_on.EQ.1) then
-        if (first_call_opac.EQ..True.) then
+        if (first_call_opac.EQ. .True.) then
+
+         do nm=1,71 !this loop is nonsense, it shouldnt exist or be needed but its the only way I do not get an segmentation fault
+
+
          opjv(:,:) = 0.
-         nm = 71
          call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
          Sigma_O2 = opjv
 
          opjv(:,:) = 0.
-         nm = 72
-         call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
+         call opac_wrapper_interp(ptot, t, nm+1, opjv, ntau)
          Sigma_O3 = opjv
-         
+
+         enddo
          first_call_opac=.False.
         endif
        endif
