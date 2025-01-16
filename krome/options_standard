@@ -1,0 +1,7 @@
+-ATOL 1d-40
+-checkConserv 
+-noExample 
+-noSinkCheck 
+-RTOL 1D-8
+-unsafe 
+-useN 

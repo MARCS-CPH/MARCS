@@ -1,6 +1,7 @@
 project=react_Chapman_incl_photo
 network=networks/non_eq/react_Chapman_incl_photo
 options=options_standard
+
 if [ -d build_$project ] ; then
 rm build_$project/*
 fi 
