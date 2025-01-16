@@ -1,9 +1,11 @@
 project=react_Chapman_incl_photo
+network=networks/non_eq/react_Chapman_incl_photo
+options=options_standard
 if [ -d build_$project ] ; then
 rm build_$project/*
 fi 
 
-./krome -n networks/non_eq/react_Chapman_incl_photo -useN -noSinkCheck -checkConserv -project=$project -noExample -unsafe -ATOL=1d-40 -RTOL=1D-8
+./krome -n $network -project=$project -options=$options
 
 if [ ! -d MARCS_build ] ; then
 mkdir MARCS_build
