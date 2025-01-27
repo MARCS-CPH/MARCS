@@ -1,0 +1,21 @@
+# Reactions for the Chapman cycle.
+# Including the photochemistry implemented in KROME.
+# Rates and cross sections are obtained from NIST and SWRI
+
+@var: RT = 8.314E-3*Tgas # Gas constant * Temp (kJ*K−1*mol−1 * K)
+
+@format:idx,R,R,R,P,P,P,rate
+1,O2,O,M,O3,M,,5.70E-34*(Tgas/298)**(-2.6) # NIST, Atkinson 2004
+2,O3,O,,O2,O2,,1.83E-11*exp(-17.99/RT) # NIST, Jian 2022
+
+@format:idx,R,R,R,P,P,P,rate
+@photo_start
+3,O2,,,O,O,,@xsecFile=SWRI
+4,O3,,,O2,O,,@xsecFile=SWRI
+@photo_stop
+
+@format:idx,R,R,R,P,P,P,rate
+5,O,O,,O2,,,5.21E-35*exp(7.48/RT) # NIST, Tsang 1986
+# 6,O2,M,,O,O,M,
+# 7,O3,M,,O2,O,M,
+# 8,O2,O2,,O3,O,,
