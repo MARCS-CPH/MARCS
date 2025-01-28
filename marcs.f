@@ -8759,37 +8759,13 @@ C SPACE ALLOCATION
 C
 C DATA
       DATA IVERS,IEDIT/21,1/
-! Chapman Mechanism Variables
-C      DIMENSION Sigma_O2(NWL), Sigma_O3(NWL)
-      DIMENSION Sigma_O2(NWL,NDP), Sigma_O3(NWL,NDP)
-C      integer Chapon
-      REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Int_tot 
-      REAL*8 Na
-      DIMENSION OPJV(NWL,NDP)
-C      common /Chap/Chapon
-      common /Chapvar/J_O2, J_O3
       common /noneq/ krome_on,krome_photo_on
-      common /photochem/ FLUX_ACT(nwl,ndp)
-      Na = 6.02214076D23
+      common /photochem/ FLUX_RAD(ndp,nwl)
+
 
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
-        if (first_call_opac.EQ. .True.) then
-
-         do nm=1,71 !this loop is nonsense, it shouldnt exist or be needed but its the only way I do not get an segmentation fault
-
-
-         opjv(:,:) = 0.
-         call opac_wrapper_interp(ptot, t, nm, opjv, ntau)
-         Sigma_O2 = opjv
-
-         opjv(:,:) = 0.
-         call opac_wrapper_interp(ptot, t, nm+1, opjv, ntau)
-         Sigma_O3 = opjv
-
-         enddo
-         first_call_opac=.False.
-        endif
+        FLUX_RAD(:,:)=1 !initialize radiative flux array with ones in case somethign goes wrong in the intensity calculations
        endif
       endif    
 
@@ -8983,14 +8959,7 @@ C TIME
 C     CALL MSLEFT(MSA)
       open(unit=960,file='wlos.dat',status='replace')
 C
-C Initializing Chapman photolysis rate coefficients to zero each
-C iteration before wavelength loop
-      if (krome_on.eq.1) then
-       if (krome_photo_on.eq.1) then
-        J_O2=0.0
-        J_O3=0.0
-       endif
-      endif
+
 C WAVELENGTH LOOP
       
       FTOT=0.
@@ -9246,71 +9215,16 @@ C      if (irrin > 0) then
        if (krome_photo_on.eq.1) then
             do K=1, ntau
               if (J>1) then
-
-C Int_tot = total intensity = 4*pi*XJ (XJ = mean intensity) in units of erg s-1 cm-2 Å-1. 
-C I.e. mean intentisy integrated over full sphere.
-C Used for actinic flux cf. e.g.:
-C "A NEW SPHERICAL MODEL FOR COMPUTING THE RADIATION FIELD AVAILABLE FOR PHOTOLYSIS AND HEATING AT TWILIGHT"
-C Pluner. Space Ser., Vol. 39, No. 5, pp. 671-683, 1991
-
-C Int_tot = total intensity in 'erg s-1 cm-2 Å-1'
-            Int_tot(K) = 4*pi*XJ(K)
-
-C "max" in actinic flux below is to avoid negative numbers from noise - a negative number of photons is not possible.
-C Af = Actinic flux in 'photons s-1 cm-2 Å-1'
-            !Af(K) = max(0.0,(Int_tot(K)*WLOS(J))/((HPLNCK*CLIGHT))*1E-8)
-            FLUX_ACT(J,K) = max(0.0,(Int_tot(K)*WLOS(J))
-     >       /((HPLNCK*CLIGHT))*1E-8)
-C J = photolysis rate coefficient in units of s-1
-              
-               J_O2(K) = J_O2(K)+Sigma_O2(nwtot+1-J,K)/Na
-     &*FLUX_ACT(J,K)*(WLOS(J)-WLOS(J-1))
-               J_O3(K) = J_O3(K)+Sigma_O3(nwtot+1-J,K)/Na
-     &*FLUX_ACT(J,K)*(WLOS(J)-WLOS(J-1))
-              !if (k.eq.3) then
-              !if (j.eq.nwtot) then
-              !write(*,*) "J"
-              !write(*,*) J
-              !write(*,*) "nwtot"
-              !write(*,*) nwtot
-              !write(*,*) "nwtot+1-J"
-              !write(*,*) nwtot+1-J
-              !write(*,*) "Sigma_O2"
-              !write(*,*) Sigma_O2(nwtot+1-J,K)
-              !write(*,*) "Sigma_O3"
-              !write(*,*) Sigma_O3(nwtot+1-J,K)
-              !write(*,*) "K"
-              !write(*,*) K
-              !write(*,*) "J_O2"
-              !write(*,*) J_O2(K)
-              !write(*,*) "J_O3"
-              !write(*,*) J_O3(K)
-
-              !write(*,*) "Af(K) and WLOS"
-              !write(*,*) Af(K)
-              !write(*,*) WLOS(J),WLOS(J-1)
-              !if (j.eq.nwtot) then
-              !stop
-              !endif
-              !endif
+            !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr (sr is part of XJ) for krome
+            aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
+            ergs_to_eV_conv=6.242E11 !converts ergs to eV
+            FLUX_RAD(K,J)=XJ(k)*WLOS(j)*
+     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
               endif                      
-
-C              endif
             end do
-C            print*, wlos(J), J_O2(1), J_O3(1)
-C            print*, wlos(J), E(1), EJ(1)
-
-C      end if
        end if
       end if
-      !write(*,*) "Int_tot"
-      !write(*,*) Int_tot(1)
-      !write(*,*) "Af"
-      !write(*,*) Af(1)
-      !write(*,*) "J_O2"
-      !write(*,*) J_O2(1)
-      !write(*,*) "J_O3"
-      !write(*,*) J_O3(1)
+
 150   CONTINUE
       close(960)
       ftot_a = 0.0
@@ -16599,8 +16513,9 @@ C       enddo
       include 'parameter.inc'
 
 C      implicit none
-      integer,parameter::nsp=krome_nmols !number of species (common)      
-      integer::ntau, i,j,k, istep,header_size
+      integer,parameter::nsp=krome_nmols !number of species (common) 
+      integer,parameter::nwreal=7949     
+      integer::ntau, i,j,k, istep,header_size,buffer
       integer::ss_istep(ntau)
       integer,dimension(22,2) :: index_at  !indices of atomic specs, first index marcs, second index krome
       integer,dimension(543,2):: index_mol !indices of mol specs, first index marcs, second index krome   
@@ -16608,13 +16523,9 @@ C      implicit none
       integer,dimension(1000) :: index_not !indices of species NOT found in marcs mols and atoms, only krome index needed
       integer:: M_index
       integer:: atom_counter,mol_counter,mol2_counter,not_counter !counters for different kinds of species
-      integer:: buffer
       logical:: not_found
       logical:: first_call = .True.
       logical:: first_not_call = .True.
-      logical:: full_output = .True.
-      logical:: final_output = .False.
-      integer:: return_marcs
       integer:: krome_photo_on
       real*8::Tgas,dt,num_den(ntau,nsp),spy
       real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
@@ -16630,6 +16541,9 @@ C      implicit none
       character atnames*2, molnames*8, molnames2*4    
       REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
       real*8 :: pp_sum,num_sum
+      common/cos/ wlos(nwl)
+      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
+     *STEFAN
       common /Chapvar/J_O2, J_O3
       !COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
       !&   VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAUo,ITER
@@ -16645,6 +16559,8 @@ C NTAUo above is labelled that to avoid conflict
       common /noneq/ krome_on,krome_photo_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
+      common /photochem/ FLUX_RAD(ndp,nwl)
+
       call krome_init() !init krome (mandatory)
 
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
@@ -16652,7 +16568,7 @@ C NTAUo above is labelled that to avoid conflict
       Na = 6.02214076D23 !Avogadros number in mol^-1
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
-      if (first_call.eq..True.) then
+      if (first_call.eq..True.) then !initialization of krome. Checking for molecules in MARCS and finding their indices, setting Photobins if photochem is needed
       header_size=5 !info.log header size
       open(unit=12,file='./krome/MARCS_build/info.log',status = 'old')     
       do i=1,nsp+header_size
@@ -16739,9 +16655,20 @@ C NTAUo above is labelled that to avoid conflict
        first_not_call=.False.
        endif
       endif
-      first_call=.False.
+      if (krome_photo_on.eq.1) then !initializing of photobins
+         eV_to_J_conv=6.242E18!Joule to eV
+         HC_to_SI_conv=1E-9 !convert hplanck and clight to SI from CGS
+         aa_to_m_conv=1E-10 !Angstrom to meters for wavelenths
+         photo_bin_nominator=HPLNCK*CLIGHT*HC_to_SI_conv
+         photo_bin_low=photo_bin_nominator/(WLOS(1)*aa_to_m_conv)
+         photo_bin_high=photo_bin_nominator/(WLOS(nwreal)*aa_to_m_conv)
+         photo_bin_low=photo_bin_low*eV_to_J_conv
+         photo_bin_high=photo_bin_high*eV_to_J_conv
+         call krome_set_photobinE_lin(photo_bin_low,photo_bin_high)
       endif
-
+      first_call=.False. 
+      endif
+      !end of initilazation routine
       do k = 1,ntau
         Pcon(k) = 0.1*Na/(R*T(k))*1E-6
         num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
@@ -16767,12 +16694,7 @@ C NTAUo above is labelled that to avoid conflict
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
 
       enddo
-!      write(*,*) "num_den_solve"
-!      do k=1,ntau
-!            write(*,*) num_den(k,:)
-!      enddo
-!
-!      stop
+
       !write header of full output file
       if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
         open(unit=13,file='krome_full_output.dat')
@@ -16789,16 +16711,10 @@ C NTAUo above is labelled that to avoid conflict
         dt = dt_start
         time=0.0
 
-        !Kristians photolysis module
-
         if (krome_photo_on.eq.1) then
-         user_JO2 = J_O2(k)
-         user_JO3 = J_O3(k)
-         !write(*,*) "k", k
-         !write(*,*) "J_O2", J_O2(k)
-         !write(*,*) "J_O3", J_O3(k)
-         call krome_set_user_JO2(user_JO2)
-         call krome_set_user_JO3(user_JO3)
+         
+         call krome_set_photoBinJ(FLUX_RAD(K,:))
+      
         endif
 
         do
@@ -16862,165 +16778,3 @@ C Returning the krome values to MARCS
       return      
       end
 
-      subroutine krome_initialize(ntau,ptot,T)
-      
-      use krome_main
-      use krome_user
-      
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      
-      integer:: header_size,buffer
-      integer,parameter::nsp=krome_nmols !number of species (common) 
-      integer,dimension(22,2) :: index_at  !indices of atomic specs, first index marcs, second index krome
-      integer,dimension(543,2):: index_mol !indices of mol specs, first index marcs, second index krome   
-      integer,dimension(75,2) :: index_mol2!indices of mol specs, first index marcs, second index krome        
-      integer,dimension(1000) :: index_not !indices of species NOT found in marcs mols and atoms, only krome index needed
-
-      character(len=100)::spec_name
-      character(len=8),dimension(nsp)::chem_spec
-      character atnames*2, molnames*8, molnames2*4
-
-      real*8::Pcon(ntau),ptot(ndp),T(ntau)
-      real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
-      real*8::num_den(ntau,nsp)
-      real*8::mix_rat(ntau,nsp)
-      real*8::Na
-      integer:: M_index
-      integer:: atom_counter,mol_counter,mol2_counter,not_counter !counters for different kinds of species
-      logical:: not_found
-      logical:: first_call = .True.
-      logical:: first_not_call = .True.
-
-      common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
-     >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
-     >                ,gg_partpp(ndp,400)
-     >                ,ppat(22),ppmol(543)
-     >                ,idmarcspres(32),idggchempres(32)
-     >                ,idmarcspart(75),idggchempart(75)
-     >                ,atnames(22),molnames(543),molnames2(75)
-
-      R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
-      R_cgs = 8.31446261815324E-3
-      Na = 6.02214076D23 !Avogadros number in mol^-1
-      !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
-      !write relevant species out from info.log
-      header_size=5 !info.log header size
-      open(unit=12,file='./krome/MARCS_build/info.log',status = 'old')     
-      do i=1,nsp+header_size
-        read(unit=12,fmt='(A100)') spec_name
-        if (i-header_size.lt.10) buffer=3
-        if ((i-header_size.ge.10).and.(i-header_size.lt.100)) buffer=4
-        if ((i-header_size.ge.100)) buffer=5
-        if (i.gt.header_size) then      
-         do j=buffer,len(chem_spec)+buffer                                      
-          if (spec_name(j:j)=='k') exit !k starts the id part of the species in info.log                        
-          write(chem_spec(i-header_size)(j-(buffer-1):j-(buffer-1)),
-     >       '(A1)') spec_name(j:j)
-         enddo       
-         chem_spec(i-header_size)=chem_spec(i-header_size)(1:j-buffer-1)!cut down empty ends of the string 
-        endif 
-      enddo
-      close(12)
-      if (first_call.eq..True.) then
-        !write(*,*) nsp,'Species are found'
-        write(*,*) 'The following',nsp,
-     >   'species are found in your krome build'
-        write(*,*) chem_spec(1:nsp)
-        first_call = .False.
-      endif      
-      !check if species is in atomnames, molnames, molnames2 and safe indices
-      !check also if speices not in MARCS database
-      atom_counter=0
-      mol_counter=0
-      mol2_counter=0
-      not_counter=0
-      !write(*,*) atomnames
-      !write(*,*) molnames
-      !write(*,*) molnames2
-      do i=1,krome_nmols
-       not_found=.True.
-       do k=1,22 !number of atoms    
-        if (trim(atnames(k)).eq.trim(chem_spec(i))) then
-         atom_counter=atom_counter+1        
-         index_at(atom_counter,1)=k
-         index_at(atom_counter,2)=i
-         not_found=.False.
-         cycle
-        endif
-       enddo
-       do k=1,543 !number of molecues in molnames
-        if (trim(molnames(k)).eq.trim(chem_spec(i))) then
-         mol_counter=mol_counter+1    
-         index_mol(mol_counter,1)=k
-         index_mol(mol_counter,2)=i
-         not_found=.False.     
-         cycle    
-        endif
-       enddo 
-       do k=1,75 !number of molecues in molnames2
-        if (trim(molnames2(k)).eq.trim(chem_spec(i))) then
-         mol2_counter=mol2_counter+1      
-         index_mol2(mol2_counter,1)=k
-         index_mol2(mol2_counter,2)=i
-         not_found=.False.    
-         cycle     
-        endif        
-       enddo
-       if (trim(chem_spec(i)).eq.'M') then
-        !write(*,*) 'M identified as', i
-        M_counter=1
-        M_index = i
-        not_found=.False.
-        cycle
-       endif  
-       if (not_found==.True.) then
-        not_counter=not_counter+1
-        index_not(not_counter)= i
-        if (first_not_call.eq. .True.) then
-        write(*,*) trim(chem_spec(i)),
-     >  ' has not been found in MARCS' 
-        endif
-       endif  
-      enddo
-      
-      if (not_counter.gt.0) then
-       if (first_not_call.eq..True.) then
-       write(*,*) 'Species not found in MARCS will be set to ',
-     > 'default abundance of 1E-20'  
-       first_not_call=.False.
-       endif
-      endif
-      write(*,*) "atom, mol, mol2, not, M"
-      write(*,*) atom_counter,mol_counter,mol2_counter,not_counter,M_counter
-      do k = 1,ntau
-        Pcon(k) = 0.1*Na/(R*T(k))*1E-6
-        num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
-        num_den_at(k,:)=ppallat(k,:)*Pcon(k)
-      enddo                        
-
-      do k=1,ntau
-        do i=1,atom_counter
-         num_den(k,index_at(i,2)) = num_den_at(k,index_at(i,1))
-        enddo    
-        do i=1,mol_counter
-         num_den(k,index_mol(i,2)) = num_den_mol(k,index_mol(i,1))    
-        enddo
-        do i=1,mol2_counter
-         num_den(k,index_mol2(i,2)) = num_den_mol(k,index_mol2(i,1))
-        enddo
-        do i=1,not_counter
-         num_den(k,index_not(i)) = 1d-20
-        enddo
-        if (M_counter==1) then
-         num_den(k,M_index) = ptot(k)*Pcon(k)
-        endif
-        mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
-
-      enddo
-      write(*,*) "num_den_init"
-      do k=1,ntau
-            write(*,*) Pcon(k),T(k),Na,R
-            !write(*,*) num_den(k,:)
-      enddo
-      end
