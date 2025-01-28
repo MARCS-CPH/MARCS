@@ -38,7 +38,7 @@ cp mxms7.input $TMPDIR/
 cp marcs $TMPDIR/
 cp -r GGchem $TMPDIR/
 ### FOR NONEQ RUNS
-cp $CWD/reactions_verbatim.dat $TMPDIR/
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
 cp -r $CWD/krome $TMPDIR
 
 
