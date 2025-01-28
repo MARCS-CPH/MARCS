@@ -1,6 +1,6 @@
-project=react_Chapman_incl_photo
-network=networks/non_eq/react_Chapman_incl_photo
-options=options_standard
+network=networks/non_eq/react_Chapman_photo_krome
+project=react_Chapman_photo_krome
+options=options_photochem
 
 if [ -d build_$project ] ; then
 rm build_$project/*
@@ -13,5 +13,6 @@ mkdir MARCS_build
 fi
 
 cp build_$project/* MARCS_build
+cp build_$project/* build
 mv $project.kpj MARCS_build
 cp MARCS_build/reactions_verbatim.dat ../

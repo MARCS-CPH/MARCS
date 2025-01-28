@@ -3,6 +3,6 @@
 -noExample 
 -noSinkCheck 
 -RTOL 1D-8
--unsafe 
--photobins=80000
+
+-photoBins=80000
 -useN 
