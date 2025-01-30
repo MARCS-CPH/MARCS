@@ -8674,7 +8674,7 @@ C DIMENSIONS
       LOGICAL NEWV, exist
       real*8 a,b,c,aa,bb,cc,aaa,ccc,STBZ,IR,RS,R,TIR, bpl_var
       character*24 idmodl
-      logical:: first_call_opac = .True.
+      logical:: first_call_rad = .True.
 C
 C CONNECTIONS VIA COMMON.
 C THE COMMENTED COMMONS MUST BE INITIATED OUTSIDE THIS ROUTINE BEFORE IT
@@ -8765,7 +8765,10 @@ C DATA
 
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
+        if (first_call_rad.eq..True.) then
         FLUX_RAD(:,:)=1 !initialize radiative flux array with ones in case somethign goes wrong in the intensity calculations
+        first_call_rad=.False.
+        endif
        endif
       endif    
 
@@ -9214,13 +9217,17 @@ C      if (irrin > 0) then
       if (krome_on.eq.1) then
        if (krome_photo_on.eq.1) then
             do K=1, ntau
-              if (J>1) then
+
             !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr (sr is part of XJ) for krome
             aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
             ergs_to_eV_conv=6.242E11 !converts ergs to eV
-            FLUX_RAD(K,J)=XJ(k)*WLOS(j)*
+            mean_int=XJ(K)
+            if (mean_int.lt.0) then
+             mean_int=0
+            endif   
+            FLUX_RAD(K,J)=mean_int*WLOS(j)*
      >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
-              endif                      
+                  
             end do
        end if
       end if
@@ -16526,7 +16533,7 @@ C      implicit none
       logical:: not_found
       logical:: first_call = .True.
       logical:: first_not_call = .True.
-      integer:: krome_photo_on
+      integer:: krome_photo_on,krome_flux_output
       real*8::Tgas,dt,num_den(ntau,nsp),spy
       real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
       real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
@@ -16566,6 +16573,7 @@ C NTAUo above is labelled that to avoid conflict
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
+      krome_flux_output=1
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
       if (first_call.eq..True.) then !initialization of krome. Checking for molecules in MARCS and finding their indices, setting Photobins if photochem is needed
@@ -16660,11 +16668,12 @@ C NTAUo above is labelled that to avoid conflict
          HC_to_SI_conv=1E-9 !convert hplanck and clight to SI from CGS
          aa_to_m_conv=1E-10 !Angstrom to meters for wavelenths
          photo_bin_nominator=HPLNCK*CLIGHT*HC_to_SI_conv
-         photo_bin_low=photo_bin_nominator/(WLOS(1)*aa_to_m_conv)
-         photo_bin_high=photo_bin_nominator/(WLOS(nwreal)*aa_to_m_conv)
+         photo_bin_low=photo_bin_nominator/(WLOS(nwreal)*aa_to_m_conv)
+         photo_bin_high=photo_bin_nominator/(WLOS(1)*aa_to_m_conv)
          photo_bin_low=photo_bin_low*eV_to_J_conv
          photo_bin_high=photo_bin_high*eV_to_J_conv
          call krome_set_photobinE_lin(photo_bin_low,photo_bin_high)
+
       endif
       first_call=.False. 
       endif
@@ -16705,6 +16714,7 @@ C NTAUo above is labelled that to avoid conflict
         enddo
          write(13,'(A,/)') ' '
       endif 
+
       !main loop
       do k=1,ntau
         istep = 1
@@ -16712,8 +16722,10 @@ C NTAUo above is labelled that to avoid conflict
         time=0.0
 
         if (krome_photo_on.eq.1) then
-         
+         !write(*,*) FLUX_RAD(K,1),FLUX_RAD(K,nwreal)
          call krome_set_photoBinJ(FLUX_RAD(K,:))
+         !write(*,*) krome_get_photoBinJ()
+         !write(*,*) krome_get_photoBin_rates()
       
         endif
 
@@ -16774,7 +16786,17 @@ C Returning the krome values to MARCS
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
         enddo
       endif
+      if (krome_flux_output.eq.1) then
+        open(unit=6969,file='krome_flux_rad.dat')
+        write(6969,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
+     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
 
+            do j=1,nwreal
+              !write(*,*) WLOS(j), FLUX_RAD(1,j)
+              write(6969,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(1,j)
+            enddo
+        close(6969)
+      endif
       return      
       end
 
