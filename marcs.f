@@ -201,7 +201,7 @@ C
 
       do it=1,itmax 
         print *
-        write(*,'(a23,i2,a8)')' Iteration #           ',it,' started'
+        write(*,'(a23,i3,a8)')' Iteration #           ',it,' started'
         call gettime(1)
         
         pf=it.gt.itmax-nprint
