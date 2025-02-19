@@ -8754,24 +8754,52 @@ C SPACE ALLOCATION
       
       common /ch4/ nch4
       character*24 file_name
-      character*8 file_id
+      character*8 file_id    
       
 C
 C DATA
       DATA IVERS,IEDIT/21,1/
       common /noneq/ krome_on,krome_photo_on
-      common /photochem/ FLUX_RAD(ndp,nwl)
+      common /noneq_output/ output_freq,krome_output,krome_return
+      integer,parameter::nwreal=7949  
+      common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 
 
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
         if (first_call_rad.eq..True.) then
-        FLUX_RAD(:,:)=1 !initialize radiative flux array with ones in case somethign goes wrong in the intensity calculations
+        FLUX_RAD(:,:)=1 !initialize radiative flux array with zeros in case somethign goes wrong in the intensity calculations
+        if (nwtot.ne.nwreal) then
+         write(*,*) "Number of wavelengths after OS calc", nwtot, 
+     > "not the same as number of wavelengths for FLUX_RAD", nwreal,
+     > "please adjust nwreal to match nwtot"
+        stop
+        endif
         first_call_rad=.False.
+        
+
         endif
        endif
       endif    
 
+      if (krome_photo_on.eq.1) then
+       if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                        .or.(krome_output.eq.5)) then
+            open(unit=7676,file='BPL_sun.dat')
+            write(7676,'(A15,A26)') 'Wavelength [A] '
+     >                          ,'Mean. Int [erg/s/cm2/Å/sr]'
+            open(unit=7777,file='BPL_upper.dat')
+            write(7777,'(A15,A26)') 'Wavelength [A] '
+     >                          ,'Mean. Int [erg/s/cm2/Å/sr]'
+            open(unit=7878,file='XJ_upper.dat')
+            write(7878,'(A15,A26)') 'Wavelength [A] '
+     >                          ,'Mean. Int [erg/s/cm2/Å/sr]'
+            open(unit=7979,file='XJ_lower.dat')
+            write(7979,'(A15,A26)') 'Wavelength [A] '
+     >                          ,'Mean. Int [erg/s/cm2/Å/sr]'
+       endif
+
+      endif
 
 
 C     
@@ -9216,23 +9244,51 @@ C      if (irrin > 0) then
 
       if (krome_on.eq.1) then
        if (krome_photo_on.eq.1) then
-            do K=1, ntau
 
-            !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr (sr is part of XJ) for krome
+            do K=1, ntau
+            
+            !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr (sr is part of XJ with units erg s-1 cm-2 Å-1) for krome
             aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
             ergs_to_eV_conv=6.242E11 !converts ergs to eV
-            mean_int=XJ(K)
-            if (mean_int.lt.0) then
-             mean_int=0
-            endif   
-            FLUX_RAD(K,J)=mean_int*WLOS(j)*
+
+            if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                             .or.(krome_output.eq.5)) then
+             if (k.eq.1) then
+              write(7676,'(2(999E17.8e3))') WLOS(J), BPL(steff,WLOS(J))
+              Rsun_au=0.00465047
+              Rstar_au= rstar*Rsun_au
+              delta_omega = (Rstar_au/(semimajor))**2.0 /
+     &        (4.0*(f_irrad))
+              bstar_upper=BPL(steff,WLOS(J))*delta_omega
+              write(7777,'(2(999E17.8e3))') WLOS(J), bstar_upper
+              write(7878,'(2(999E17.8e3))') WLOS(J), XJ(K)
+             endif
+             if (k.eq.ntau) then
+              write(7979,'(2(999E17.8e3))') WLOS(J), XJ(K) 
+             endif
+             !write(*,*) K,J,WLOS(J),FLUX_RAD(K,J),XJ(K)
+            endif
+
+
+            !if (XJ(k).gt.0) then   
+            FLUX_RAD(K,J)=XJ(K)*WLOS(j)*
      >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
-                  
+            if (flux_rad(k,j).lt.0) then
+             FLUX_RAD(K,J)=0
+            endif
+
             end do
        end if
       end if
 
 150   CONTINUE
+      if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                       .or.(krome_output.eq.5)) then
+       close(7676)
+       close(7777)
+       close(7878)
+       close(7979)
+      endif
       close(960)
       ftot_a = 0.0
       do j=1, nwtot
@@ -9793,8 +9849,14 @@ C                    call osatom
          end if
       END IF
       IF(TCORMX.LE. TCONV )  THEN 
+         
          ITSTOP=.TRUE.
 C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
+         if (krome_on.eq.1) then !if non-eq chemistry is on, this ensures to have at least 2 full iterations, to account for changes in the abundances
+          if (it.lt.2) then
+           ITSTOP=.False.
+          endif
+         endif
       END IF
       PRINT406, TCORMXM,IT
       inquire(file="tcormx.dat", exist=exist)
@@ -9808,7 +9870,7 @@ C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       close(987)
       end if
       
-406   FORMAT(' Max corr. to T wanted was',F7.1,' K for iteration',I2)
+406   FORMAT(' Max corr. to T wanted was ',F8.1,' K for iteration ',I3)
 C
 C
 C     CALL DISPLA(' TCORMX ',TCORMX)
@@ -10101,7 +10163,8 @@ C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
 
       DO 120 K=1,JTAU
       if (irrin>0) then 
-      XJ(K)=XJ(K)+P(K) + Pstar(k)
+      XJ(K)=XJ(K)+P(K) + Pstar(K)
+      !write(*,*) "XJ(K) in traneq",K,XJ(K)
       else
       XJ(K)=XJ(K)+P(K)
       end if 
@@ -10294,7 +10357,10 @@ C BACKSUBSTITUTE
       P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K,I)*P(JTAU-K+1))/SP2(JTAU-K,I)
       XK(JTAU-K)=XK(JTAU-K)+H(I)*P(JTAU-K)*XMU2(I)
 160   XJ(JTAU-K)=XJ(JTAU-K)+H(I)*P(JTAU-K)
-C
+      !do k=1,jtau1
+      !write(*,*) "XJ(JTAU-K) in tranfr",K,JTAU,JTAU-K,JTAU1,XJ(JTAU-K)
+      !enddo
+C     
 C END OF MU LOOP
       XK(JTAU)=XK(JTAU)+H(I)*P(JTAU)*XMU2(I)
       R1=P(1)-S0*EX(I)
@@ -10305,6 +10371,7 @@ C END OF MU LOOP
 C HSURF AND Y1(6) ARE THE FLUX AND INTENSITIES AT THE SURFACE
 170   CONTINUE
       XJ(JTAU)=P(JTAU)
+      !write(*,*) "JTAU, XJ(JTAU), P(JTAU)",JTAU,XJ(JTAU),P(JTAU)
 C
 C 'XJ' IS THE NEW MEAN INTENSITY
       DO 180 K=1,JTAU
@@ -11772,7 +11839,7 @@ C
       DO 414 I=2,NTAU
 414   TCORMX=MAX(TCORMX,ABS(T(I)))
       PRINT415, TCORMX,ITER
-415   FORMAT(' Max corr. applied to T was',F6.1,' K for iteration',I2)
+415   FORMAT(' Max corr. applied to T was',F6.1,' K for iteration ',I3)
 C
 C
       DO 4081 I=1,NTAU
@@ -12996,7 +13063,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       dimension trpe(ndp), trphe(ndp),akapmax(ndp)
       dimension pe_gem(ndp),ptot1(ndp),dptot(ndp)
      &  ,pe1(ndp),dptot2(ndp),dpe2(ndp),dpe(ndp)
-      integer krome_photo_on
+      integer krome_photo_on,call_counter
       INTEGER MOLH, JUMP
       DATA FIRST/.TRUE./
 
@@ -13032,11 +13099,12 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
   
       real conos_sum
-      !common /cit/ it
+      !common /cit/it,itmax
 
       if (first) then
       TOSREAD = 0.
       TPART = 0.
+      call_counter = 0
       end if
 
       call timex1
@@ -13125,11 +13193,14 @@ C      write(*,*) x
       !write(*,*) "ppallmol/at"
       !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
       if (krome_on.eq.1) then
+          call_counter=call_counter+1
+          !write(*,*) call_counter
           !call krome_initialize(ntau,T,ptot)
-          call krome_solve(ntau,T,ptot)
+          if (call_counter.gt.3) then !make sure to only call krome after the first iteration. OPAC gets called three times per iteration, hence krome needs to wait 3 times before it should get called
+           call krome_solve(ntau,T,ptot)
+          endif
           !stop
       endif
-
 C      write(*,*) 'X after'
 C      write(*,*) x
 
@@ -16048,6 +16119,7 @@ c and total molecular pressure.
 124          format(i4,3x,i3,4x,a4)
       close(809)      
         open(unit=321, file='ndensity.dat')
+        
             read(321,*) (rhonallat(k,m),m=1,22)
             read(321,*) (rhonallmol(k,m), m=1,543)
         close(321)
@@ -16543,12 +16615,17 @@ C      implicit none
       real*8::ss_time(ntau)
       real*8::user_JO2, user_JO3
       real*8::krome_tmax
+      real*8,dimension(nwl+1)::photo_bins
+      real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
+      real*8::aa_to_m_conv,J_to_eV_conv,HC_to_SI_conv
       character(len=100)::spec_name
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
       REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
       real*8 :: pp_sum,num_sum
-      common/cos/ wlos(nwl)
+      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
+     *    kos_step,nwtot
+      COMMON/COSWR/osresl
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       common /Chapvar/J_O2, J_O3
@@ -16566,7 +16643,7 @@ C NTAUo above is labelled that to avoid conflict
       common /noneq/ krome_on,krome_photo_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
-      common /photochem/ FLUX_RAD(ndp,nwl)
+      common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 
       call krome_init() !init krome (mandatory)
 
@@ -16574,6 +16651,7 @@ C NTAUo above is labelled that to avoid conflict
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
       krome_flux_output=1
+
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
       if (first_call.eq..True.) then !initialization of krome. Checking for molecules in MARCS and finding their indices, setting Photobins if photochem is needed
@@ -16664,16 +16742,39 @@ C NTAUo above is labelled that to avoid conflict
        endif
       endif
       if (krome_photo_on.eq.1) then !initializing of photobins
-         eV_to_J_conv=6.242E18!Joule to eV
+         J_to_eV_conv=6.242E18!Joule to eV
          HC_to_SI_conv=1E-9 !convert hplanck and clight to SI from CGS
          aa_to_m_conv=1E-10 !Angstrom to meters for wavelenths
-         photo_bin_nominator=HPLNCK*CLIGHT*HC_to_SI_conv
-         photo_bin_low=photo_bin_nominator/(WLOS(nwreal)*aa_to_m_conv)
-         photo_bin_high=photo_bin_nominator/(WLOS(1)*aa_to_m_conv)
-         photo_bin_low=photo_bin_low*eV_to_J_conv
-         photo_bin_high=photo_bin_high*eV_to_J_conv
-         call krome_set_photobinE_lin(photo_bin_low,photo_bin_high)
+         photo_bins_nominator=HPLNCK*CLIGHT*HC_to_SI_conv
+         photo_bins_low=photo_bins_nominator/(WLOS(nwtot)*aa_to_m_conv)
+         photo_bins_high=photo_bins_nominator/(WLOS(1)*aa_to_m_conv)
+         photo_bins_low=photo_bins_low*J_to_eV_conv
+         photo_bins_high=photo_bins_high*J_to_eV_conv        
+         call krome_set_photobinE_log(photo_bins_low,photo_bins_high)
 
+
+        !do j=2,nwtot !setting up photobins manually, potentially worthy of later consideration
+         ! m=nwtot-j+1
+          !wl_avg=(WLOS(m)+WLOS(m+1))/2
+          !write(*,*) m,WLOS(m),WLOS(m+1),wl_avg
+          !photo_bins(j)=photo_bins_nominator/(wl_avg*aa_to_m_conv)
+          !photo_bins(j)=photo_bins(j)*J_to_eV_conv
+          !write(*,*) photo_bins(j)
+         !enddo
+         !write(*,*) photo_bins(:)
+         !photo_bins(nwtot+1)=2*photo_bins_high-photo_bins(nwtot)
+         !photo_bins(1)=2*photo_bins_low-photo_bins(2)
+
+         !call krome_set_photobinE_limits(photo_bins)
+
+       if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                       .or.(krome_output.eq.5)) then
+         open(unit=6363,file='krome_bins_left.dat')
+         open(unit=5656,file='krome_bins_mid.dat')
+         open(unit=4949,file='krome_bins_right.dat')
+         open(unit=4242,file='krome_bins_photoJ.dat')
+         open(unit=3535,file='krome_bins_rates.dat')
+       endif
       endif
       first_call=.False. 
       endif
@@ -16705,7 +16806,7 @@ C NTAUo above is labelled that to avoid conflict
       enddo
 
       !write header of full output file
-      if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+      if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
         open(unit=13,file='krome_full_output.dat')
         write(13,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ','Time [s] ',
      >'Timestep [s] ','Temperature [K] '
@@ -16720,20 +16821,34 @@ C NTAUo above is labelled that to avoid conflict
         istep = 1
         dt = dt_start
         time=0.0
-
+        
         if (krome_photo_on.eq.1) then
-         !write(*,*) FLUX_RAD(K,1),FLUX_RAD(K,nwreal)
-         call krome_set_photoBinJ(FLUX_RAD(K,:))
-         !write(*,*) krome_get_photoBinJ()
-         !write(*,*) krome_get_photoBin_rates()
-      
+         !write(*,*) FLUX_RAD(K,:)
+
+         call krome_set_photoBinJ(FLUX_RAD(k,:))
+         write(3535,*) krome_get_photoBin_rates()
+         if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                          .or.(krome_output.eq.5)) then         
+          if (k.eq.1) then !only print values for first layer
+           write(4242,*) krome_get_photoBinJ()
+           write(6363,*) krome_get_photobine_left()
+           write(5656,*) krome_get_photobine_mid()
+           write(4949,*) krome_get_photobine_right()
+           !write(*,*) krome_get_photobine_delta()
+           !write(*,*) krome_get_xsec()
+           close(4242)
+           close(6363)
+           close(4949)
+           close(5656)         
+          endif
+         endif 
         endif
 
         do
          call krome(num_den(k,:), T(k), dt) !call KROME
          num_den_cont(istep,:) = num_den(k,:)
          time_cont(istep) = time
-         if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+         if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
           if(istep==1 .or. istep==2 .or. 
      & mod(istep,int(output_freq))==0) then
            write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
@@ -16743,7 +16858,7 @@ C NTAUo above is labelled that to avoid conflict
          dt = min(dt*dt_inc,dt_max)
          time = time + dt !increase time
          if(time>krome_tmax) then 
-           if ((krome_output.eq. 1).or.(krome_output.eq. 3)) then
+           if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >      num_den(k,:)        
            endif       
@@ -16758,8 +16873,13 @@ C NTAUo above is labelled that to avoid conflict
           istep = istep + 1 !increase timestep
         end do
       end do
+      if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                       .or.(krome_output.eq.5)) then               
+       close(3535)
+      endif
       !final output
-      if ((krome_output.eq. 2).or.(krome_output.eq. 3)) then
+      if ((krome_output.eq. 1).or.(krome_output.eq. 3)
+     >                        .or.(krome_output.eq. 5)) then
         open(unit=77,file='krome_final_output.dat')
         write(77,'(A6,A9,A16)',Advance = 'No') 'Layer ','Time [s] '
      >,'Temperature [K] '
@@ -16786,8 +16906,11 @@ C Returning the krome values to MARCS
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
         enddo
       endif
-      if (krome_flux_output.eq.1) then
-        open(unit=6969,file='krome_flux_rad.dat')
+      if (krome_photo_on.eq.1) then
+      if ((krome_output.eq.2).or.(krome_output.eq.3)
+     >                       .or.(krome_output.eq.5)) then
+     
+        open(unit=6969,file='krome_flux_rad_upper.dat')
         write(6969,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
      >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
 
@@ -16796,6 +16919,25 @@ C Returning the krome values to MARCS
               write(6969,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(1,j)
             enddo
         close(6969)
+        open(unit=7070,file='krome_flux_rad_1bar.dat')
+        write(7070,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
+     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
+
+            do j=1,nwreal
+              !write(*,*) WLOS(j), FLUX_RAD(1,j)
+              write(7070,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(4,j)
+            enddo
+        close(7070)        
+        open(unit=7171,file='krome_flux_rad_lower.dat')
+        write(7171,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
+     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
+
+            do j=1,nwreal
+              !write(*,*) WLOS(j), FLUX_RAD(1,j)
+              write(7171,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(ntau,j)
+            enddo
+        close(7171)
+      endif
       endif
       return      
       end
