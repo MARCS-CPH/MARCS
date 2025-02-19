@@ -61,10 +61,12 @@ The noneq input parameters are:
  - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTINC (By how much the starting timestep should increase every iteration until DTMAX is reached. Expect a value in the format of X.XX.
          Usually it is advised to have some increase or choose starting timestep and final time wisely to not have your calculation run for too long.)
- - KROMEO (KROME output parameter. Expectes either 1,2 or 3.  
-          1 is just a full output at the end. Good for debugging.  
-          2 is just the final output. Should be default for normal operations  
-          3 is both outputs.)
+ - KROMEO (KROME output parameter. Expectes either 1,2,3,4,5.  
+          1 is just a final output at the end. Should be default for normal operations.
+          2 is just the flux related output. 
+          3 is both outputs, flux and the final krome output.
+          4 is a full krome output. Good for debugging krome.
+          5 is all outputs combinded, in case that is needed for some operations)
  - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
            Currently still a bit work in progress.)
  - OUTINT (How often should the output be written out in case you choose to the full output. Expects a value in the format X.XE+/-XX.
