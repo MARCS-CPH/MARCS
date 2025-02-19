@@ -4,5 +4,5 @@
 -noSinkCheck 
 -RTOL 1D-8
 
--photoBins=80000
+-photoBins=7949
 -useN 
