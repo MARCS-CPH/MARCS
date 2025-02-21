@@ -9905,7 +9905,7 @@ C
 4071  TCORMXM=PM*TCORMX
       
       !print*, "maximum temperature correction LINE 9129"
-      write(file_id,'(i2)') iter
+      write(file_id,'(i3)') iter
       file_name = 'PT_struct_' // trim(adjustl(file_id)) // '.dat'
       !print*, file_name
       open(unit=73972, file=file_name, status='new')
@@ -13196,7 +13196,8 @@ C      write(*,*) x
           call_counter=call_counter+1
           !write(*,*) call_counter
           !call krome_initialize(ntau,T,ptot)
-          if (call_counter.gt.3) then !make sure to only call krome after the first iteration. OPAC gets called three times per iteration, hence krome needs to wait 3 times before it should get called
+          if (call_counter.gt.3) then !make sure to only call krome after the first iteration.
+          !OPAC gets called three times per iteration, hence krome needs to wait 3 times before it should get called
            call krome_solve(ntau,T,ptot)
           endif
           !stop
@@ -16829,7 +16830,7 @@ C NTAUo above is labelled that to avoid conflict
          write(3535,*) krome_get_photoBin_rates()
          if ((krome_output.eq.2).or.(krome_output.eq.3)
      >                          .or.(krome_output.eq.5)) then         
-          if (k.eq.1) then !only print values for first layer
+          if (k.eq.20) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
            write(6363,*) krome_get_photobine_left()
            write(5656,*) krome_get_photobine_mid()
@@ -16846,6 +16847,7 @@ C NTAUo above is labelled that to avoid conflict
 
         do
          call krome(num_den(k,:), T(k), dt) !call KROME
+         !write(*,*) krome_get_flux(num_den(k,:),T(k))
          num_den_cont(istep,:) = num_den(k,:)
          time_cont(istep) = time
          if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
@@ -16925,7 +16927,7 @@ C Returning the krome values to MARCS
 
             do j=1,nwreal
               !write(*,*) WLOS(j), FLUX_RAD(1,j)
-              write(7070,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(4,j)
+              write(7070,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(20,j)
             enddo
         close(7070)        
         open(unit=7171,file='krome_flux_rad_lower.dat')
