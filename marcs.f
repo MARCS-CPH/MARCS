@@ -51,7 +51,7 @@ C      STEFF=5770
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit,onemor
       integer krome_on,krome_return,krome_output,krome_photo_on
-      real*8 krome_tmax
+      real*8 krome_tmax,krome_photo_scale
       common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *  kos_step,nwtot,nosmol,newosatom,newosatomlist
@@ -103,7 +103,7 @@ C      STEFF=5770
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      common /noneq/ krome_on,krome_photo_on
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
 C    
@@ -5698,7 +5698,7 @@ C
 C     
       include 'parameter.inc'
 C     
-      real*8 krome_tmax
+      real*8 krome_tmax,krome_photo_scale
       COMMON /UTPUT/IREAD,IWRIT
       COMMON /CG/GRAV,KONSG /CTEFF/TEFF,FLUX
       COMMON /CSTYR/MIHAL,NOCONV 
@@ -5727,7 +5727,7 @@ C
      > wlambda,bstar,irrinp,irrin
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /ch4/ nch4
-      common /noneq/ krome_on,krome_photo_on
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
@@ -5789,13 +5789,14 @@ C
       print*, "Modelling a rocky planet with a surface temperature of ", 
      * tbottom, " and a surface albedo of ", reflect
       end if
-      read(5, 1236) krome_on, krome_photo_on
+      read(5, 1236) krome_on, krome_photo_on, krome_photo_scale
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
       read(5, 1238) krome_output,krome_return,output_freq
       if (krome_on.eq.1) then
       print*, "Non-equilibrium Chemistry is turned on"
         if (krome_photo_on.eq.1) then
          print*, "Photorates included"
+         print*, "with photo chemistry scaled by", krome_photo_scale
         endif
       else
       print*, "Non-equilibrium Chemistry is turned off"      
@@ -5871,7 +5872,7 @@ C
 67    FORMAT(20X,'TAUM   =',F10.2)
 68    FORMAT(20X,'METBL  =',I10)
 69    FORMAT(20X,'FACPLY =',F10.3)
-1236  FORMAT(7X,I3,12X,I3)
+1236  FORMAT(7X,I3,12X,I3,12X,E8.1)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
 1238  FORMAT(7X,I3,12X,I3,12X,E8.1)
       END
@@ -8759,7 +8760,7 @@ C SPACE ALLOCATION
 C
 C DATA
       DATA IVERS,IEDIT/21,1/
-      common /noneq/ krome_on,krome_photo_on
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ output_freq,krome_output,krome_return
       integer,parameter::nwreal=7949  
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
@@ -13093,7 +13094,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
       common /dpeset/ dpein,dtin, pe_corr(ndp)
-      common /noneq/ krome_on,krome_photo_on
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       character*20 file_id, file_name
       dimension nmid(20)
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
@@ -16624,6 +16625,7 @@ C      implicit none
       character atnames*2, molnames*8, molnames2*4    
       REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
       real*8 :: pp_sum,num_sum
+      real*8 :: krome_photo_scale
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
@@ -16641,7 +16643,7 @@ C NTAUo above is labelled that to avoid conflict
      >                ,idmarcspres(32),idggchempres(32)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
-      common /noneq/ krome_on,krome_photo_on
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
@@ -16825,12 +16827,14 @@ C NTAUo above is labelled that to avoid conflict
         
         if (krome_photo_on.eq.1) then
          !write(*,*) FLUX_RAD(K,:)
-
+         !write(*,*) xscale
          call krome_set_photoBinJ(FLUX_RAD(k,:))
-         write(3535,*) krome_get_photoBin_rates()
+         call krome_photoBin_scale(krome_photo_scale)
+         write(3535,'(I3,9(999E17.8e3))') k,T(k),
+     >    krome_get_flux(num_den(k,:),T(k)) !remember to adjust number of number before the format to adjust for more or less reactions
          if ((krome_output.eq.2).or.(krome_output.eq.3)
      >                          .or.(krome_output.eq.5)) then         
-          if (k.eq.20) then !only print values for first layer
+          if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
            write(6363,*) krome_get_photobine_left()
            write(5656,*) krome_get_photobine_mid()
@@ -16847,7 +16851,7 @@ C NTAUo above is labelled that to avoid conflict
 
         do
          call krome(num_den(k,:), T(k), dt) !call KROME
-         !write(*,*) krome_get_flux(num_den(k,:),T(k))
+
          num_den_cont(istep,:) = num_den(k,:)
          time_cont(istep) = time
          if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
@@ -16874,6 +16878,8 @@ C NTAUo above is labelled that to avoid conflict
           end if
           istep = istep + 1 !increase timestep
         end do
+        !write(*,*) k
+        !write(*,*) krome_get_flux(num_den(k,:),T(k))
       end do
       if ((krome_output.eq.2).or.(krome_output.eq.3)
      >                       .or.(krome_output.eq.5)) then               
