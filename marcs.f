@@ -48,6 +48,7 @@ C      STEFF=5770
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
       integer molh, jump
+      integer,parameter::nwreal=7949
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit,onemor
       integer krome_on,krome_return,krome_output,krome_photo_on
@@ -106,6 +107,7 @@ C      STEFF=5770
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ output_freq,krome_output,krome_return
+      common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 C    
 
 ! Initiation
@@ -225,6 +227,9 @@ C
       
         call newsta
         
+        !if(itstop.ne..True.) then !catches onemor iterations which are not converged
+        ! onemor=.False.
+        !endif
         if(itstop .and. onemor) quit=.true.
         if(itstop) onemor=.true.
         if(quit) exit
@@ -8676,6 +8681,7 @@ C DIMENSIONS
       real*8 a,b,c,aa,bb,cc,aaa,ccc,STBZ,IR,RS,R,TIR, bpl_var
       character*24 idmodl
       logical:: first_call_rad = .True.
+      logical:: file_exists
 C
 C CONNECTIONS VIA COMMON.
 C THE COMMENTED COMMONS MUST BE INITIATED OUTSIDE THIS ROUTINE BEFORE IT
@@ -8756,9 +8762,7 @@ C SPACE ALLOCATION
       common /ch4/ nch4
       character*24 file_name
       character*8 file_id    
-      
-C
-C DATA
+
       DATA IVERS,IEDIT/21,1/
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ output_freq,krome_output,krome_return
@@ -8769,19 +8773,38 @@ C DATA
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
         if (first_call_rad.eq..True.) then
-        FLUX_RAD(:,:)=1 !initialize radiative flux array with zeros in case somethign goes wrong in the intensity calculations
-        if (nwtot.ne.nwreal) then
+         if (nwtot.ne.nwreal) then
          write(*,*) "Number of wavelengths after OS calc", nwtot, 
-     > "not the same as number of wavelengths for FLUX_RAD", nwreal,
-     > "please adjust nwreal to match nwtot"
-        stop
-        endif
-        first_call_rad=.False.
-        
+     >   "not the same as number of wavelengths for FLUX_RAD", nwreal,
+     >   "please adjust nwreal to match nwtot"
+         stop
+         endif
+        FLUX_RAD(:,:)=0 !initialize radiative flux array with zeros in case somethign goes wrong in the intensity calculations        
 
+        !write(*,*) "Open krome_flux_rad"
+        inquire(file="krome_flux_rad.dat",exist=file_exists)
+
+        if (file_exists) then
+        write(*,*) "Found krome_flux_rad.dat, write data into FLUX_RAD"
+        open(unit=7070,file="krome_flux_rad.dat",status='old',readonly)
+        read(7070,*) !read first line before actually writing the data into FLUX_RAD
+        
+        do k=1,ntau 
+         do j=1,nwreal
+          read(7070,*) dummy_k,dummy_wl,FLUX_RAD(k,j) !first two entries dont matter just dummies
+         enddo
+        enddo
+        close(7070)
+        else
+        write(*,*) "Did not find krome_flux_rad.dat, consider supplying
+     >  such a file for better convergence" 
+        endif
+        !write(*,*) FLUX_RAD(1,1),FLUX_RAD(1,nwreal)
+        !write(*,*) FLUX_RAD(ntau,1),FLUX_RAD(ntau,nwreal)
+        first_call_rad=.False.
         endif
        endif
-      endif    
+      endif       
 
       if (krome_photo_on.eq.1) then
        if ((krome_output.eq.2).or.(krome_output.eq.3)
@@ -9853,12 +9876,10 @@ C                    call osatom
          
          ITSTOP=.TRUE.
 C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
-         if (krome_on.eq.1) then !if non-eq chemistry is on, this ensures to have at least 2 full iterations, to account for changes in the abundances
-          if (it.lt.2) then
-           ITSTOP=.False.
-          endif
-         endif
       END IF
+      !IF(TCORMX.GT.TCONV )  THEN !catch cases where in the onemor iteration TCORMX can become larger than TCONV
+      !         ITSTOP=.FALSE.
+      !ENDIF
       PRINT406, TCORMXM,IT
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
@@ -13194,13 +13215,13 @@ C      write(*,*) x
       !write(*,*) "ppallmol/at"
       !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
       if (krome_on.eq.1) then
-          call_counter=call_counter+1
+          !call_counter=call_counter+1
           !write(*,*) call_counter
           !call krome_initialize(ntau,T,ptot)
-          if (call_counter.gt.3) then !make sure to only call krome after the first iteration.
+          !if (call_counter.gt.3) then !make sure to only call krome after the first iteration.
           !OPAC gets called three times per iteration, hence krome needs to wait 3 times before it should get called
            call krome_solve(ntau,T,ptot)
-          endif
+          !endif
           !stop
       endif
 C      write(*,*) 'X after'
@@ -16629,6 +16650,8 @@ C      implicit none
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
+      COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
+      LOGICAL PF,PFE,PFD,FIXROS,ITSTOP
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       common /Chapvar/J_O2, J_O3
@@ -16915,7 +16938,7 @@ C Returning the krome values to MARCS
         enddo
       endif
       if (krome_photo_on.eq.1) then
-      if ((krome_output.eq.2).or.(krome_output.eq.3)
+       if ((krome_output.eq.2).or.(krome_output.eq.3)
      >                       .or.(krome_output.eq.5)) then
      
         open(unit=6969,file='krome_flux_rad_upper.dat')
@@ -16926,16 +16949,7 @@ C Returning the krome values to MARCS
               !write(*,*) WLOS(j), FLUX_RAD(1,j)
               write(6969,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(1,j)
             enddo
-        close(6969)
-        open(unit=7070,file='krome_flux_rad_1bar.dat')
-        write(7070,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
-     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
-
-            do j=1,nwreal
-              !write(*,*) WLOS(j), FLUX_RAD(1,j)
-              write(7070,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(20,j)
-            enddo
-        close(7070)        
+        close(6969)       
         open(unit=7171,file='krome_flux_rad_lower.dat')
         write(7171,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
      >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
@@ -16945,7 +16959,19 @@ C Returning the krome values to MARCS
               write(7171,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(ntau,j)
             enddo
         close(7171)
-      endif
+        if (ITSTOP.eq..True.) then !write out all of fluxrad at the end of the iteration
+         open(unit=7070,file='krome_flux_rad.dat')
+         write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
+     >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
+         do k=1,ntau
+          do j=1,nwreal
+              write(7070,'(I3,2(999E17.8e3))') k,WLOS(j)
+     >         ,FLUX_RAD(k,j)
+         enddo
+        enddo
+        close(7070) 
+        endif
+       endif
       endif
       return      
       end
