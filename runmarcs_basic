@@ -39,6 +39,7 @@ cp marcs $TMPDIR/
 cp -r GGchem $TMPDIR/
 ### FOR NONEQ RUNS
 cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp ${in_dir}krome_flux_rad.dat $TMPDIR/
 cp -r $CWD/krome $TMPDIR
 
 
@@ -66,6 +67,7 @@ cp $CWD/runmarcs    $CWD/${out_dir}
 ### THESE AREA OPTIONAL OUTPUTS FOR KROME
 #cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
 cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat
+cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat
 #if [ -f "KROME_ERROR_REPORT" ] ; then
 #cp KROME_ERROR_REPORT $CWD
 #fi
