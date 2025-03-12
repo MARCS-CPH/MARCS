@@ -51,7 +51,8 @@ C      STEFF=5770
       integer,parameter::nwreal=7949
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit,onemor
-      integer krome_on,krome_return,krome_output,krome_photo_on
+      integer krome_on,krome_photo_on
+      integer krome_output,krome_debug,krome_return
       real*8 krome_tmax,krome_photo_scale
       common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
@@ -106,7 +107,7 @@ C      STEFF=5770
       common /ggchembool/ iggcall
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ output_freq,krome_output,krome_return
+      common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 C    
 
@@ -227,9 +228,9 @@ C
       
         call newsta
         
-        !if(itstop.ne..True.) then !catches onemor iterations which are not converged
-        ! onemor=.False.
-        !endif
+        if(itstop.ne..True.) then !catches onemor iterations which are not converged
+         onemor=.False.
+        endif
         if(itstop .and. onemor) quit=.true.
         if(itstop) onemor=.true.
         if(quit) exit
@@ -371,6 +372,8 @@ C
 
       if(pe(ntp).le.1d-300) then
         print *, "Electron pressure too small in ABSKO"
+        write(*,*) ntp,pe(ntp)
+        write(*,*) ntp,PESKAL(ntp)
       end if
       
       CALL JON(T(NTP),PE(NTP),1,PG,RO,DUM,IOUTR)
@@ -5734,7 +5737,7 @@ C
       common /ch4/ nch4
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ output_freq,krome_output,krome_return
+      common /noneq_output/ krome_output,krome_debug,krome_return
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
 
 
@@ -5796,7 +5799,7 @@ C
       end if
       read(5, 1236) krome_on, krome_photo_on, krome_photo_scale
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
-      read(5, 1238) krome_output,krome_return,output_freq
+      read(5, 1238) krome_output,krome_debug,krome_return
       if (krome_on.eq.1) then
       print*, "Non-equilibrium Chemistry is turned on"
         if (krome_photo_on.eq.1) then
@@ -5879,7 +5882,7 @@ C
 69    FORMAT(20X,'FACPLY =',F10.3)
 1236  FORMAT(7X,I3,12X,I3,12X,E8.1)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
-1238  FORMAT(7X,I3,12X,I3,12X,E8.1)
+1238  FORMAT(7X,I3,12X,I3,12X,I3)
       END
 C
       SUBROUTINE MATINV(A,N)
@@ -7222,12 +7225,13 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       JMEM1=2
       IMEM1=2
       !print*, "OPAC 1"
+      !write(*,*) "opac 1",PPEL
       CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM,JMEM,ABSK,SPRID,-1)
       NEWT=0
       if(metpe.eq.1) then
       CALL ABSKO(NEWT,JTAU,T,PE,IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      !print*, "OPAC 2"
+      !write(*,*) "opac 2",PPEL
       CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM1,JMEM1,ABSK1,SPRID1,-1)
       end if
       
@@ -7249,7 +7253,7 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       if(metpe.eq.1) then
       CALL ABSKO(NEWT,JTAU,T,PE,IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      !print*, "OPAC 3"
+      !write(*,*) "opac 3",PPEL
       CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM1,JMEM1,ABSK1,SPRID1,-1)
       end if
       
@@ -7540,7 +7544,7 @@ C
       DATA NEWT/2/
 C
       !print*, "absko in rossop "
-
+      !write(*,*) "rossop",PE,T,nlayer
       CALL ABSKO(NEWT,1,T,PE,1,0,RSP,DUM,nlayer)
       NEWT=1
       ROSSOP=RSP
@@ -7878,6 +7882,7 @@ C ITERATE THREE TIMES
 C
 C COMPUTE ROSSELAND MEAN AND NEW PRESSURE
       KL=K
+      write(*,*) "startm 5",PPE(K)
       ROSS(K)=ROSSOP(TT(K),PPE(K),k)
       PTAU(K)=GRAV*TAU(K)/ROSS(K)
       PP(K)=PP(K-1)+.5*DTAULN(K)*(PTAU(K)+PTAU(K-1))
@@ -8765,7 +8770,7 @@ C SPACE ALLOCATION
 
       DATA IVERS,IEDIT/21,1/
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
-      common /noneq_output/ output_freq,krome_output,krome_return
+      common /noneq_output/ krome_output,krome_debug,krome_return
       integer,parameter::nwreal=7949  
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 
@@ -8796,8 +8801,8 @@ C SPACE ALLOCATION
         enddo
         close(7070)
         else
-        write(*,*) "Did not find krome_flux_rad.dat, consider supplying
-     >  such a file for better convergence" 
+        write(*,*) "Did not find krome_flux_rad.dat, consider using
+     > such a file for better convergence" 
         endif
         !write(*,*) FLUX_RAD(1,1),FLUX_RAD(1,nwreal)
         !write(*,*) FLUX_RAD(ntau,1),FLUX_RAD(ntau,nwreal)
@@ -8807,8 +8812,7 @@ C SPACE ALLOCATION
       endif       
 
       if (krome_photo_on.eq.1) then
-       if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                        .or.(krome_output.eq.5)) then
+       if (krome_debug.eq.1) then
             open(unit=7676,file='BPL_sun.dat')
             write(7676,'(A15,A26)') 'Wavelength [A] '
      >                          ,'Mean. Int [erg/s/cm2/Å/sr]'
@@ -8954,7 +8958,6 @@ C
 C SECOND WAVELENGTH LOOP, TO CALCULATE XPE,SPE AND SAVE.
       REWIND 14
       KL=1
-  
       DUMMY=ROSSOP(TT(1),PPE(1),1)
       PGPE=PGC
       !print*, "opac call for XPE and SPE "
@@ -9275,8 +9278,7 @@ C      if (irrin > 0) then
             aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
             ergs_to_eV_conv=6.242E11 !converts ergs to eV
 
-            if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                             .or.(krome_output.eq.5)) then
+            if (krome_debug.eq.1) then
              if (k.eq.1) then
               write(7676,'(2(999E17.8e3))') WLOS(J), BPL(steff,WLOS(J))
               Rsun_au=0.00465047
@@ -9306,8 +9308,7 @@ C      if (irrin > 0) then
       end if
 
 150   CONTINUE
-      if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                       .or.(krome_output.eq.5)) then
+      if (krome_debug.eq.1) then
        close(7676)
        close(7777)
        close(7878)
@@ -9877,9 +9878,9 @@ C                    call osatom
          ITSTOP=.TRUE.
 C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       END IF
-      !IF(TCORMX.GT.TCONV )  THEN !catch cases where in the onemor iteration TCORMX can become larger than TCONV
-      !         ITSTOP=.FALSE.
-      !ENDIF
+      IF(TCORMX.GT.TCONV )  THEN !catch cases where in the onemor iteration TCORMX can become larger than TCONV
+               ITSTOP=.FALSE.
+      ENDIF
       PRINT406, TCORMXM,IT
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
@@ -10570,7 +10571,7 @@ C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       KL=1
 C      call rossos
       !print*, "rossop line tryck"
-      
+
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
 C      ross(1)=rosso(1)
       PP(1)=PGC+PPT(1)+PPR(1)
@@ -10635,6 +10636,7 @@ C     *   ' pp(k) ross(k) rosso(k) cross(k)')
 
       DO 110 K=2,NTAU
       PPE(K)=PPE(K-1)*EXP(DPE*DLNTAU(K))
+
       NABSKO=0
 C
 C ITERATION LOOP
@@ -10643,15 +10645,30 @@ C ITERATION LOOP
 111   CONTINUE
       KL=K
 C      call rossos
+      !write(*,*) "tryck 5"
+      !write(*,*) k,DPE,DLNTAU(K)
+      !write(*,*) DPE*DLNTAU(K),EXP(DPE*DLNTAU(K))
+      !write(*,*) PPE(k),PPE(K-1)
+      !write(*,*) k,PPE(k),PPE(K-1)*EXP(DPE*DLNTAU(K))
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
 
       PP(K)=PGC+PPT(K)+PPR(K)
       NABSKO=NABSKO+1
       ERROR=(.5*DLNTAU(K)*GRAV*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
      & TAU(K)/(PP(K)*ROSS(K)))-log(PP(K)/PP(K-1)))
+      !write(*,*) "DLNTAU(K)",DLNTAU(K)
+      !write(*,*) "GRAV",GRAV
+      !write(*,*) "TAU(K-1)",TAU(K-1)
+      !write(*,*) "PP(K-1)",PP(K-1)
+      !write(*,*) "ROSS(K-1)",ROSS(K-1)
+      !write(*,*) "TAU(K)",TAU(K)
+      !write(*,*) "PP(K)",PP(K)
+      !write(*,*) "ROSS(K)",ROSS(K)
+      !write(*,*) ERROR,DLNPE,DEDLNP
       CALL ZEROF(ERROR,DLNPE,DEDLNP)
-      
+      !write(*,*) ERROR,DLNPE,DEDLNP      
       PPE(K)=PPE(K)*EXP(DLNPE)
+      !write(*,*) k,DLNPE,EXP(DLNPE),PPE(K)
       !print*, "ppe(k) in loop ", ppe(k)
 C      write(7,2023) k,nabsko,ppe(k),error,dlnpe,pgc,pp(k)
 C     *    ,rossim,rosso(k),cross(k)
@@ -13007,14 +13024,26 @@ C FIND DX=-F/DFDX, TO MAKE F ZERO. IF DX=0 AT ENTRY, THEN DFDX IS A
 C START APPROXIMATION, AND IT IS THE FIRST CALL. OTHERWISE USE OLD
 C INFO.  780926/NORDLUND.
 C
+      !write(*,*) 'F',F
+      !write(*,*) 'FOLD',FOLD
+      !write(*,*) 'DXOLD',DXOLD
+      if (F.eq.FOLD) then
+      write(*,*) "F equals F_OLD, which would make the derivative zero,
+     >   currently no fix in place Sorry :( Try a different setup"
+       stop
+      endif  
       IF(DX.NE.0.) DFDX=(F-FOLD)/DXOLD
+      !write(*,*) 'DFDX',DFDX
       DX=-F/DFDX
+      !write(*,*) 'DX',DX
 C
 C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT 
       IF (DX.GT.2.) DX=2.
 C
       FOLD=F
       DXOLD=DX
+      !write(*,*) 'FOLD',FOLD
+      !write(*,*) 'DXOLD',DXOLD
       RETURN
       END
 
@@ -13157,6 +13186,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             call GGCHEM(k,t(k),ptot(k))
             
             ppel(k) = ppelGG
+            !write(*,*) "GGchem",ppel(k)
             ggmu(k) = ggmuk
             ggrho(k) = ggrhok
             ppsum(k) = ppsumk
@@ -16629,14 +16659,13 @@ C      implicit none
       logical:: first_call = .True.
       logical:: first_not_call = .True.
       integer:: krome_photo_on,krome_flux_output
-      real*8::Tgas,dt,num_den(ntau,nsp),spy
+      real*8::Tgas,dt,num_den(ntau,nsp)
       real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
       real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
       real*8::mix_rat(ntau,nsp)
       real*8::num_den_cont(100000,nsp),time_cont(100000)
       real*8::time,dtmax,dt_inc
       real*8::ss_time(ntau)
-      real*8::user_JO2, user_JO3
       real*8::krome_tmax
       real*8,dimension(nwl+1)::photo_bins
       real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
@@ -16644,9 +16673,8 @@ C      implicit none
       character(len=100)::spec_name
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
-      REAL*8, DIMENSION(ndp) :: J_O2, J_O3, Af, Int_tot
-      real*8 :: pp_sum,num_sum
       real*8 :: krome_photo_scale
+      real*8 ,parameter:: output_freq=5E-2
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
@@ -16654,7 +16682,7 @@ C      implicit none
       LOGICAL PF,PFE,PFD,FIXROS,ITSTOP
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
-      common /Chapvar/J_O2, J_O3
+      common /cit/it,itmax
       !COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
       !&   VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAUo,ITER
 C NTAUo above is labelled that to avoid conflict
@@ -16668,7 +16696,7 @@ C NTAUo above is labelled that to avoid conflict
      >                ,atnames(22),molnames(543),molnames2(75)
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ output_freq,krome_output,krome_return
+      common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 
       call krome_init() !init krome (mandatory)
@@ -16778,23 +16806,7 @@ C NTAUo above is labelled that to avoid conflict
          photo_bins_high=photo_bins_high*J_to_eV_conv        
          call krome_set_photobinE_log(photo_bins_low,photo_bins_high)
 
-
-        !do j=2,nwtot !setting up photobins manually, potentially worthy of later consideration
-         ! m=nwtot-j+1
-          !wl_avg=(WLOS(m)+WLOS(m+1))/2
-          !write(*,*) m,WLOS(m),WLOS(m+1),wl_avg
-          !photo_bins(j)=photo_bins_nominator/(wl_avg*aa_to_m_conv)
-          !photo_bins(j)=photo_bins(j)*J_to_eV_conv
-          !write(*,*) photo_bins(j)
-         !enddo
-         !write(*,*) photo_bins(:)
-         !photo_bins(nwtot+1)=2*photo_bins_high-photo_bins(nwtot)
-         !photo_bins(1)=2*photo_bins_low-photo_bins(2)
-
-         !call krome_set_photobinE_limits(photo_bins)
-
-       if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                       .or.(krome_output.eq.5)) then
+       if (krome_debug.eq.1) then
          open(unit=6363,file='krome_bins_left.dat')
          open(unit=5656,file='krome_bins_mid.dat')
          open(unit=4949,file='krome_bins_right.dat')
@@ -16832,7 +16844,7 @@ C NTAUo above is labelled that to avoid conflict
       enddo
 
       !write header of full output file
-      if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
+      if (krome_debug.eq.1) then
         open(unit=13,file='krome_full_output.dat')
         write(13,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ','Time [s] ',
      >'Timestep [s] ','Temperature [K] '
@@ -16855,8 +16867,7 @@ C NTAUo above is labelled that to avoid conflict
          call krome_photoBin_scale(krome_photo_scale)
          write(3535,'(I3,9(999E17.8e3))') k,T(k),
      >    krome_get_flux(num_den(k,:),T(k)) !remember to adjust number of number before the format to adjust for more or less reactions
-         if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                          .or.(krome_output.eq.5)) then         
+         if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
            write(6363,*) krome_get_photobine_left()
@@ -16877,7 +16888,7 @@ C NTAUo above is labelled that to avoid conflict
 
          num_den_cont(istep,:) = num_den(k,:)
          time_cont(istep) = time
-         if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
+         if (krome_debug.eq.1) then
           if(istep==1 .or. istep==2 .or. 
      & mod(istep,int(output_freq))==0) then
            write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
@@ -16887,7 +16898,7 @@ C NTAUo above is labelled that to avoid conflict
          dt = min(dt*dt_inc,dt_max)
          time = time + dt !increase time
          if(time>krome_tmax) then 
-           if ((krome_output.eq. 4).or.(krome_output.eq. 5)) then
+           if (krome_debug.eq.1) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >      num_den(k,:)        
            endif       
@@ -16904,13 +16915,11 @@ C NTAUo above is labelled that to avoid conflict
         !write(*,*) k
         !write(*,*) krome_get_flux(num_den(k,:),T(k))
       end do
-      if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                       .or.(krome_output.eq.5)) then               
+      if (krome_debug.eq.1) then               
        close(3535)
       endif
       !final output
-      if ((krome_output.eq. 1).or.(krome_output.eq. 3)
-     >                        .or.(krome_output.eq. 5)) then
+      if (krome_output.eq.1) then
         open(unit=77,file='krome_final_output.dat')
         write(77,'(A6,A9,A16)',Advance = 'No') 'Layer ','Time [s] '
      >,'Temperature [K] '
@@ -16938,8 +16947,7 @@ C Returning the krome values to MARCS
         enddo
       endif
       if (krome_photo_on.eq.1) then
-       if ((krome_output.eq.2).or.(krome_output.eq.3)
-     >                       .or.(krome_output.eq.5)) then
+       if (krome_debug.eq.1) then
      
         open(unit=6969,file='krome_flux_rad_upper.dat')
         write(6969,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
@@ -16959,7 +16967,9 @@ C Returning the krome values to MARCS
               write(7171,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(ntau,j)
             enddo
         close(7171)
-        if (ITSTOP.eq..True.) then !write out all of fluxrad at the end of the iteration
+        endif
+       if (krome_output.eq.1) then
+        if ((ITSTOP.eq..True.).or.(cit.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
          open(unit=7070,file='krome_flux_rad.dat')
          write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
      >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
