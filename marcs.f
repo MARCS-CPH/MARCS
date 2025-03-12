@@ -16969,7 +16969,7 @@ C Returning the krome values to MARCS
         close(7171)
         endif
        if (krome_output.eq.1) then
-        if ((ITSTOP.eq..True.).or.(cit.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
+        if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
          open(unit=7070,file='krome_flux_rad.dat')
          write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
      >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
