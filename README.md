@@ -25,6 +25,7 @@ Then you can run marcs by either executing runmarcs or by adding it to your HPC 
 (Note that the runmarcs file in this repo assumes you'll do the later so you might need to adjust it if you run marcs locally)
 
 # KROME
+(For a full explanation of krome specific compiling flags please refer to https://bitbucket.org/tgrassi/krome/wiki/optionsALL.)
 Running MARCS with KROME
 
 In order to run KROME with MARCS a few steps have to be added to the above mentioned checklist.  
