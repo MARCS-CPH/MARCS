@@ -1,0 +1,78 @@
+General input paramters:
+- ITEMAX (Maximum number of iterations of the main loop)
+- NPRINT (Debugging parameter of old, can be ignored in most cases, just keep at 0)
+- NEWMOD (Decides wether you start a model from scratch (1) or use an old one 0. 0 should be the default for time reasons)
+- NOARCH (write out feature. In most cases should be kept at 0)
+- JONTYP (Swtich to choose which partion functions are used. Should always be 3)
+- IDUST (Swticht to turn on Clouds/SW.)
+- JUMP (Depricated switch for different Eq. chemistry approaches. Only 4 should be used)
+- OS/ODF (Opacticy sampling or opacity distribution function. Always should be OS)
+- MOLOLD (Switch used for quicker convergence by using older stored valous. Should be 1)
+- NLTE (Depricated. Keep 0)
+- PP/SPH (Choose between plane parallel and sqhperical operation of the code)
+- TEFF (Effective temperature the solver should try to achieve. In units of K)
+- GRAV (Surface gravitiy of the simulated object. In units of Log g)
+- MODEL (Can be used to give a headline in the output file)
+- M/MSN (Mass of the irradiated object when sphercial mode is chose, in solar masses)
+
+Convection related input parameters:
+
+- NOCONV (Number of first layers for which convection should be ignored. )
+- XMAX (scales absorption that is used for the rossland mean opactiy. Probably keep at current value)
+- TAUM (Parameter used to distinguish at which optical depth, the core and the surface of the star lies.)
+- FACPLY (Depricated. Keep at 1)
+- METBL (Depricated. Keep at 0)
+- ILINE (Deprictaed. Keep at 1)
+- AMLOSS (Scales the mass loss for a stellar atmosphere. Potentially useful in the future. Currently keep at value its set to.)
+- MOLTSJ (Depricated. Keep at 1)
+- LINICIA (Depricated. Keep at 0)
+- ISPEC (Switch which writes out a spectrum. Keep at 1)
+- MIHAL (Parameter that sets the lowest layer for which radiative equilibrium will be used. For Layers below flux constancy will be assumed.)
+- KONSG (For 0, no real impact on the simulation. For 1, radius and gravity can get varied. Usual value is 0)
+- KORT (Used to change between different ways of how the maximum temperature change is applied. For 0, temperature limitation is ignored. For 1 ... For 2 ... For 4 and 5, maximum change is equal to exactly KPP. For 6, its similar to 4 and 5 with some additional calculations. )
+- KPP (Maximum temperature change allowed. Expects a, at maximum 3 digit, integer. Usually one should choose a single digit integer.)
+- TCONV (Convergence temperature. If the wanted change by MARCS is below this temperature, the simulation is converged)
+- lops (if 1 it can shift the os absorption and ensures not every value is used. Default is 0)
+- nops (Value that determines the denominator of the os absorption shifting determined by lops. For example if set to 3 only one third of the absorptions are used. Default value 1)
+- dpein (Determines the derivate stepsize in solve for the electron pressure. Keep low.)
+- dtin  (Determines the derivate stepsize in solve for the temperature. Keep low.)
+- METPE (Parameter which switches between the old method of calculation the electron pressure (1) and the new (2). For temps below 1500 K choose the new)
+- PALFA (Mixing length ratio for convection. Default to 1.5 (Gustafsson 2008 Chapter 3.2))
+- PBETA (Turbulent pressure scaling factor (Gustafsson 2008 Chapter 3.1). Usually 0 in cases where turbulence plays a small role. )
+- PNY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 8)
+- PY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 0.076)
+- VFIX (Swtich that at 0 speeds up with some velocity calculations otherwise some calculatons are scaled by what is set at VFIX. Default value 0)
+- MYPNTS (Depricated. Seems to only have a use in spherical simulations.)
+- NCORE (Number of rays for raytracing of the in the core. Default 5, but honestly I dont know.)
+- KDIFF (Manipulated how TAURAT is calculated. I dont think TAURAT does anything. Probably depricated.)
+
+Irradiation related input parameters:
+
+- IRRAD (Switch to turn on irradition by another star.)
+- STEFF (Effective temperature of the irradiating star. In units of K.)
+- RSTAR (Radius of the irradiating star. In units of solar radii.)
+- SMAJOR (Distance of the irradiating star. In units of A.)
+- FACTOR (Heat redistribution factor. See Eq. 3.1 in Azzurra d'Alessandros PhD thesis)
+
+Surface related input parameters:
+
+- SURFAC (Switch that turns on the surface module (1). Default 0.)
+- TSURF (Sets the desired surface temperature in K.)
+- ALBEDO (Sets an albedo of the surface you are modelling. 1 full reflection resulting in doubling of the flux overall. 0 meaning no extra flux from the surface.)
+- NCH4 (Switch that determines wether or not the opacity calculation of CH4 should be done in a step by step approach. Helps with convergence if CH4 is an issue. Default is 0)
+
+The noneq input parameters are:
+ - NONEQ (Basic on/off switch for non equilibrium chemistry. Expects a numeric value of 0 (off) or 1 (on))
+ - PHOTO (Basic on/off switch for including photo rates. Expects a numeric value of 0 (off) or 1 (on).
+          currently only able to turn on/off the photolysis module for ozone with more potential features later)
+ - phSCAL(Factor that scales the inensity of the radiation that the photo chemistry works with. Quick and easy parameter
+          to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)         
+ - DTMIN (Starting timstep for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
+ - DTMAX (Maximal timestep size for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
+ - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
+ - DTINC (By how much the starting timestep should increase every iteration until DTMAX is reached. Expect a value in the format of X.XX.
+         Usually it is advised to have some increase or choose starting timestep and final time wisely to not have your calculation run for too long.)
+ - KROMEO (KROME output parameter. Expectes either 0 for no output or 1.)
+ - KDEBUG (Switch that when turned on (set to 1) writes out a lot of extra data arrays which can be useful for debugging or understanding the physics better. Usually keep it at 0)
+ - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
+           Currently still a bit work in progress.)
