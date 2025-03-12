@@ -1,4 +1,5 @@
 # MARCS
+(A full list of all input parameters can be found in parameters_list.txt)
 How to run a marcs model.  
 In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 ### Prepare input files
@@ -47,39 +48,6 @@ The relevant compiling options can be found in the makefile.
 It is highly advised to always use the optimised flags for compiling)  
 Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.  
 Make sure to comment in/out the krome output that you wanted to see in the runmarcs file.
-
-### MARCS Noneq input and KROME compilation flags
-
-This part just serves as a quick explanation of the new noneq input parameters found in "marcs.input" and a short summary of important krome flags.
-
-The noneq input parameters are:
- - NONEQ (Basic on/off switch for non equilibrium chemistry. Expects a numeric value of 0 (off) or 1 (on))
- - PHOTO (Basic on/off switch for including photo rates. Expects a numeric value of 0 (off) or 1 (on).
-          currently only able to turn on/off the photolysis module for ozone with more potential features later)
- - DTMIN (Starting timstep for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
- - DTMAX (Maximal timestep size for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
- - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
- - DTINC (By how much the starting timestep should increase every iteration until DTMAX is reached. Expect a value in the format of X.XX.
-         Usually it is advised to have some increase or choose starting timestep and final time wisely to not have your calculation run for too long.)
- - KROMEO (KROME output parameter. Expectes either 1,2,3,4,5.  
-         - 1 is just a final output at the end. Should be default for normal operations.  
-         - 2 is just the flux related output.   
-         - 3 is both outputs, flux and the final krome output.  
-         - 4 is a full krome output. Good for debugging krome.  
-         - 5 is all outputs combinded, in case that is needed for some operations)  
- - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
-           Currently still a bit work in progress.)
- - OUTINT (How often should the output be written out in case you choose to the full output. Expects a value in the format X.XE+/-XX.
-           probably only needs to be changed when debugging.)
-
-For a full explanation of krome specific compiling flags please refer to https://bitbucket.org/tgrassi/krome/wiki/optionsALL.
-A few set of quick adjustments that can be done if the solver is an unstable are:
-
--ATOL (Absolute tolerance of the solver. Default 1d-20. Can be used to make the solver more or less accurate to ensure stability if needed or performance if needed.
-      also has an option to define custom ATOL for each species.)
--RTOL (Relative tolerance of the solver. Default 1d-4. Can also be used to make the solver more or less accurate to ensure stability if needed or performance if needed.) 
-
-
 
 # SW 
 This file explains how to run MARCS with Static Weather,
