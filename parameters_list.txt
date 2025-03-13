@@ -76,3 +76,9 @@ The noneq input parameters are:
  - KDEBUG (Switch that when turned on (set to 1) writes out a lot of extra data arrays which can be useful for debugging or understanding the physics better. Usually keep it at 0)
  - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
            Currently still a bit work in progress.)
+
+Optical depth related input parameters:
+
+ - LOGTAU (Parameter that determines the range optical depth for which the atmosphere should be simulated. Expects values that are exponents to the power ten. You need to provide at least two values
+           one starting value and one final value.)
+ - DIFFER (Value that determines by how much of LOGTAU a atmospheric layer should change.)
