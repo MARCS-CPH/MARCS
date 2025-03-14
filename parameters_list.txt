@@ -42,9 +42,9 @@ Convection related input parameters:
 - PNY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 8)
 - PY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 0.076)
 - VFIX (Swtich that at 0 speeds up with some velocity calculations otherwise some calculatons are scaled by what is set at VFIX. Default value 0)
-- MYPNTS (Depricated. Seems to only have a use in spherical simulations.)
-- NCORE (Number of rays for raytracing of the in the core. Default 5, but honestly I dont know.)
-- KDIFF (Manipulated how TAURAT is calculated. I dont think TAURAT does anything. Probably depricated.)
+- MYPNTS (Number of intergration points for a gaussian intergration. Default value is 1.)
+- NCORE (Realted to spherical models. Ignore in PP case. Number of rays for raytracing of the in the core. Default 5, but honestly I dont know.)
+- KDIFF (Realted to spherical models. Ignore in PP case. Manipulated how TAURAT is calculated. I dont think TAURAT does anything. Probably depricated.)
 
 Irradiation related input parameters:
 
