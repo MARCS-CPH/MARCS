@@ -3055,7 +3055,6 @@ C we come here only if dimension for the OS is too small:
      & ,/' Approximate resolution is',f8.0,' (corresponding to ',
      & 'step factor',f8.5,')'
      & ,/' OS interval:',f7.1,'-',f9.1,' cm^-1 (=',f5.2,'-',f5.1,'mu)')
-      !write(7,*)
 
       DO 103 I=1,NWTOT
       L=NWTOT-I+1
@@ -4406,11 +4405,14 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      &     ,pp24(ndp),pp54(ndp),pp24m(ndp),pp54m(ndp)
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
+      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       character*3 aifix
       common /pefix/xionfix,aifix
       dimension idplus(543),idminus(543),idmol(543),idos(543)
       character molnam4*4,molnam8*8
       character*4 osnames(54)
+      real*8,dimension(ndp,543):: dummy_ppallmol
+      real*8,dimension(ndp,22):: dummy_ppallat
 C The 54 molecules we have absorption coefficients for (May 2020) are:
       data osnames /
      & 'C2  ','CAH ','CH  ','CN  ','CO  ','CO2 ','FEH ','H2O ','HCN ',
@@ -4908,10 +4910,14 @@ C
 C
 
       open(unit=707,file='pp.dat')
-      read(707,*) (ppallat(k,m),m=1,22)
-      read(707,*) (ppallmol(k,m),m=1,543)
-
-      read(707,708) ((km,atnames(m)),m=1,22)
+      if (krome_on.eq.1) then !avoid overriding non-eq results with final ggchem call
+       read(707,*) (dummy_ppallat(ntau,m),m=1,22)
+       read(707,*) (dummy_ppallmol(ntau,m),m=1,543)
+      else
+       read(707,*) (ppallat(ntau,m),m=1,22)
+       read(707,*) (ppallmol(ntau,m),m=1,543)
+      endif
+      read(707,708) ((km,atnames(m)),m=1,22)   
       read(707,*)
       read(707,709) (molnames(m),m=1,543)
 
@@ -13186,7 +13192,6 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             call GGCHEM(k,t(k),ptot(k))
             
             ppel(k) = ppelGG
-            !write(*,*) "GGchem",ppel(k)
             ggmu(k) = ggmuk
             ggrho(k) = ggrhok
             ppsum(k) = ppsumk
@@ -13239,24 +13244,10 @@ C     Updating stuff for ggchem
          P6_JON(K) = xmettryck(k,1)+0.42*PHE+0.85*ppallmol(k,1)     
       end do
 C ------------ USING KROME TO COMPUTE NON-EQ CHEMISTRY------------
-C      write(*,*) 'X before'
-C      write(*,*) x
 
-      !write(*,*) "ppallmol/at"
-      !write(*,*) ppallmol(1,5),ppallat(1,5),ppallmol(1,376)
       if (krome_on.eq.1) then
-          !call_counter=call_counter+1
-          !write(*,*) call_counter
-          !call krome_initialize(ntau,T,ptot)
-          !if (call_counter.gt.3) then !make sure to only call krome after the first iteration.
-          !OPAC gets called three times per iteration, hence krome needs to wait 3 times before it should get called
            call krome_solve(ntau,T,ptot)
-          !endif
-          !stop
       endif
-C      write(*,*) 'X after'
-C      write(*,*) x
-
 C ------------ KROME DONE------------
 
       !MOLH=MOLM
