@@ -5038,7 +5038,7 @@ C The neutral atoms:
       
         WRITE(7,3148) (atnames(kpratoms(j)),j=1,15)
         DO I=1,JTAU
-                 WRITE(7,'(I2,15F8.3)')I,
+                 WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,ppallat(i,kpratoms(j)))),J=1,15)
         END DO
 3148    FORMAT(2x,15(3x,a2,3x))
@@ -5053,7 +5053,7 @@ C The neutral atoms:
               patm =  log10(max(1.e-99,ppm(i)))
               ppelk = log10(max(1.e-99,ppel(i)))
               pelbal = log10(max(1.e-99,(ppel(i)+ppm(i))))
-           WRITE(7,'(I2,15F8.3)')I,
+           WRITE(7,'(I3,15F8.3)')I,
      *     (log10(max(1.e-99,ppallmol(i,kions(j)))),J=1,13),patp,pelbal
         END DO
 2236    FORMAT(5x,12(a8),a6,' ions+  pe+ions-')
@@ -5064,7 +5064,7 @@ C The neutral atoms:
      &  'neutral molecules (k1mol) of the 409 calculated in GGchem')
         WRITE(7,2240) (molnames(k1mol(j)),j=1,15)
         DO I=1,JTAU
-                 WRITE(7,'(I2,15F8.3)')I,
+                 WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,ppallmol(i,k1mol(j)))),J=1,15)
         END DO
 2240    FORMAT(5x,14a8,a6)
@@ -5074,7 +5074,7 @@ C The neutral atoms:
      &  'neutral molecules (k2mol) of the 409 calculated in GGchem')
         WRITE(7,2240) (molnames(k2mol(j)),j=1,15)
         DO I=1,JTAU
-                 WRITE(7,'(I2,15F8.3)')I,
+                 WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,ppallmol(i,k2mol(j)))),J=1,15)
         END DO
 
@@ -5083,7 +5083,7 @@ C The neutral atoms:
      &  'neutral molecules (k3mol) of the 409 calculated in GGchem')
         WRITE(7,2240) (molnames(k3mol(j)),j=1,15)
         DO I=1,JTAU
-                 WRITE(7,'(I2,15F8.3)')I,
+                 WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,ppallmol(i,k3mol(j)))),J=1,15)
         END DO
 
@@ -5107,7 +5107,7 @@ C The neutral atoms:
         WRITE(7,3148) (atnames(j),j=jmin,jmax)
                 WRITE(7,'(2x,15(2x,i3,3x))')((j),J=jmin,jmax)
         DO I=1,JTAU,jtau-1
-                WRITE(7,'(I2,15F8.3)')I,
+                WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallat(i,j)))),J=jmin,jmax)
         end do
 2245    continue
@@ -5125,10 +5125,10 @@ C The neutral atoms:
         WRITE(7,3153) (molnames(j),j=jmin,jmax)
                 WRITE(7,'(2x,15(2x,i3,3x))')((j),J=jmin,jmax)
         DO I=1,JTAU
-                WRITE(90,'(I2,15F8.3)')I,
+                WRITE(90,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallmol(i,j)))),J=jmin,jmax)
                 if(i.eq.1 .or. i.eq.jtau)
-     *          WRITE(7,'(I2,15F8.3)')I,
+     *          WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallmol(i,j)))),J=jmin,jmax)
         end do
 
