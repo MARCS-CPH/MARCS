@@ -9298,6 +9298,7 @@ C      if (irrin > 0) then
              if (k.eq.ntau) then
               write(7979,'(2(999E17.8e3))') WLOS(J), XJ(K) 
              endif
+
              !write(*,*) K,J,WLOS(J),FLUX_RAD(K,J),XJ(K)
             endif
 
@@ -15915,6 +15916,7 @@ c       close(0302)
         kl = k
         !call termo(k,tt(k),ppel(k),ppr(k),ptot,rro,cp,cv,agrad,q,u2)
         emu(k) = (1.38*ro(k)*tt(k))/(1.67e-8*pg(k))
+
       end do  
       
 ! Save to file
@@ -16665,7 +16667,7 @@ C      implicit none
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
       real*8 :: krome_photo_scale
-      real*8 ,parameter:: output_freq=5E-2
+      integer ,parameter:: output_freq=500
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
@@ -16878,10 +16880,13 @@ C NTAUo above is labelled that to avoid conflict
          call krome(num_den(k,:), T(k), dt) !call KROME
 
          num_den_cont(istep,:) = num_den(k,:)
+      
          time_cont(istep) = time
          if (krome_debug.eq.1) then
+           !write(*,*) istep, int(output_freq)
+           !write(*,*) mod(istep,output_freq)
           if(istep==1 .or. istep==2 .or. 
-     & mod(istep,int(output_freq))==0) then
+     & mod(istep,output_freq)==0) then
            write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >     num_den(k,:)     
           end if
@@ -16906,7 +16911,7 @@ C NTAUo above is labelled that to avoid conflict
         !write(*,*) k
         !write(*,*) krome_get_flux(num_den(k,:),T(k))
       end do
-      if (krome_debug.eq.1) then               
+      if (krome_debug.eq.1) then         
        close(3535)
       endif
       !final output
@@ -16938,27 +16943,6 @@ C Returning the krome values to MARCS
         enddo
       endif
       if (krome_photo_on.eq.1) then
-       if (krome_debug.eq.1) then
-     
-        open(unit=6969,file='krome_flux_rad_upper.dat')
-        write(6969,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
-     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
-
-            do j=1,nwreal
-              !write(*,*) WLOS(j), FLUX_RAD(1,j)
-              write(6969,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(1,j)
-            enddo
-        close(6969)       
-        open(unit=7171,file='krome_flux_rad_lower.dat')
-        write(7171,'(A6,A15,A24)') 'Layer ','Wavelength [A] '
-     >                          ,'Fluxrad [eV/s/hz/cm2/sr]'
-
-            do j=1,nwreal
-              !write(*,*) WLOS(j), FLUX_RAD(1,j)
-              write(7171,'(2(999E17.8e3))') WLOS(j), FLUX_RAD(ntau,j)
-            enddo
-        close(7171)
-        endif
        if (krome_output.eq.1) then
         if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
          open(unit=7070,file='krome_flux_rad.dat')
