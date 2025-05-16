@@ -48,7 +48,6 @@ C      STEFF=5770
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
       integer molh, jump
-      integer,parameter::nwreal=7949
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit,onemor
       integer krome_on,krome_photo_on
@@ -2547,27 +2546,48 @@ C       ----------------------------------------------
             !START OF CROSSSEC OUT MODULE
             !module to write out crossec data in a plotable and visible format
             !spec_i has to be the number of the desired molecule in mol_names
+            !if (spec_i.eq.72) then
+            !open(unit=777,file="crossec_O3.dat")
+            !do i=1,NWL
+            ! do j=1,kpres 
+            !  do k=1,ktemp 
+            !  if (i.eq.1) then !comment this and the following if in to get an overview of the tgrid/prid of the data
+            !  write(*,*) crossec_data(spec_i,i,1,1)
+            !  write(*,*) i,marcs_wn_grid(i)
+            !  write(*,*) j,crossec_pgrid(spec_i,j)
+            !  write(*,*) k,crossec_tgrid(spec_i,j) 
+            !  endif         
+            !  write(777,'(E46.39,A1,E46.39,A1,E10.3,A1,E10.3)') 
+     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
+     >      !   crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
+            !  enddo
+            ! enddo
+            !enddo
+            !close(777)
+            !stop !this module is designed to just run at the beginning of the simulation to just write out the crossec data you can also leave this stop commented out if you want to run afterwards 
+            !endif
+
             !if (spec_i.eq.71) then
             !open(unit=777,file="crossec_O2.dat")
             !do i=1,NWL
-             !do j=1,kpres !comment this and the following if in to get an overview of the prid of the data
-              !do k=1,ktemp !comment this and the following if in to get an overview of the tgrid of the data
-              !if (i.eq.1) then 
-              !write(*,*) crossec_data(spec_i,i,1,1)
-              !write(*,*) i,marcs_wn_grid(i)
-              !write(*,*) crossec_pgrid(spec_i,1)
-              !write(*,*) crossec_tgrid(spec_i,1) 
-              !endif         
-            !  write(777,'(E10.3,A1,E14.6,A1,E10.3,A1,E10.3)') 
-           !>   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
-           !>    crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
-              !enddo
-             !enddo
+            ! do j=1,kpres 
+            !  do k=1,ktemp 
+            !  if (i.eq.1) then !comment this and the following if in to get an overview of the tgrid/prid of the data
+            !  write(*,*) crossec_data(spec_i,i,1,1)
+            !  write(*,*) i,marcs_wn_grid(i)
+            !  write(*,*) j,crossec_pgrid(spec_i,j)
+            !  write(*,*) k,crossec_tgrid(spec_i,j) 
+            !  endif         
+            !  write(777,'(E46.39,A1,E46.39,A1,E10.3,A1,E10.3)') 
+     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
+     >      !   crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
+            !  enddo
+            ! enddo
             !enddo
+            !endif   
             !close(777)
-            !stop !this module is designed to just run at the beginning of the simulation to just write out the crossec data
-                  !you can also leave this stop commented out if you want to run afterwards
-            !endif            
+     
+    
             !END OF CROSSSEC OUT 
 
          end subroutine read_opac
@@ -8777,7 +8797,6 @@ C SPACE ALLOCATION
       DATA IVERS,IEDIT/21,1/
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ krome_output,krome_debug,krome_return
-      integer,parameter::nwreal=7949  
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
 
 
@@ -8810,8 +8829,6 @@ C SPACE ALLOCATION
         write(*,*) "Did not find krome_flux_rad.dat, consider using
      > such a file for better convergence" 
         endif
-        !write(*,*) FLUX_RAD(1,1),FLUX_RAD(1,nwreal)
-        !write(*,*) FLUX_RAD(ntau,1),FLUX_RAD(ntau,nwreal)
         first_call_rad=.False.
         endif
        endif
@@ -9305,7 +9322,7 @@ C      if (irrin > 0) then
 
             !if (XJ(k).gt.0) then   
             FLUX_RAD(K,J)=XJ(K)*WLOS(j)*
-     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
+     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv/4*PI
             if (flux_rad(k,j).lt.0) then
              FLUX_RAD(K,J)=0
             endif
@@ -13057,7 +13074,7 @@ C
       SUBROUTINE OSTABLOOK
 
       implicit real*8 (a-h,o-z)
-
+       !use omp_lib
        include 'parameter.inc'
        character atnames*2, molnames*8, molnames2*4, shn*8
        character(len=100) :: mol_file
@@ -13247,7 +13264,10 @@ C     Updating stuff for ggchem
 C ------------ USING KROME TO COMPUTE NON-EQ CHEMISTRY------------
 
       if (krome_on.eq.1) then
+           !start = omp_get_wtime()
            call krome_solve(ntau,T,ptot)
+           !cost = omp_get_wtime()-start
+           !print(*,*) "Cost", cost
       endif
 C ------------ KROME DONE------------
 
@@ -16639,7 +16659,6 @@ C       enddo
 
 C      implicit none
       integer,parameter::nsp=krome_nmols !number of species (common) 
-      integer,parameter::nwreal=7949     
       integer::ntau, i,j,k, istep,header_size,buffer
       integer::ss_istep(ntau)
       integer,dimension(22,2) :: index_at  !indices of atomic specs, first index marcs, second index krome
@@ -16796,7 +16815,7 @@ C NTAUo above is labelled that to avoid conflict
          photo_bins_low=photo_bins_nominator/(WLOS(nwtot)*aa_to_m_conv)
          photo_bins_high=photo_bins_nominator/(WLOS(1)*aa_to_m_conv)
          photo_bins_low=photo_bins_low*J_to_eV_conv
-         photo_bins_high=photo_bins_high*J_to_eV_conv        
+         photo_bins_high=photo_bins_high*J_to_eV_conv
          call krome_set_photobinE_log(photo_bins_low,photo_bins_high)
 
        if (krome_debug.eq.1) then
@@ -16854,8 +16873,6 @@ C NTAUo above is labelled that to avoid conflict
         time=0.0
         
         if (krome_photo_on.eq.1) then
-         !write(*,*) FLUX_RAD(K,:)
-         !write(*,*) xscale
          call krome_set_photoBinJ(FLUX_RAD(k,:))
          call krome_photoBin_scale(krome_photo_scale)
          write(3535,'(I3,9(999E17.8e3))') k,T(k),
@@ -16863,9 +16880,9 @@ C NTAUo above is labelled that to avoid conflict
          if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
-           write(6363,*) krome_get_photobine_left()
-           write(5656,*) krome_get_photobine_mid()
-           write(4949,*) krome_get_photobine_right()
+           write(6363,*) krome_get_photobinE_left()
+           write(5656,*) krome_get_photobinE_mid()
+           write(4949,*) krome_get_photobinE_right()
            !write(*,*) krome_get_photobine_delta()
            !write(*,*) krome_get_xsec()
            close(4242)
