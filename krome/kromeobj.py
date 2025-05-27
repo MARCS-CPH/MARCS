@@ -2495,7 +2495,7 @@ class krome:
 				SWRI2KROME(self.buildFolder, myrea.reactants[0], myrea.products, myrea.Tmin)
 			#if file is LEIDEN convert to KROME
 			if "@xsecFile=LEIDEN" in myrea.krate:
-				LEIDEN2KROME(self.buildFolder, myrea.reactants[0], myrea.products)
+				LEIDEN2KROME(self.buildFolder, myrea.reactants[0], myrea.products,self.photoBins)
 			# When reversed reactions need to be computed with Gibbs free
 			# energy tables
 			if "revKc_with_GFE" in myrea.krate:
