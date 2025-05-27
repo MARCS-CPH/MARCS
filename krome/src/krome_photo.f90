@@ -282,14 +282,17 @@ contains
     implicit none
     integer::i,j
     real*8::dE,kk,Jval,E,Eth,n(:),ncol(nmols),tau
-
 #IFKROME_usePhotoOpacity
     !get column density from number density
     do i=1,nmols
        ncol(i) = num2col(n(i),n(:))
     end do
 #ENDIFKROME_usePhotoOpacity
-
+    !open(unit=8181,file='photobinJtab.dat')  
+    !open(unit=8282,file='photobin_rates.dat')
+    !open(unit=8383,file='Jval.dat')
+    !open(unit=8484,file='dE.dat')
+    !open(unit=8585,file='E.dat')
     !init rates and heating
     photoBinRates(:) = 0d0 !1/s/Hz
     photoBinHeats(:) = 0d0 !eV/s/Hz
@@ -328,7 +331,6 @@ contains
     !converts to erg/s
     photoBinHeats(:) = 4d0*pi*photoBinHeats(:) * iplanck_eV * eV_to_erg
 #ENDIFKROME_photobin_heat
-
   end subroutine calc_photoBins_thick
 
   !********************
