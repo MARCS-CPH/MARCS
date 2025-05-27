@@ -164,6 +164,10 @@ class reaction:
 				RR = self.reactants[0].name
 				PP = ("_".join([x.name for x in self.products]))
 				self.xsecFile = "swri_"+RR+"__"+PP+".dat"
+			#if "LEIDEN" in self.krate.upper():#use .org file to match energies perfectly
+			#	RR = self.reactants[0].name
+			#	PP = ("_".join([x.name for x in self.products]))
+			#	self.xsecFile = "leiden_"+RR+"__"+PP+".org"
 			if "LEIDEN" in self.krate.upper():
 				RR = self.reactants[0].name
 				PP = ("_".join([x.name for x in self.products]))
@@ -354,7 +358,7 @@ def searchSpeciesByName(speciesList, speciesName):
 ###############################
 #convert a LEIDEN datafile to KROME format in the build folder
 # see http://home.strw.leidenuniv.nl/~ewine/photo/
-def LEIDEN2KROME(build_folder,reactant,products):
+def LEIDEN2KROME(build_folder,reactant,products,nPhotoBins):
 	try:
 		from scipy import interpolate
 	except:
@@ -431,7 +435,8 @@ def LEIDEN2KROME(build_folder,reactant,products):
 
 	#write the file to the build folder
 	foutx = open(build_folder+"leiden_"+reactant.name+"__"+("_".join(prods))+".dat","w")
-	imax = 5000 #number of interpolated points
+	imax = 10000 #number of interpolated points
+	imax = nPhotoBins #number of interpolated points
 	emax = min(max(energyList), 3e1) #this is the maximum energy limit for creating tables (eV)
 	emin = min(energyList)
 	foutx.write("#interpolated xsecs, "+str(imax)+" points in range ["+str(emin)+","+str(emax)+"] eV\n")
