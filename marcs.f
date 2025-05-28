@@ -9324,12 +9324,10 @@ C      IF(PFD) WRITE(7,30) (DLNX(K),K=1,26)
             !      write(*,*) FLUX_RAD(k,j),FLUX_RAD(k,j)/WLOS(j),
             !>            FLUX_RAD(k,j)/(WLOS(j)*aa_to_cm_conv/CLIGHT) 
             !endif
-            if (flux_rad(k,j).lt.0) then
-             FLUX_RAD(K,J)=0
-            endif
-            write(7070,'(I3,2(999E17.8e3))') k,WLOS(j)
-     >         ,FLUX_RAD(k,j)
-            end do
+             if (flux_rad(k,j).lt.0) then
+              FLUX_RAD(K,J)=0
+             endif
+            enddo
        end if
       end if
 
@@ -16954,6 +16952,23 @@ C Returning the krome values to MARCS
           ppallmol(k,:) = num_den_mol(k,:)/Pcon(k)
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
         enddo
+      endif
+
+      if (krome_photo_on.eq.1) then
+       if (krome_output.eq.1) then
+        if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
+         open(unit=7070,file='krome_flux_rad.dat')
+         write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
+     >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
+         do k=1,ntau
+          do j=1,nwreal
+              write(7070,'(I3,2(999E17.8e3))') k,WLOS(j)
+     >         ,FLUX_RAD(k,j)
+         enddo
+        enddo
+        close(7070) 
+        endif
+       endif
       endif
       return      
       end
