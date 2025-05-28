@@ -8829,9 +8829,9 @@ C SPACE ALLOCATION
         write(*,*) "Did not find krome_flux_rad.dat, consider using
      > such a file for better convergence" 
         endif
-        open(unit=7070,file='krome_flux_rad.dat')
-         write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
-     >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'    
+        !open(unit=7070,file='krome_flux_rad.dat')
+        ! write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
+        !>          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'    
          if (krome_debug.eq.1) then
             open(unit=7676,file='BPL_sun.dat')
             !write(7676,'(A15,A27)') 'Wavelength [A] '
