@@ -119,10 +119,10 @@ C
       open(unit=9,file='data/jonabs.dat',status='old',readonly)
       open(unit=16,file='arcivaaa.dat',status='old',readonly)
 
-      read(5,'(6(7x,i3,5x))') itmax,nprint,newmod,noarch,jontyp,idust
+      read(5,'(5(7x,i3,5x))') itmax,newmod,noarch,jontyp,idust
       if (idust == 1) idustopac = 1
-      read(5,'(7x,i3,12x,a3,2(12x,i3),12x,a3)') jump,sampling,molold,
-     *  nlte,pp_sph
+      read(5,'(7x,i3,12x,a3,12x,i3,12x,a3)') jump,sampling,molold
+     *  ,pp_sph
 
       if(pp_sph.eq.'sph' .or. pp_sph.eq.'SPH') isph = 1
       
@@ -163,8 +163,7 @@ C
      
       read(5,outlist)
       pfd=itmax.lt.0
-      if(pfd) itmax=-itmax
-      pfe=itmax.le.nprint      
+      if(pfd) itmax=-itmax     
       
       if(newmod.eq.1) call startm
       if(newmod.eq.2) print*,' newmo=2; no iteration; trans old mod'
@@ -206,7 +205,6 @@ C
         write(*,'(a23,i3,a8)')' Iteration #           ',it,' started'
         call gettime(1)
         
-        pf=it.gt.itmax-nprint
         if(quit) pf=.true.
 
         if (isph.eq.1) then 
@@ -235,7 +233,7 @@ C
         if(quit) exit
       end do
       
-      call marcs2drift
+      !call marcs2drift
       
       if(noarch.ge.2) go to 101
       call modjon(3,1)
@@ -4355,7 +4353,6 @@ C      REAL*8 ROSSO,PTAUO
 C      COMMON/COPPR/oppr(15,3,120,3),jvxmax,itxmax  !15mol,10dpt,100wn
 C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
       COMMON /Cspec/spec(nwl,3),ispec
-      COMMON /CLIST/NLTE
       COMMON /MASSE/RELM
       COMMON /CLIN/lin_cia
       COMMON /CNEWC3 /NEWC3
@@ -4620,37 +4617,6 @@ C23456789 123456789 123456789 123456789 123456789 123456789 123456789 12
       WRITE(7,206) I,log10(tau(i)),
      *      TAU(I),T(I),TKORRM(I),FCONV(I),FCORR(I),I
     4 CONTINUE
-C
-      IF (NLTE.EQ.0) GO TO 4000
-C*
-C* 90-05-13 START OF MODIFICATIONS (MATS CARLSSON)
-C* PRINT MULTI ATMOSPHERIC FILE: ATMOS.MULTI
-C*
-      OPEN(33,FILE='ATMOS.MULTI',STATUS='NEW',CARRIAGE CONTROL='LIST')
-      WRITE(33,400) TEFF
-  400 FORMAT(' MARCS MODEL ATMOSPHERE, TEFF=',F10.2/' TAU(5000) SCALE')
-      WRITE(33,410) G
-  410 FORMAT('*'/'* LG G'/F6.2)
-      WRITE(33,420) JTAU
-  420 FORMAT('*'/'* NDEP'/I3)
-      WRITE(33,430)
-  430 FORMAT('*'/'*LG TAU(5000)    TEMPERATURE        NE         V',
-     * '              VTURB')
-      DO 450 I=1,JTAU
-        IF(TAUS(I).GT.0.0) THEN
-          TAULG=LOG10(TAUS(I))
-        ELSE
-          TAULG=2.*LOG10(TAUS(I+1))-LOG10(TAUS(I+2))
-        ENDIF
-        WRITE(33,440) TAULG,T(I),PE(I)/T(I)/1.380662E-16,0.,2.
-  440   FORMAT(1P,5E14.6)
-  450 CONTINUE
-      CLOSE(33)
-C*
-C* 90-05-13 END OF MODIFICATIONS
-C*
-4000  CONTINUE
-
       
       WRITE(7,207)
       if(metpe.eq.2) write(7,*)
@@ -8641,7 +8607,6 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/
      *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      common /CPRINT/NPRINT
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /CVAAGL/XL,W,NLAM
       COMMON /CSTYR/MIHAL,NOCONV /DEBUG/KDEBUG
@@ -10772,7 +10737,6 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/PI
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CLEVPRINT/ PRJ2(NDP),masslinf
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      common /CPRINT/NPRINT
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /CVAAGL/XL,W,NLAM
       COMMON /CSTYR/MIHAL,NOCONV /DEBUG/KDEBUG
@@ -15718,235 +15682,6 @@ c       close(0302)
       return
       end
 
-
-!-----------------------------------------------------------------------
-! Writes a MARCS output file to be read by DRIFT
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine marcs2drift
-      
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      character flag(ndp)
-      dimension pg(ndp),surfgrav(ndp),v(ndp),emu(ndp),rad(ndp)
-      dimension flip_rad(ndp), abundances(ndp,100), pg2(ndp)
-      dimension kappa_cloud_int(ndp)
-      real*8 :: kappa_cloud, kappa_cloud_int
-      common /tauc/tau(ndp),dtauln(ndp),jtau
-      common /cg/grav,konsg /cteff/teff,flux
-      common /masse/relm
-      common /mixc/palfa,pbeta,pny,py /cvfix/vfix
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     & ntau,iter
-      common /cstyr/mihal,noconv
-      common /rossc/xkapr(ndp),cross(ndp)
-      common /cabinit/abinit(natms),kelem(natms),nelem
-      common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac
-      common /cmolrat/ fold(ndp,8),molold,kl
-      common /cmetpe/ ppel(ndp), metpe
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
-     * isw(max_eps)
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      open(unit=389, file='./data/abinit_abmarcs.dat')
-      read(389,*)
-      do n=1, max_eps !dependent on amount of elements in abinit_abmarcs.dat
-        read(389, '(12x,i2,8x,i2,4x,i2)') 
-     >       iabinit(n), iabmarcs(n), isw(n) 
-      
-      end do
-      close(389)
-
-      open(unit=2873, file='nlay_nwtot.in', status="replace", 
-     *       position="append", action="write")
-      write(2873,*) ntau
-      write(2873,*) nwtot
-      close(2873)
-
-      !print*, "at marcs2drift"
-
-      sun_rad = 6.96342e10   ! cm
-      
-! Radius
-      relr = sqrt(relm/grav*10**(4.44))
-
-      flip_rad(1:ntau) = 0.
-      do k=1,ntau
-        kl = k
-        furem = fure
-        !call termo(k,tt(k),ppel(k),ppr(k),ptot,rro,cp,cv,agrad,q,u2)
-        fure = 1./(xkapr(k)*ro(k))
-        if(k .eq. 1) cycle
-        flip_rad(k) = flip_rad(k-1) + (tau(k)-tau(k-1))*(fure+furem)*0.5
-      end do
-      rad(1:ntau) = 0.
-      do k=1,ntau
-        rad(k) = flip_rad(ntau-k+1)+relr*sun_rad
-      end do
-      
-! Gas pressure
-      do k=1,ntau
-        kl = k
-      if(metpe.eq.1) then
-        call jon(tt(k),ppe(k),1,pgx,rox,dumx,0)
-      else if(metpe.eq.2) then
-        pgx =  pp(k)-ppr(k)-ppt(k)
-        !call jon(tt(k),ppel(k),1,pgx,rox,dumx,0)
-      end if
-        pg(k) = PGx
-      end do
-
-! Surface gravity
-      do k=1,ntau
-        surfgrav(k) = (relr*sun_rad/rad(k))*grav
-      end do 
-
-! Convective velocity
-      do k=1,ntau
-        if(k .gt. 1) go to 13
-        v(k) = 0.
-        go to 15
-        
-13      if(k .eq. ntau) go to 14
-        ya=(tau(k)-tau(k-1))/(tau(k+1)-tau(k-1))
-        yb=1.-ya
-        v(k)=ya*vv(k+1)+yb*vv(k)
-        if(vv(k).gt.0..and.vv(k+1).gt.0.) v(k)=
-     &    exp(ya*log(vv(k+1))+yb*log(vv(k)))
-        go to 15
-        
-14      continue
-        ya=(2.*tau(k)-tau(k-1)-tau(k-2))/(tau(k)-tau(k-2))
-        yb=1.-ya
-        v(k)=ya*vv(k)+yb*vv(k-1)
-15      continue
-      end do
-
-! Convection flag
-      do k=1,ntau
-        if(v(k) .eq. 0.) then
-          flag(k) = 'F'
-        else
-          flag(k) = 'T'
-        end if
-      end do   
-      
-! Mean molecular mass
-      do k=1,ntau
-        kl = k
-        !call termo(k,tt(k),ppel(k),ppr(k),ptot,rro,cp,cv,agrad,q,u2)
-        emu(k) = (1.38*ro(k)*tt(k))/(1.67e-8*pg(k))
-
-      end do  
-      
-! Save to file
-      
-      !print*, "writting marcs2drift file"
-      open(unit=33, file='marcs2drift.dat')
-      
-      write(33,'(a2)') ' !'
-      write(33,'(a43)')' ! MARCS output file to be read in by DRIFT'
-      if(idust .eq. 0) then
-        write(33,'(a2)') ' ! Dust not included'
-      else
-        write(33,'(a2)') ' ! Dust included'
-      end if
-      write(33,'(a2)') ' !'
-      write(33,'(a32,a19)') ' ! Model parameters: Teff, logg,',
-     *  ' mixing, overshoot:'
-      write(33,'(f12.3,f13.3,f13.3,f13.3)') teff, log10(grav), 
-     *  palfa, 2.200
-      write(33,'(a2)') ' !'
-      write(33,'(a31)') ' ! Number of atmosphere layers:'
-      write(33,'(i5)') ntau
-      write(33,'(a2)') ' !'
-      write(33,'(a42)') ' ! Number of elements in abundances table:'
-      write(33,'(i5)') nelem
-      write(33,'(a2)') ' !'
-      write(33,'(a32)') ' ! Z of the considered elements:'
-      do i=1,nelem,8
-        if(i .gt. nelem-8) then
-          write(33,'(8(i5.2,1x))') (kelem(j), j=i,nelem)
-        else
-          write(33,'(8(i5,1x))') (kelem(j), j=i,i+7)
-        end if
-      end do      
-      write(33,'(a2)') ' !'
-      write(33,'(a5,6a16,a6,a16)') ' !  #', 'Rad [cm]', 
-     *  'Temp [K]', 'Pgas [dyn cm-2]', 'Ro [g cm-3]', 'g [cm s-2]',
-     *  'v_conv [cm s-1]', 'Flag', 'mu [amu]'
-      do k=1,ntau
-        write(33,'(i5,6e16.8,a6,e16.8)') k, rad(k), tt(k), pg(k),
-     *  ro(k), surfgrav(k), v(k), flag(k), emu(k)
-      end do
-      write(33,'(a2)') ' !'
-      write(33,'(a41)') ' ! Initial Element abundances for each Z:'
-      do i=1,nelem-1,8
-        if(i .gt. nelem-9) then
-          write(33,'(8f6.2)') (abinit(j), j=i,nelem-1)
-        else
-          write(33,'(8f6.2)') (abinit(j), j=i,i+7)
-        end if
-      end do
-      close(33)
-      if (idust == 0) then
-      open(unit=0307, file='kappa_cloud_lay.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      kappa_cloud_int(i) = 0.0
-      write(0307, *) kappa_cloud_int(i)
-      end do
-      close(0307)
-
-      open(unit=0407, file='dust_abs.dat', status="replace", 
-     *       position="append", action="write")
-
-      
-      do i=1, ntau
-      dust_abs(i, 1:nwtot) = 0.0
-      write(0407, *) dust_abs(i, 1:nwtot)
-      end do
-      close(0407)
-      open(unit=0507, file='dust_sca.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      dust_sca(i, 1:nwtot) = 0.0
-      write(0507, *) dust_sca(i, 1:nwtot)
-      end do
-      close(0507)
-
-      do m=1, max_eps
-              eps_init_el = 10.0**(abinit(iabinit(m))-12.0)
-              epsilon_cloud(m,1:ntau) = eps_init_el            
-      end do
-
-
-      open(unit=0707, file='epsilon_cloud.dat', status='replace',
-     * position='append', action='write' )
-      do m=1, max_eps
-      write(0707, *) isw(m), epsilon_cloud(m,1:ntau)
-      end do
-      close(0707)    
-      end if
-      return 
-      end
-
-    
 
 ************************************************************************
 c routine that calls GGChem
