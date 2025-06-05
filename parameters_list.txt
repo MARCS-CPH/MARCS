@@ -17,7 +17,7 @@ General input paramters:
 
 Convection related input parameters:
 
-- NOCONV (Number of first layers for which convection should be ignored. )
+- NOCONV (Number of first layers for which convection should be ignored. Counting from the top.)
 - XMAX (scales absorption that is used for the rossland mean opactiy. Probably keep at current value)
 - TAUM (Parameter used to distinguish at which optical depth, the core and the surface of the star lies.)
 - FACPLY (Depricated. Keep at 1)
