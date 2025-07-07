@@ -4407,7 +4407,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       dimension pe_gem(ndp)
       COMMON /CMETPE/ PPEL(NDP), METPE
       common /dpeset/ dpein,dtin
-      COMMON /CORRECT/KORT,KPP,TCONV
+      COMMON /CORRECT/TDIFF,TCONV,KORT
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
      &   ppnonappsum(ndp),tg(ndp),pges(ndp)
      &  ,ppat1sum(ndp),ppat2sum(ndp),ppmolsum(ndp),ppgs(ndp)
@@ -4614,11 +4614,10 @@ C      IF(ILINE.GE.1) WRITE(7,253) ILINE
       ENDIF
       write(7,516) steff,irrin        !irrin=1~comp.irrad,steff=rad*
 516   FORMAT('The irradiation parameters, steff and irrin:',F8.0,2X,I3)
-C      write(7,518) KONSG,KORT,KPP,TCONV
-C518   FORMAT(' KONSG,KORT,KPP,TCONV:',3(2X,I3,2X),2X,F8.0)
-      write(7,518) KORT,KPP,TCONV
-518   FORMAT(' convergence adjustment and criteria KORT,KPP,TCONV:',
-     &     2(2X,I3,2X),F8.0)
+
+      write(7,518) KORT,TDIFF,TCONV
+518   FORMAT(' convergence adjustment and criteria KORT,TDIFF,TCONV:',
+     &     (2X,I3,2X),F8.0,F8.0)
       write(7,517) dpein,dtin,metpe
 517   FORMAT('derivative steps in solve: dpein,dtin  and method-pe:',
      &    2F7.4,i3)
@@ -5751,7 +5750,7 @@ C
       COMMON /CMETPE/ PPEL(NDP), METPE
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
       COMMON /CLIN/lin_cia
-      COMMON /CORRECT/KORT,KPP,TCONV
+      COMMON /CORRECT/TDIFF,TCONV,KORT
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /STATEC/DUM1(10*NDP),TAULN(NDP),RO(NDP),NTAU,ITER
       COMMON /Cspec/spec(nwl,3),ispec
@@ -5797,7 +5796,7 @@ CUGJ      ILINE=0
       IF(TAUM.EQ.0.) TAUM=50.
       IF(XMAX.EQ.0.) XMAX=1.E10
       READ(5,63) ILINE,AMLOSS,MOLTSUJI,LIN_CIA,ISPEC
-      READ(5,51) MIHAL,KONSG,KORT,KPP,TCONV
+      READ(5,51) MIHAL,KONSG,KORT,TDIFF,TCONV
       
       read(5,635) lops,nops,dpein,dtin,metpe
 
@@ -5871,11 +5870,11 @@ C
      
       WRITE(7,59)NOCONV
       WRITE(7,57)MIHAL
-      WRITE(7,571)KONSG,KORT,KPP
+      WRITE(7,571)KONSG,KORT,TDIFF
       
       RETURN
 50    FORMAT(5(7X,F8.0))
-51    FORMAT(4(7X,I3,5X),7X,F8.0)
+51    FORMAT(3(7X,I3,5X),7X,F8.0,7X,F8.0)
 512   FORMAT(3(7X,I3,5X))
 1234  format(1(7X,I4,4X), 4(7X, F8.0))
 1235  format(1(8X,I4,3X), 2(7X, F8.0), 1(7X, I2))
@@ -5886,7 +5885,7 @@ C
 55    FORMAT(20X,'PNY    =',F10.0)
 56    FORMAT(20X,'PY     =',F10.3)
 57    FORMAT(20X,'MIHAL  =',I5)
-571   FORMAT(20X,'KONSG  =',I5,'  KORT  =',I5,'  KPP  =',I5)
+571   FORMAT(20X,'KONSG  =',I5,'  KORT  =',I5,'  TDIFF  =',F8.0)
 58    FORMAT(20X,'MYPNTS =',I10,'(for spherical only)')
 59    FORMAT(/20X,'NOCONV =',I10)
 60    FORMAT('0* MODEL PARAMETERS')
@@ -7908,7 +7907,6 @@ C ITERATE THREE TIMES
 C
 C COMPUTE ROSSELAND MEAN AND NEW PRESSURE
       KL=K
-      write(*,*) "startm 5",PPE(K)
       ROSS(K)=ROSSOP(TT(K),PPE(K),k)
       PTAU(K)=GRAV*TAU(K)/ROSS(K)
       PP(K)=PP(K-1)+.5*DTAULN(K)*(PTAU(K)+PTAU(K-1))
@@ -8758,7 +8756,7 @@ C OWN COMMONS
       COMMON /CI8/PGC,ROC,EC
       COMMON /NEWMO/NEWMOD
       COMMON /MASSE/RELM
-      COMMON /CORRECT/KORT,KPP,TCONV
+      COMMON /CORRECT/TDIFF,TCONV,KORT
       COMMON /CIT/IT,ITMAX
 C
 C SPACE ALLOCATION
@@ -9313,30 +9311,27 @@ C      IF(PFD) WRITE(7,30) (DLNX(K),K=1,26)
 
             do K=1, ntau
             
-            !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr-1 (sr is part of XJ with units erg s-1 cm-2 Å-1) for krome
+            !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr-1 from XJ with units erg s-1 cm-2 Å-1 for krome
             aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
-            ergs_to_eV_conv=6.242E11 !converts ergs to eV
-            !if (XJ(k).gt.0) then  
-            
-            FLUX_RAD(K,J)=XJ(K)*WLOS(J)*
-     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
-            !if (k.eq.ntau) then
-            !      write(*,*) FLUX_RAD(k,j),FLUX_RAD(k,j)/WLOS(j),
-            !>            FLUX_RAD(k,j)/(WLOS(j)*aa_to_cm_conv/CLIGHT) 
-            !endif
-             if (flux_rad(k,j).lt.0) then
-              FLUX_RAD(K,J)=0
-             endif
+            ergs_to_eV_conv=6.242E11 !converts ergs to eV 
+            FLUX_RAD(K,J)=max(0.0,XJ(K)*WLOS(J)*
+     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv/(4*pi))            
+
+            !FLUX_RAD(K,J)=XJ(K)*WLOS(J)*
+            !>       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv
+            ! if (flux_rad(k,j).lt.0) then
+            !  FLUX_RAD(K,J)=0
+            ! endif
             enddo
        end if
       end if
 
 150   CONTINUE
       if (krome_debug.eq.1) then
-       !close(7676)
-       !close(7777)
-       !close(7878)
-       !close(7979)
+       close(7676)
+       close(7777)
+       close(7878)
+       close(7979)
       endif
       close(960)
       ftot_a = 0.0
@@ -9939,7 +9934,7 @@ C CHECK T CORR
       END IF
 C
       IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
-      PPK = DFLOAT(KPP)
+      PPK = TDIFF
       DO 4011 I=1,NTAU
       if (abs(T(I)).GT.abs(PPK))
      - T(I)=PPK*t(i)/abs(t(i))
@@ -9969,7 +9964,7 @@ C
       IF (KORT.EQ.6) THEN
       IF(IT.EQ.1) TCORPRV = 1.D3
       IF(IT.EQ.1) TCORMIN = 1.D3
-      PPK = DFLOAT(KPP)
+      PPK = TDIFF
       PPKK = 2.D0*TCORPRV
       PPK = MIN(PPKK,PPK)
       PPPK = MIN(TCORMIN,PPK)
@@ -10884,7 +10879,7 @@ C OWN COMMONS
       COMMON /CI8/PGC,ROC,EC
       COMMON /NEWMO/NEWMOD
       COMMON /MASSE/RELM
-      COMMON /CORRECT/KORT,KPP,TCONV
+      COMMON /CORRECT/TDIFF,TCONV,KORT
       COMMON /CIT/IT,ITMAX
 C
 C SPACE ALLOCATION
@@ -11863,7 +11858,7 @@ C      IF(KORT.LE.4) GO TO 412 ! damping in temperature correction
 C
 
       IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
-      PPK = DFLOAT(KPP)
+      PPK = TDIFF
       DO 4011 I=1,NTAU
       if (abs(T(I)).GT.abs(PPK))
      - T(I)=PPK*t(i)/abs(t(i))
@@ -11883,12 +11878,12 @@ C
 
 
 
-C Limit temperature correction to KPP
+C Limit temperature correction to TDIFF
 C (AB/950519)
 C
 
       
-      PPK = DFLOAT(KPP)
+      PPK = TDIFF
       DO  I=1,NTAU
       IF (ABS(T(I)).GT.ABS(PPK)) 
      -     T(I)=PPK*T(I)/ABS(T(I))
@@ -16695,9 +16690,6 @@ C      implicit none
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       common /cit/it,itmax
-      !COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
-      !&   VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAUo,ITER
-C NTAUo above is labelled that to avoid conflict
 
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
@@ -16818,9 +16810,7 @@ C NTAUo above is labelled that to avoid conflict
          call krome_set_photobinE_log(photo_bins_low,photo_bins_high)
          
        if (krome_debug.eq.1) then
-         open(unit=6363,file='krome_bins_left.dat')
          open(unit=5656,file='krome_bins_mid.dat')
-         open(unit=4949,file='krome_bins_right.dat')
          open(unit=5959,file='krome_bins_delta.dat')
          open(unit=4242,file='krome_bins_photoJ.dat')
          open(unit=3535,file='krome_bins_rates.dat')
@@ -16884,9 +16874,7 @@ C NTAUo above is labelled that to avoid conflict
          if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
-           write(6363,*) krome_get_photobinE_left()
            write(5656,*) krome_get_photobinE_mid()
-           write(4949,*) krome_get_photobinE_right()
            write(5959,*) krome_get_photobinE_delta()   
           endif
          endif 
