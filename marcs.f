@@ -2499,6 +2499,7 @@ C       -----------------------------------
            file_nml = trim(file_b) // "input.nml"
            file_data = trim(file_b) // "crossec.dat"
            file_wnos = trim(file_b) // "wn.dat"
+
 C       --------------------
 C       Read in the namelist
 C       --------------------
@@ -2884,7 +2885,7 @@ C-      Readin temperature to flat array
           integer, intent(in) :: spec_i
           double precision, intent(in) :: wn_grid(NWL)
           character(len=*), intent(in) :: file_b
-  
+      
           call read_opac(file_b, spec_i, wn_grid)
          
       end subroutine opac_wrapper_read
@@ -2930,7 +2931,7 @@ C
      *         ,newosatom,newosatomlist
       
 
-      character(len=85) :: filebdir(maxosmol)     
+      character(len=150) :: filebdir(maxosmol)     
       character atnames*2, molnames*8, mol_file*20      
       logical ggchem_mol(maxosmol), ggchem_index_read
       integer ggchem_index(maxosmol), molno
@@ -16742,6 +16743,7 @@ C      implicit none
       mol_counter=0
       mol2_counter=0
       not_counter=0
+      
       !write(*,*) atomnames
       !write(*,*) molnames
       !write(*,*) molnames2
@@ -16867,10 +16869,9 @@ C      implicit none
 
         if (krome_photo_on.eq.1) then
          call krome_set_photoBinJ(FLUX_RAD_eV(:))
-
          call krome_photoBin_scale(krome_photo_scale)
-         write(3535,'(I3,9(999E17.8e3))') k,T(k),
-     >    krome_get_flux(num_den(k,:),T(k)) !remember to adjust number of number before the format to adjust for more or less reactions
+         write(3535,'(I3,3(999E17.8e3))') k,T(k),
+     >    krome_get_flux(num_den(k,:),T(k)) !remember to adjust number of number before the format to adjust for more or less reactions X(999E17.8e3) where X=nr. reactions+1
          if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
@@ -16941,6 +16942,7 @@ C Returning the krome values to MARCS
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
         enddo
       endif
+
 
       if (krome_photo_on.eq.1) then
        if (krome_output.eq.1) then
