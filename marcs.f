@@ -2487,12 +2487,15 @@ C     Aaron's routines to read two dimensional OS files:
            integer                   :: kpres, ktemp, nwnos 
            integer                   :: p_i, t_i, freq_i
            integer                   :: temporary_index
+           
            double precision  :: pmol_read(100*NOPI)
            double precision  :: tmol_read(100*NOTI)
            double precision :: wn
    
            double precision, allocatable :: cread(:,:,:)
            double precision, allocatable :: wnmol(:)
+
+           character(len=100) :: filename_crossec_out
 C       -----------------------------------
 C       Set the filenames of the input data
 C       -----------------------------------
@@ -2538,7 +2541,7 @@ C       ----------------------------------------------
              ! assign data to common block:
              crossec_data(spec_i, freq_i, 1:kpres, 1:ktemp) = 
      &          cread(temporary_index,1:kpres,1:ktemp)
-
+     
              ! set opacity to 0 outside range of input data
              if (wn<wnmol(1) .or. wn>wnmol(size(wnmol))) then
                 crossec_data(spec_i, freq_i, 1:kpres,1:ktemp) = 0
@@ -2547,50 +2550,62 @@ C       ----------------------------------------------
             !START OF CROSSSEC OUT MODULE
             !module to write out crossec data in a plotable and visible format
             !spec_i has to be the number of the desired molecule in mol_names
-            !if (spec_i.eq.72) then
-            !open(unit=777,file="crossec_O3.dat")
-            !do i=1,NWL
-            ! do j=1,kpres 
-            !  do k=1,ktemp 
-            !  if (i.eq.1) then !comment this and the following if in to get an overview of the tgrid/prid of the data
-            !  write(*,*) crossec_data(spec_i,i,1,1)
-            !  write(*,*) i,marcs_wn_grid(i)
-            !  write(*,*) j,crossec_pgrid(spec_i,j)
-            !  write(*,*) k,crossec_tgrid(spec_i,j) 
-            !  endif         
-            !  write(777,'(E46.39,A1,E46.39,A1,E10.3,A1,E10.3)') 
-     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
-     >      !   crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
-            !  enddo
-            ! enddo
-            !enddo
-            !close(777)
-            !stop !this module is designed to just run at the beginning of the simulation to just write out the crossec data you can also leave this stop commented out if you want to run afterwards 
-            !endif
-
-            !if (spec_i.eq.71) then
-            !open(unit=777,file="crossec_O2.dat")
-            !do i=1,NWL
-            ! do j=1,kpres 
-            !  do k=1,ktemp 
-            !  if (i.eq.1) then !comment this and the following if in to get an overview of the tgrid/prid of the data
-            !  write(*,*) crossec_data(spec_i,i,1,1)
-            !  write(*,*) i,marcs_wn_grid(i)
-            !  write(*,*) j,crossec_pgrid(spec_i,j)
-            !  write(*,*) k,crossec_tgrid(spec_i,j) 
-            !  endif         
-            !  write(777,'(E46.39,A1,E46.39,A1,E10.3,A1,E10.3)') 
-     >      !   crossec_data(spec_i,i,1,1)," ",marcs_wn_grid(i)," ",
-     >      !   crossec_pgrid(spec_i,1), " ", crossec_tgrid(spec_i,1) 
-            !  enddo
-            ! enddo
-            !enddo
-            !endif   
-            !close(777)
-     
-    
+                        !START OF CROSSSEC OUT MODULE
+            !module to write out crossec data in a plotable and visible format
+            !spec_i has to be the number of the desired molecule in mol_names
+      !       if (spec_i.eq.71) then
+ 7777 format(A19,I2.2,A4) 
+      !       write(filename_crossec_out,7777) "crosssec_write_out_"
+      !>        ,spec_i,'.dat'
+      !       write(*,*) filename_crossec_out
+            ! open(unit=777,file="crosssec_write_out_O2.dat")
+      !       open(unit=777,file=filename_crossec_out)
+            ! Write the fixed part of the block
+      !       write(777,'(a)') ' &INPUTOSMOL'
+      !       write(777,'(a)') ' MOLID   = ' // trim(molid) // '  ,'
+      !       write(777,'(a,i12,a)') ' KTEMP   =', ktemp, ','
+      !       write(777,'(a,4(1x,f18.12,a))')
+      !>         ' TMOL    =', 
+      !>         tmol_read(1), '     ,', 
+      !>         tmol_read(2), '     ,', 
+      !>         tmol_read(3), '     ,', 
+      !>         tmol_read(4), '     ,'
+      !      write(777,'(5(1x,f18.11,a))')
+      !>         tmol_read(5), '     ,', 
+      !>         tmol_read(6), '     ,', 
+      !>         tmol_read(7), '     ,', 
+      !>         tmol_read(8), '     ,', 
+      !>         tmol_read(9), '     ,'
+      !      write(777,'(3(1x,f18.11,a))')
+      !>         tmol_read(10), '     ,', 
+      !>         tmol_read(11), '     ,', 
+      !>         tmol_read(12), '     ,'
+      !      write(777,'(a,i12,a)') ' NWNOS   =', nwnos, ','
+      !      write(777,'(a,f20.14,a)') ' VKMS    =   ', 3.000d0, '     ,'
+      !      write(777,'(a,i11,a)') ' KISO    =', 1, ','
+      !     write(777,'(a,f20.14,a,E21.15,a)')
+      !>         ' RELISO  =   ', 1.000d0, '     , 14*', 0.00d0,'  ,'
+      !      write(777,'(a,i11)') ' L_PER_STELLAR   =           0,'
+      !      write(777,'(a,i11)') ' LCHROM  =           0'
+      !      write(777,'(a)') ' /'
+      !      do i=1,NWL
+!             do j=1,kpres !comment this and the following if in to get an overview of the prid of the data
+              !do k=1,ktemp !comment this and the following if in to get an overview of the tgrid of the data      
+              !write(777,'(E10.3,A1,E14.6,A1,E10.3,A1,E10.3)') 
+      !>          crossec_data(spec_i,i,1,k)," ",marcs_wn_grid(i)," ",
+      !>          crossec_pgrid(spec_i,j), " ", crossec_tgrid(spec_i,k) 
+              !enddo
+             !enddo
+             
+      !       write(777, '(F10.3, 48E11.3)') 
+      !>         marcs_wn_grid(i), crossec_data(spec_i,i,1,1:ktemp)
+             !enddo
+      !      enddo
+      !      close(777)
+      !      stop !this module is designed to just run at the beginning of the simulation to just write out the crossec data
+                  !you can also leave this stop commented out if you want to run afterwards
+      !      endif            
             !END OF CROSSSEC OUT 
-
          end subroutine read_opac
          
          subroutine read_opac_data(file_data, file_wnos, 
@@ -2930,8 +2945,7 @@ C
      *         ,LISTWN,INWNFIL,NEWC3
      *         ,newosatom,newosatomlist
       
-
-      character(len=150) :: filebdir(maxosmol)     
+      character(len=200) :: filebdir(maxosmol)     
       character atnames*2, molnames*8, mol_file*20      
       logical ggchem_mol(maxosmol), ggchem_index_read
       integer ggchem_index(maxosmol), molno
@@ -4363,7 +4377,7 @@ C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
       COMMON /CG/GRAV,KONSG
       COMMON /CSTYR/MIHAL,NOCONV
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom         !irrin=1~comp.irrad,steff=rad*
       COMMON /CXMAX/XMAX /CTAUM/TAUM
       COMMON /MIXC/PALFA,PBETA,PNY,PY /CVFIX/VFIX                          
@@ -5758,13 +5772,15 @@ C
       common /cosexp/ lops,nops
       common /dpeset/ dpein,dtin
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /ch4/ nch4
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
+      common /starspec/ stellar_spectrum(nwreal),index_wlambda
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
+      character(len=200) :: spectrum_file
 
 
 C INITIATIONS
@@ -5809,13 +5825,33 @@ C MY POINTS  (warning: there are other variables with the same names xmy,h...)
 C                      
 C
       READ(5,512) MMY,NCORE,KDIFF
-      read(5, 1234) irrin,steff,rstar,semimajor,f_irrad
+      read(5, 1234) irrin,steff,rstar,semimajor,f_irrad,
+     > input_star_spec,spectrum_scale
+
       if (irrin == 1) then
       print*, "Irradiation is turned on"
+       if (input_star_spec==1) then
+        print*, 'Using input spectrum for irradiation'
+
+        spectrum_file = trim("./data/stellar_spectrum.dat")
+        stellar_spectrum = 0.0d0
+        print*, "Stellar specturm scaling set to", spectrum_scale    
+        open(unit=20, file=spectrum_file, status='old', action='read')
+        do j=1,nwreal
+         read(20,*) stellar_spectrum(j) 
+        end do
+        close(20)
+
+       else
+      print*, 'Using blackbody spectrum for irradiation'
       print*, "Stellar effective temperature of ", steff, " Kelvin "
       print*, "Stellar radius of  ", rstar, " solar radii"
       print*, "Planet at ",semimajor, "AU from star" 
+      
+      endif
+      
       else
+
       print*, "Irradiation is turned off" 
       end if   
       read(5, 1235) irrinp, tbottom, reflect, nch4
@@ -5877,7 +5913,7 @@ C
 50    FORMAT(5(7X,F8.0))
 51    FORMAT(3(7X,I3,5X),7X,F8.0,7X,F8.0)
 512   FORMAT(3(7X,I3,5X))
-1234  format(1(7X,I4,4X), 4(7X, F8.0))
+1234  format(1(7X,I4,4X), 4(7X, F8.0), 1(7X,I4,4X), 1(7X,E8.1))
 1235  format(1(8X,I4,3X), 2(7X, F8.0), 1(7X, I2))
 52    FORMAT(20X,'LOG G  =',F10.2,10X,'LOG (ATM/R) =',F5.2,10X,
      & 'LOG (R/RSUN)=',F5.2)
@@ -8785,7 +8821,7 @@ C SPACE ALLOCATION
      * DTAUIR(NDP), DTAUPLANET(NDP), DTAUP(NDP)
      
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom         !irrin=1~comp.irrad,steff=rad*
       common /dustplot/ x_gas(ndp,nwl), s_gas(ndp,nwl), gas_opac(ndp)
       
@@ -8797,7 +8833,7 @@ C SPACE ALLOCATION
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
-
+      common /starspec/ stellar_spectrum(nwreal),index_wlambda
 
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
@@ -8817,7 +8853,6 @@ C SPACE ALLOCATION
         write(*,*) "Found krome_flux_rad.dat, write data into FLUX_RAD"
         open(unit=7373,file="krome_flux_rad.dat",status='old',readonly)
         read(7373,*) !read first line before actually writing the data into FLUX_RAD
-        
         do k=1,ntau 
          do j=1,nwreal
           read(7373,*) dummy_k,dummy_wl,FLUX_RAD(k,j) !first two entries dont matter just dummies
@@ -8851,10 +8886,6 @@ C
        endif
       endif       
 
-      if (krome_photo_on.eq.1) then
-
-
-      endif
 
 
 C     
@@ -9051,6 +9082,7 @@ C WAVELENGTH LOOP
       write(960,*) '   K,   J,  wlos(J),   WLSTEP(J),   Y'
       DO 150 J=1,NWTOT
       wlambda = wlos(j)
+      index_wlambda = j
       write(960,996) K, J, wlos(J), WLSTEP(J), Y
 996   FORMAT(i5, i6, f10.2, f10.2, f10.2) 
 C
@@ -10171,13 +10203,22 @@ C
       DIMENSION A(7)
       COMMON /CSURF/HSURF,Y1(NRAYS)
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom  
+      common /starspec/ stellar_spectrum(nwreal),index_wlambda
+
 C
 C INITIATE
       
       if (irrin>0) then
+        if (input_star_spec==1) then
+        bstar = spectrum_scale*stellar_spectrum(index_wlambda)
+        else
         bstar = bpl(steff, wlambda)
+        endif
+        !write(*,*) 'j,wlambda = ', index_wlambda,wlambda
+        !write(*,*) "bstar = ", bstar
+        !write(*,*) 'spectra(j) = ', stellar_spectrum(index_wlambda)
       end if
       DO  K=1,JTAU
       FACT(K)=1.
@@ -10206,9 +10247,15 @@ C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
 
       DO 120 K=1,JTAU
       if (irrin>0) then 
+      !if (k.eq.10) then
+      !write(*,*) P(K),Pstar(K)
+      !endif
       XJ(K)=XJ(K)+P(K) + Pstar(K)
       !write(*,*) "XJ(K) in traneq",K,XJ(K)
       else
+      !if (k.eq.10) then
+      !write(*,*) P(K)
+      !endif
       XJ(K)=XJ(K)+P(K)
       end if 
 
@@ -10284,7 +10331,7 @@ C
      *,FACT(NDP),DSO(NDP),C(6),T(6),EX(6),SP2DUM((4*NDP-29)*NDP-18)
       COMMON /CSURF/HSURF,Y1(NRAYS)
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom    
       real*8, parameter :: pi = 3.14159265
 C
@@ -10448,7 +10495,7 @@ C
       COMMON /SPACE2_PP/SOURCE(NDP),ERROR(NDP),SP1(NDP),SP2(NDP),
      +            SP3(NDP),P(NDP),SP2DUM((4*NDP-6)*NDP)
       common /cirinp/steff,reflect,f_irrad,h_irrad,
-     > wlambda,bstar,irrinp,irrin
+     > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
@@ -10508,7 +10555,6 @@ C PRELIM
      & (4.0*(f_irrad))
       Pstar(1) = (C*(1-EX))* 
      & (delta_omega/h_irrad) *bstar
-
       P(1)=P(1) *(1.+C*EX)*(1.-delta_omega) 
       end if
 C
@@ -16180,7 +16226,7 @@ c and total molecular pressure.
      * ((idmarcspart(m), idggchempart(m),molnames2(m)), m=1, 75)
 124          format(i4,3x,i3,4x,a4)
       close(809)      
-        open(unit=321, file='ndensity.dat')
+        open(unit=321, file='pp.dat')
         
             read(321,*) (rhonallat(k,m),m=1,22)
             read(321,*) (rhonallmol(k,m), m=1,543)
@@ -16675,6 +16721,9 @@ C      implicit none
       real*8::time,dtmax,dt_inc
       real*8::ss_time(ntau)
       real*8::krome_tmax
+      real*8::conv_crit
+      logical::use_conv = .False.
+      logical::is_conv
       real*8,dimension(nwreal)::FLUX_RAD_eV
       real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
       real*8::aa_to_m_conv,J_to_eV_conv,HC_to_SI_conv
@@ -16682,7 +16731,7 @@ C      implicit none
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
       real*8 :: krome_photo_scale
-      integer ,parameter:: output_freq=500
+      integer ,parameter:: output_freq=100
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
@@ -16709,6 +16758,9 @@ C      implicit none
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
+      if (use_conv .eqv. .True.) then
+            conv_crit=1e-16
+      endif
 
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
@@ -16894,21 +16946,55 @@ C      implicit none
           end if
          end if
          dt = min(dt*dt_inc,dt_max)
-         time = time + dt !increase time
-         if(time>krome_tmax) then 
+       if (use_conv.eqv..True.) then
+         if (dt.ge.dt_max) then !break loop if convergence is reached and timestep on max timestep length
+            is_conv=.True.
+            do j=1,nsp
+ 
+            if (abs(num_den_cont(istep,j)-num_den_cont(istep-1,j))
+     >                     /num_den_cont(istep,j)            
+     >          .ge.conv_crit) then
+                is_conv=.False.
+                !write(*,*) k,j
+                !write(*,*) time,istep,istep-1
+                !write(*,*) num_den_cont(istep,j),num_den_cont(istep-1,j)
+                !write(*,*) (abs(num_den_cont(istep,j)
+     >          !           -num_den_cont(istep-1,j))
+     >          !           /num_den_cont(istep,j))
+                !write(*,*) abs(num_den_cont(istep,j)
+     >          !           -num_den_cont(istep-1,j))
+                exit
+            endif
+
+            enddo
+            if (is_conv.eq..True.) then
+              if (krome_debug.eq.1) then
+                  write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
+     >            num_den(k,:)        
+              endif
+              exit   
+            endif
+          endif
+         endif
+         if(time>krome_tmax) then !break loop if maximum time is reached
            if (krome_debug.eq.1) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >      num_den(k,:)        
-           endif       
-           do j = istep,1,-1
-              if (num_den_cont(j,nsp)<1.01*num_den_cont(istep,nsp)) then
-                    ss_istep(k)=j
-                    ss_time(k)=time_cont(j)
-              endif
-           enddo
-           exit 
-          end if
-          istep = istep + 1 !increase timestep
+           endif
+          if (use_conv.eqv..True.) then
+           write(*,*) 'Layer', k, 
+     >      'did not converge within given time'
+           write(*,*) 'relative change between timesteps'
+           write(*,*) abs(num_den_cont(istep,j)-num_den_cont(istep-1,j))
+     >                     /num_den_cont(istep,j) 
+           write(*,*) 'with given conv. criteria', conv_crit 
+           write(*,*) ' '    
+            
+          endif
+          exit
+         endif
+         time = time + dt !increase time         
+         istep = istep + 1 !increase timestep
         end do
       end do
       if (krome_debug.eq.1) then         
@@ -16928,6 +17014,7 @@ C      implicit none
      >    num_den(k,:)
         enddo
       endif
+
 
 C Returning the krome values to MARCS
       if (krome_return == 1) then
