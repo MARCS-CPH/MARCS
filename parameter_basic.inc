@@ -20,6 +20,10 @@
       INTEGER NWL
       PARAMETER (NWL=80000)
 
+* number of wavelengths after MARCS opacity sampling
+      INTEGER NWREAL
+      parameter (NWREAL=7949)
+
 * For call to INTERP from OSTABLOOK
       integer mtemp,mpe
       parameter (mtemp=12,mpe=1)
