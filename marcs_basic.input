@@ -7,7 +7,7 @@ MIHAL = 35     KONSG =  0     KORT  =5       KPP   =25      TCONV =2.0
 lops  =  0     nops  =  1     dpein =0.010   dtin  =0.010   METPE = 2
 PALFA =1.500   PBETA =0.000   PNY   =8.000   PY    =0.076    VFIX =0.000
 MYPNTS=  4     NCORE =  5     KDIFF =  3     
-IRRAD = 1      STEFF =5778.   RSTAR =1.00    SMAJOR=1.00    FACTOR=2.0 
+IRRAD = 1      STEFF =5778.   RSTAR =1.00    SMAJOR=1.00    FACTOR=2.0     SPECTR=1       SPECSC=1.0E+0  
 SURFAC= 0      TSURF =300.0   ALBEDO=0.07    NCH4  =0   
 NONEQ = 1      PHOTO = 1      phSCAL=1.0E-02
 DTMIN =1.0E-16 DTMAX =1.0E+05 tMAX  =1.0E+08 DTINC =1.01
