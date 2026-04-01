@@ -79,8 +79,6 @@ cp $CWD/$0    $CWD/${out_dir}
 ### MAIN FILES
 cp arcivaab.dat    	$CWD/${out_filename}.arciv
 cp mxmodel.dat     	$CWD/${out_filename}.dat
-cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in
-cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt
 cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
 cp $TMPDIR/spectrum.dat $CWD/${out_dir}
 #cp $TMPDIR/FLUX.DAT $CWD/${out_dir}
