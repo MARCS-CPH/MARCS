@@ -49,7 +49,7 @@
 * OPAMOD
 * Note: make sure to change in .github/build.
       integer NOPI, NOTI, NOSPEC
-      parameter (NOPI = 30, NOTI = 80, NOSPEC = 72)
+      parameter (NOPI = 30, NOTI = 80, NOSPEC = 74)
 
 * natms = number of atoms considered in Gibbs energy minimalization routines
 * nspec = total number of species (atoms, ions, molecules) considered in Gibbs 
