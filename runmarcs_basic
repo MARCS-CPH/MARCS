@@ -1,7 +1,7 @@
 #!/bin/bash
 # SLURM resource specifications
 # (use an extra ‘#’ in front of SBATCH to comment-out any unused options)
-#SBATCH --job-name=marcs # shows up in the output of ‘squeue’
+#SBATCH --job-name=marcsPhoto # shows up in the output of ‘squeue’
 #SBATCH --time=2:00:00       # specify the requested wall-time
 #SBATCH --partition=astro2_devel   # specify the partition to run on
 #SBATCH --nodes=1              # number of nodes allocated for this job
@@ -15,63 +15,87 @@ module load astro gdb
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 
-in_dir='./models/basic_test/t700g29/'
-out_dir='./models/basic_test/t700g29/'
-in_filename=${in_dir}t070g29exo50Earth_krome_on_irrad_on
-out_filename=${out_dir}t070g29exo50Earth_krome_on_irrad_on_new
+in_dir=./models/solar_type_star/
+out_dir=./models/solar_type_star/
 
-#mkdir ${out_dir}
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir ${out_dir}
 mkdir $TMPDIR
+mkdir $TMPDIR/data/
 
-### INPUT FILES ###
-cp marcs.input mxms7.input
+input_parameters=$CWD${input_folder}marcs_basic.input
+input_elabund=$CWD${data_folder}elabund_solar.dat
+input_opac=$CWD${data_folder}mol_names_72_O2O3.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_solar_7949_1AU.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+
 cp ${in_filename}.arciv arcivaaa.dat
-
-### COPY FILES TO TEMP DIRECTORY ###
 cp arcivaaa.dat $TMPDIR/
 rm arcivaaa.dat
-#cp *.txt $TMPDIR/
-cp -r data $TMPDIR/
+
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
 cp *.inc $TMPDIR/
 cp *.dat $TMPDIR/
-cp mxms7.input $TMPDIR/
 cp marcs $TMPDIR/
-cp -r GGchem $TMPDIR/
-### FOR NONEQ RUNS
-cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+
 cp ${in_dir}krome_flux_rad.dat $TMPDIR/
-cp -r $CWD/krome $TMPDIR
 
-
-
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+cp -r GGchem $TMPDIR/
 cd $TMPDIR 
+#pwd
 
+### COPY INPUTFILES BEFORE RUN ###
 
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+cp $CWD/$0    $CWD/${out_dir}
+#cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
 
 ./marcs
 
 ### COPY FILES AFTER RUN ###
+
+### MAIN FILES
 cp arcivaab.dat    	$CWD/${out_filename}.arciv
 cp mxmodel.dat     	$CWD/${out_filename}.dat
-cp data/elabund.dat $CWD/${out_dir}
-cp data/jonabs.dat $CWD/${out_dir}
-cp data/mol_names.dat $CWD/${out_dir}
-cp mxms7.input $CWD/${out_dir}
-cp $CWD/runmarcs    $CWD/${out_dir}
+cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in
+cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
+cp $TMPDIR/spectrum.dat $CWD/${out_dir}
+#cp $TMPDIR/FLUX.DAT $CWD/${out_dir}
 
-### THESE ARE OPTIONAL OUTPUTS FOR GGCHEM AND DEBUGGING
-#cp $TMPDIR/pp.dat $CWD/${out_dir}
-#cp $TMPDIR/GGchem_ppel $CWD/${out_dir}
-#cp $TMPDIR/nasa2ggchem.dat $CWD/${out_dir}
-
-### THESE AREA OPTIONAL OUTPUTS FOR KROME
-#cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
+### NON_EQ RELATED FILES
+cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
 cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat
 cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat
-#if [ -f "KROME_ERROR_REPORT" ] ; then
-#cp KROME_ERROR_REPORT $CWD
-#fi
-
-
+### ONLY FOR KROME DEBUG FLAG
+#cp $TMPDIR/BPL_sun.dat $CWD/${out_dir}/BPL_sun.dat
+#cp $TMPDIR/BPL_upper.dat $CWD/${out_dir}/BPL_upper.dat
+#cp $TMPDIR/XJ_upper.dat $CWD/${out_dir}/XJ_upper.dat
+#cp $TMPDIR/XJ_lower.dat $CWD/${out_dir}/XJ_lower.dat
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
 
 rm -rf $TMPDIR
