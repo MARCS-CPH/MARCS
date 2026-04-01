@@ -3021,7 +3021,7 @@ C
 C     ADS: Note: mol_names.dat can be molecules or atoms
       mol_file = "./data/mol_names.dat"
 
-      print*, "molecules/atoms included are: "
+
       open(unit=7397, file=mol_file)
          read(7397, '(i2)') molno
          do n=1,molno
@@ -3029,6 +3029,8 @@ C     ADS: Note: mol_names.dat can be molecules or atoms
             molname(n) = trim(molnames_new(n))
          end do
       close(7397)
+      print*, "molecules/atoms included are: "
+      print*, molname(1:molno)
       nosmol = molno
       write(7,396) nosmol
 396   format("The model used",i4," molecules/atoms in the opacity"
