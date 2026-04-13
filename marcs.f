@@ -2548,7 +2548,7 @@ C       ----------------------------------------------
              endif
             end do 
 
-             lwritesos=0
+             lwriteos=0
              if (lwriteos .eq.0) go to 7778
              write(6,*) 'lwriteos = ',lwriteos    
             !START OF CROSSSEC OUT MODULE
@@ -3459,7 +3459,7 @@ C                  H He C N O Ne Na Mg Al Si  S K Ca Cr Fe Ni Ti Cl
       character*3 aifix
       common /pefix/xionfix,aifix
       common/cabnames/abcname(natms)
-common /cisph/isph
+      common /cisph/isph
       COMMON /CSTYR/MIHAL,NOCONV 
       COMMON /CG/GRAV,KONSG 
       common /CTEFF/TEFF,FLUX
@@ -10734,7 +10734,7 @@ C DIMENSIONS
      *,XPE(NDP),SPE(NDP)
      *,RPR(NDP),RP(NDP),RD(NDP),RV(NDP),RFC(NDP),RPE(NDP),RT(NDP)
      *,TLAST(NDP),TVD(NDP),IA(5)
-      LOGICAL NEWV
+      LOGICAL NEWV, exist
 C
 C CONNECTIONS VIA COMMON.
 C THE COMMENTED COMMONS MUST BE INITIATED OUTSIDE THIS ROUTINE BEFORE IT
@@ -11180,6 +11180,7 @@ C      TRAD1=1.438E8/(XL(J)*log(1.+1.191E7*PI/HFLUX1*WAVEN**5))
 C
    
       TEFFP=TEFF*(FTOT/(FLUX*PI))**.25
+      print*, "Current Teff... ", teffp
       Y=FTOT/PI
       
       DO 154 K=1,NTAU
@@ -11653,19 +11654,27 @@ C SOLVE FOR TEMPERATURE CORRECTION
       T(I)=T(I)+TTT(I,J)*RT(J)
 400   CONTINUE
       
-      WRITE(7,68) ITER
-      WRITE(7,67) (T(I),I=1,NTAU)
+!      WRITE(7,68) ITER
+!      WRITE(7,67) (T(I),I=1,NTAU)
 C---
       TCORMX=ABS(T(1))
       DO 405 I=2,NTAU
  405  TCORMX=MAX(TCORMX,ABS(T(I)))
+      write(*,*) TCORMX,TCONV
       IF(TCORMX.LE. tconv)  ITSTOP=.TRUE.
       
     
-      PRINT406, TCORMX,ITER
-      open(unit=987,file= 'tcormx.dat',status='new')
-      write(987, *) TCORMX
+      !PRINT406, TCORMX,ITER
+      inquire(file="tcormx.dat", exist=exist)
+      if (exist) then
+      open(unit=987,file= 'tcormx.dat',status='replace')
+      write(987, *) TCORMXM
       close(987)
+      else 
+      open(unit=987,file= 'tcormx.dat',status='new')
+      write(987, *) TCORMXM
+      close(987)
+      end if
       !print*, "max corr wanted ", tcormx
 406   FORMAT(' Max corr. to T wanted was',F6.1,' K for iteration',I2)
 C
@@ -11793,7 +11802,7 @@ C
       TCORMX=ABS(T(1))
       DO 414 I=2,NTAU
 414   TCORMX=MAX(TCORMX,ABS(T(I)))
-      PRINT415, TCORMX,ITER
+      !PRINT415, TCORMX,ITER
 415   FORMAT(' Max corr. applied to T was',F6.1,' K for iteration ',I3)
 C
 C
@@ -11802,8 +11811,8 @@ C
 C
 C
      
-      WRITE(7,*) ' applied corrections: '
-      WRITE(7,67) (T(I),I=1,NTAU)
+!      WRITE(7,*) ' applied corrections: '
+!      WRITE(7,67) (T(I),I=1,NTAU)
 C
 C SUBTRACT TEMPERATURE
       DO 410 I=1,NTAU
@@ -16018,7 +16027,6 @@ c and total molecular pressure.
       write(70,*) pgas/bar,'                   ! pmax [bar]' 
       close(70)
 
-
       call system('./GGchem/ggchem marcs2ggchem.in > ggchem_out.txt')
 
       open(unit=990,file='GGchem_ppel')
@@ -16545,7 +16553,6 @@ C      implicit none
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       common /cit/it,itmax
-
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
@@ -16727,8 +16734,8 @@ C      implicit none
         if (krome_photo_on.eq.1) then
          call krome_set_photoBinJ(FLUX_RAD_eV(:))
          call krome_photoBin_scale(krome_photo_scale)
-         write(3535,'(I3,3(999E17.8e3))') k,T(k),
-     >    krome_get_flux(num_den(k,:),T(k)) !remember to adjust number of number before the format to adjust for more or less reactions X(999E17.8e3) where X=nr. reactions+1
+        write(3535,'(I3)') k
+         call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))        
          if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
@@ -16785,6 +16792,7 @@ C      implicit none
            if (krome_debug.eq.1) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >      num_den(k,:)        
+
            endif
           if (use_conv.eqv..True.) then
            write(*,*) 'Layer', k, 
