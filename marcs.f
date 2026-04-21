@@ -235,7 +235,6 @@ C
         if(quit) exit
       end do
       
-      call marcs2drift
       
       if(noarch.ge.2) go to 101
       call modjon(3,1)
@@ -935,8 +934,11 @@ C        THIS IS CERTAINLY QUITE UNIMPORTANT FOR MOST MODELS.
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
+      if (T(k).gt.1500.) then
+      CALL ABSKO(1,1,T(K),PE(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
+      else
       CALL ABSKO(1,1,T(K),PPEL(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
-      
+      endif
       end if
 
       if(k.eq.1 .or. k.eq.jtau) write(6,2001) k,t(k),pe(k),ppel(k)
@@ -1057,8 +1059,11 @@ C
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
+      if (T(k).gt.1500.) then
+      CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
+      else
       CALL ABSKO(1,1,T(K),PPEL(K),1,J,ABSKA(1),SPRIDA(1),k)
-       
+      endif 
       end if
       
       ABSKTR(J)=ABSKA(1)
@@ -1075,8 +1080,11 @@ C
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
+      if (T(k).gt.1500.) then
+      CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
+      else
       CALL ABSKO(1,1,T(K),PPEL(K),1,J,ABSKA(1),SPRIDA(1),k)
-      
+      endif
       end if
       IF(J.GT.1)GO TO 31
       DO30 I=1,NEL
@@ -4084,10 +4092,7 @@ C JUMP = 4: Added GGchem code by ERC
 *********
 
 C     ADS: We use a simplified saha equation for planets, when we use metpe=2, better for convergence
-C      IF(METPE.EQ.2 .and. t.le.1500.0) then
-C      IF(METPE.EQ.2 .and. t.le.1000.0) then
-      IF(METPE.EQ.2 .and. teff.le.3000.0) then
-C              print2421,teff,t,pe,ppel,pg
+      IF(METPE.EQ.2 .and. t.le.2000.0) then
 2421  format('teff,t,pe,ppel,pg = ',2f8.1,3e12.3)   
       GO TO 421
       end if
@@ -4498,6 +4503,8 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
       common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
+     *STEFAN
       character*3 aifix
       common /pefix/xionfix,aifix
       dimension idplus(543),idminus(543),idmol(543),idos(543)
@@ -4552,10 +4559,6 @@ C   OH MgH AlH HS HCl NaCl KH CaH CaOH TiH CrH FeH SiO SiC SiC2
       data k3mol/63,93,94,95,96,115,141,337,336,353,351,355,374,376,532/
 C   CS VO CrO FeO ZrO SiS AlOH KOH FeS H2S H2SO4 PH3 TiO2 O3 TiC
 
-
-
-      
-
 *
       FLUMAG(I)=-2.5*log10(FLUXME(I))-STMAGN
 *
@@ -4568,6 +4571,16 @@ C   CS VO CrO FeO ZrO SiS AlOH KOH FeS H2S H2SO4 PH3 TiO2 O3 TiC
        close(29)
 295    format(f10.2,1p2e12.4)
       end if
+C     Iniation of natural constants for Kzz calculation
+      HPLNCK=6.62554E-27
+      BOLTZK=1.38054E-16
+      CLIGHT=2.997925E10
+      ECHARG=4.80298E-10
+      RYDBRG=1.097373E5
+      STEFAN=5.675E-5
+      CLIGHT=2.99793E10
+      PI=3.14159265
+      PI4C=PI*4./CLIGHT
 
 C Calling ROSSOS here makes it possible to list X and S as function of
 C wavelength and depth in the model, but it comes with the cost that
@@ -5268,6 +5281,11 @@ C
       WRITE(7,532) (SPRTR(KLAM),KLAM=1,NLP)
 81    CONTINUE
       WRITE(7,*) ' '
+!      do k=1,ntau
+!      vert_scale_height=BOLTZK*T(k)/(emu(k)*XMH*log10(grav)) 
+!      write(*,*) V(k),palfa,BOLTZK,T(k),XMH,emu(k)
+!      write(*,*) vert_scale_height,palfa*vert_scale_height
+!      enddo
 C
 C first, identify the depth points where logtau_ross is -4, -3, ..., 2
 C for printing of opacities
@@ -7254,12 +7272,17 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       IMEM1=2
       CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM,JMEM,ABSK,SPRID,-1)
       NEWT=0
+      do k=1,jtau
       if(metpe.eq.1) then
-      CALL ABSKO(NEWT,JTAU,T,PE,IMEM1,JMEM1,ABSK1,SPRID1,-1)
+       CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      if (T(k) .gt. 1500.) then 
+       CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      else            
+       CALL ABSKO(NEWT,JTAU,T(k),PPEL(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      endif
       end if
-      
+      enddo
     9 IF(WLOS(J).LE.XL(JMEM1,IMEM1))GO TO 11
 
       JMEM=JMEM1
@@ -7275,11 +7298,17 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       IMEM1=IMEM1+1
 
 10    continue
+      do k=1,jtau
       if(metpe.eq.1) then
-      CALL ABSKO(NEWT,JTAU,T,PE,IMEM1,JMEM1,ABSK1,SPRID1,-1)
+       CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      CALL ABSKO(NEWT,JTAU,T,PPEL,IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      if (T(k) .gt. 1500.) then
+       CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      else    
+       CALL ABSKO(NEWT,JTAU,T(k),PPEL(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
+      endif
       end if
+      enddo
       
 
       GO TO 9
@@ -8799,6 +8828,7 @@ C SPACE ALLOCATION
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
 
+      
       if (krome_on.EQ.1) then
        if (krome_photo_on.EQ.1) then
         if (first_call_rad.eq..True.) then
@@ -13087,7 +13117,6 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
             conos(it,jv) = 0.
          end do
       end do
-  
 C
 C CALCULATE THE PARTIAL PRESSURE
       TBPART=SECOND()
