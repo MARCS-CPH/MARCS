@@ -934,7 +934,7 @@ C        THIS IS CERTAINLY QUITE UNIMPORTANT FOR MOST MODELS.
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
-      if (T(k).gt.1500.) then
+      if (T(k).gt.2000.) then
       CALL ABSKO(1,1,T(K),PE(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
       else
       CALL ABSKO(1,1,T(K),PPEL(K),ISTAN2,JSTAN2,ABSKA(1),SPRIDA(1),k)
@@ -1059,7 +1059,7 @@ C
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
-      if (T(k).gt.1500.) then
+      if (T(k).gt.2000.) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else
       CALL ABSKO(1,1,T(K),PPEL(K),1,J,ABSKA(1),SPRIDA(1),k)
@@ -1080,7 +1080,7 @@ C
       if(metpe.eq.1) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else if(metpe.eq.2) then
-      if (T(k).gt.1500.) then
+      if (T(k).gt.2000.) then
       CALL ABSKO(1,1,T(K),PE(K),1,J,ABSKA(1),SPRIDA(1),k)
       else
       CALL ABSKO(1,1,T(K),PPEL(K),1,J,ABSKA(1),SPRIDA(1),k)
@@ -3107,6 +3107,8 @@ C we come here only if dimension for the OS is too small:
       do nm=1,molno
          call opac_wrapper_read(trim(filebdir(nm)), nm, wnos) 
       end do
+      !stop !COMMENT THIS STOP OUT WHEN LWRITEOS IS NOT 1 ANYMORE 
+      !(WHICH IS THE CASE WHEN WE WANT TO RUN THE FULL SIMULATION WITH THE NEW OPACITY MODULE, OTHERWISE THIS MODULE IS DESIGNED TO JUST RUN ONCE TO READ IN THE OPACITY DATA AND WRITE IT OUT IN A PLOTABLE FORMAT)
       !write(7,*) "OS done with ADS's routine."     
       oskres = osresl/dfloat(kos_step)
       write(7,245) nwtot,wnos_first,wnos_last,1.e4/wnos_last,
@@ -4245,7 +4247,9 @@ C setup FE so that equations match:
       EH=-XIH*F1
 
       PG = xpgpesumup/xpgpesumdown * PE
-
+      !write(*,*) kl,PG, PE, PPEL(kl)
+      !write(*,*) xpgpesumup, xpgpesumdown ,xpgpesumup/xpgpesumdown 
+      !write(*,*) xpgpesumup/xpgpesumdown * PPEL(kl)   
 
 **********
 C
@@ -4751,7 +4755,7 @@ C*
      &             PE(I),XKAPR(I),I
 C     &             PTURB(I),XKAPR(I),I
        end if
-        pgx=PP(i)-PPR(i)-PPT(i)
+        !pgx=PP(i)-PPR(i)-PPT(i)
         ppallsum=ppappsum(i)+ppnonappsum(i)+ppat1sum(i)+ppel(i)
      
 c       IF (T(I).GT.TEFF) then
@@ -7276,7 +7280,7 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       if(metpe.eq.1) then
        CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      if (T(k) .gt. 1500.) then 
+      if (T(k) .gt. 2000.) then 
        CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else            
        CALL ABSKO(NEWT,JTAU,T(k),PPEL(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
@@ -7302,7 +7306,7 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       if(metpe.eq.1) then
        CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else if(metpe.eq.2) then
-      if (T(k) .gt. 1500.) then
+      if (T(k) .gt. 2000.) then
        CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       else    
        CALL ABSKO(NEWT,JTAU,T(k),PPEL(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
@@ -8311,7 +8315,7 @@ C
       PRAH(4)=PRAD*(1.+4.*DERET)
       TH(4)=TP
 
-      if (METPE .EQ. 2) then
+      if (METPE .EQ. 2 .and. T.lt.2000.) then
         call calc_adiaindex(k, PG, T, gamma, xmmw)
         cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
         cv = cp/gamma
@@ -8430,7 +8434,7 @@ C
       PRAH(4)=PRAD*(1.+4.*DERET)
       TH(4)=TP
 
-      if (METPE .EQ. 2) then
+      if (METPE.EQ.2 .and. T.lt.2000.) then
         call calc_adiaindex(k, PG, T, gamma, xmmw)
         cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
         cv = cp/gamma
@@ -9328,7 +9332,7 @@ C END OF WAVELENGTH LOOP
       
       TEFFP=TEFF*(FTOT/FLUX/PI)**.25
       print*, "Current Teff... ", teffp
-      WRITE(7,65) FTOT,TEFFP
+      !WRITE(7,65) FTOT,TEFFP
       DO 154 K=1,NTAU
       Y=0.
       DO 155 L=1,NTAU
