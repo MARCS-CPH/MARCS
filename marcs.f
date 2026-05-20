@@ -49,9 +49,11 @@ C      STEFF=5770
       include 'parameter.inc'
       integer molh, jump
       character molname*4,osfil*60,sampling*3,pp_sph*3
-      logical pf,pfe,pfd,fixros,itstop,quit,onemor
+      logical pf,pfe,pfd,fixros,itstop,quit
       integer krome_on,krome_photo_on
       integer krome_output,krome_debug,krome_return
+      integer ivirga_on
+      integer onemor
       real*8 krome_tmax,krome_photo_scale
       common/carciv/ larciv    !=1 if called from arciv, otherwise = 0
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
@@ -104,13 +106,17 @@ C      STEFF=5770
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
+      common /virga/ ivirga_on 
+      common /conv_help/ abund_freq,icalc_abund
+      common /onemor_it/ onemor
 C    
 
 ! Initiation
+      onemor = 0
       larciv = 0
       call gettime(0)
       
@@ -199,7 +205,7 @@ C
       lun=22
       itstop=.false.
       quit=.false.
-      onemor=.false.
+      onemor=0
 
       do it=1,itmax 
         print *
@@ -228,10 +234,10 @@ C
         call newsta
         
         if(itstop.ne..True.) then !catches onemor iterations which are not converged
-         onemor=.False.
+         onemor=0
         endif
-        if(itstop .and. onemor) quit=.true.
-        if(itstop) onemor=.true.
+        if(itstop .and. onemor.eq.1) quit=.true.
+        if(itstop) onemor=1
         if(quit) exit
       end do
       
@@ -349,7 +355,6 @@ C
       KP=1
 C
 C        LOOP OVER THE T-PE POINTS ('THE FIRST NTP-LOOP')
-      !print*, "NT is ", nt
       DO4 NTP=1,NT
       T(NTP)=TSKAL(NTP)
       PE(NTP)=PESKAL(NTP)
@@ -561,9 +566,6 @@ C***** THIS SUBROUTINE EVALUATES THE INVERSE OF A
 C***** SQUARE M*M MATRIX A
 C***** THE DIMENSIONS OF THE ARRAYS MAY BE INTEGER VARIABLES WHEN USED**
 C***** ON THE IBM 7094,BUT THEY MUST BE INTEGER CONSTANTS ON THE IBM 113
-C
-C
-C      IMPLICIT REAL*8 (A-H,O-Z)
 C
       DIMENSION A(8,8),C(8),IND(8)
 C
@@ -914,11 +916,6 @@ C        STORE LAST TEMPERATURE-CORRECTION ARRAY
       WRITE(IARCH)JTAU,(TKORRM(K),K=1,JTAU),(FCCORR(K),K=1,JTAU)
 C
 C        COMPUTE AND STORE THERMODYNAMIC QUANTITIES AND DEPTHSCALES.
-C        PUNCH BELL'S CARDS.
-C
-      
-
-C
 C
       DO 20 K=1,JTAU
       KL=K
@@ -974,7 +971,6 @@ C  NMOL=33 is number of molecules considered in the old MARCS chem.equilibrium
      
       HNIP=HNIC
 C        CHANGE BACK AGAIN
-C UGJ981018      MOLH=MOLHO
       CALL TERMO(k,T(K),PE(K),PRAD(K),PTOT,RRO,CP,CV,AGRAD,Q,U2)
       FORE=(ABSKA(1)+SPRIDA(1))/XKAPR(K)
       FURE=1./(XKAPR(K)*RRO)
@@ -991,7 +987,6 @@ C
       PG=P(K)-PRAD(K)-0.5*(PTURB(K)+PTURB(K1))
       EMU=(1.38*RRO*T(K))/(1.67E-8*PG)
       if (U2.lt.0.) then
-         !write(7,*) ' in Archiv for K=',K,' U2= ',U2
          U2 = -U2
       end if
       U=SQRT(U2)
@@ -1029,8 +1024,6 @@ C partial pressure of He is put into presmo(17)
         XNHE = abmarcs(2,k) / (XMH*XMY(k)) 
         PRESMO(17) = 1.38053d-16 * T(K) * XNHE * RRO
         PRESMP(17)=MAX(PRESMO(17),1.D-99)
-C      PG=P(K)-PRAD(K)-0.5*(PTURB(K)+PTURB(K1))
-C      EMU=(1.38*RRO*T(K))/(1.67E-8*PG)
 
       WRITE(IARCH)K,TAU(K),TAUS,Z,T(K),PE(K),PG,PRAD(K),PTURB(K),
      &            XKAPR(K),RRO,EMU,CP,CV,AGRAD,Q,U,V,ANCONV,HNIP,
@@ -1173,13 +1166,8 @@ C
       DIMENSION A(N),B(100),C(100),REZ(N),IMZ(N)
       LOGICAL SAT,FLAG
       COMMON /AC02AE/ X, Y, R, RX, J, JX, SAT
-C     ETEXT/DTEXT
-C     DATA ONE/1.0/,A1P5/1.5/,ZERO/0.0/,P4Z1/1.0E-5/
       DATA ONE /1.0/, A1P5 /1.5/, ZERO /0.0/, P4Z1 /1.0E-5/
-C     DATA TWO/2.0/,P5/0.5/,P2Z1/1.0E-3/,P1/0.1/
       DATA TWO /2.0/, P5 /0.5/, P2Z1 /1.0E-3/, P1 /0.1/
-C     DATA P3Z2/2.0E-4/,FOUR/4.0/
-C     DATA P3Z2/2.0E-4/,FOUR/4.0/
       DATA P3Z2 /2.0E-4/, FOUR /4.0/
       XXX = X02AAF(XXX)
 C     THE ABOVE TEST WAS ADDED AT 4.5 TO PREVENT TOL BEING TOO
@@ -1374,8 +1362,6 @@ C     FUNCTION/DFUNCTION
       RETURN
       END
 C
-C     MARK 4 RELEASE NAG COPYRIGHT 1974.
-C     MARK 4.5 REVISED
 C     EVALUATES R,RX,J,JX AT THE POINT X+IY AND APPLIES THE ADAMS
 C     TEST.
 C     THE BOOLEAN VARIABLE SAT IS GIVEN THE VALUE TRUE IF THE TEST
@@ -1435,44 +1421,7 @@ C     FUNCTION/DFUNCTION
      *A1))*TOL)
       RETURN
       END
-C
-      SUBROUTINE CLOCK
-      implicit real*8 (a-h,o-z)
-C
-C  TIME SINCE LAST CALL,ACCUMULATED EXECUTION TIME
-C  AND TIME REMAINING OF REQUESTED CPU TIME (for Cyber machines ?)
-C
-C
-C     DATA IS/0/
-CC
-CC
-C     IF (IS.NE.1) THEN
-C       CALL MSLEFT(MS)
-C       IS=1
-C       MPP=MS
-C     END IF
-CC
-C     CALL MSLEFT(MP)
-C     SEC=(MPP-MP)/1000.
-C     ACC=(MS-MP)/1000.0
-C     REM=MP/1000.0
-C     MPP=MP
-CCC
-      SEC=0.
-      ACC=0.
-        REM=0.
-CCC
 
-      RETURN  
-      END
-C
-C
-C         
-      subroutine cclock
-      implicit real*8 (a-h,o-z)
-      call clock
-      END
-C
       SUBROUTINE COSCAL(LUN)
       implicit real*8 (a-h,o-z)
 C
@@ -1711,8 +1660,6 @@ C        RAYLEIGH SCATTERING
       
 C     1. COMPUTATION OF WAVELENGTH-INDEPENDENT QUANTITIES
         hn=1./(xmh*xmy(ntp))
-        !hnh=f1*hn
-        
         hnh=f1_dt(nlayer)*hn
 C        H-
       FAKT(1)=PE(NTP)*HNH*1.E-17/XKHM !bound free H-
@@ -1765,29 +1712,25 @@ C        MG I
     
       
 C        AL I
-      !FAKT(24)=ANJON(9,1)*abmarcs(9,ntp)*HN*6./PART(9,1)
       FAKT(24)=rAl(nlayer)*abmarcs(9,ntp)*HN
-      !print*, "Si ", fakt(25)
-      
-      
+
+
 C        HE I
-      !FAKT(26)=ANJON(2,1)*abmarcs(2,ntp)*HN/PART(2,1)
+
       FAKT(26)=rHe(nlayer)*abmarcs(2,ntp)*HN
-      !print*, "He ", fakt(26)
+
      
 C        HE-
-      !FAKT(27)=PE(NTP)*ANJON(2,1)*abmarcs(2,ntp)*HN
+
       FAKT(27)=PE(NTP)*abmarcs(2,ntp)*HN
-      !print*, "He- ", fakt(27)
+
 
            
 C        ELECTRON SCATTERING
-      !ELS(NTP)=4.8206E-9*PE(NTP)/(T(NTP)*RO)
       ELS(NTP)=4.8206E-9*PE(NTP)/(T(NTP)*ro_dt(nlayer))
 
 C        RAYLEIGH SCATTERING
       FAKRAY(NTP)=HNH*2./PART(1,1)
-      !H2RAY(NTP)=F5*HN
       h2ray(ntp) = f5_dt(nlayer)*hn
 
       RETURN
@@ -2514,7 +2457,6 @@ C       -----------------------------------
 C       --------------------
 C       Read in the namelist
 C       --------------------
-           !write(*,*) file_nml,file_data,file_wnos
            call read_opac_namelist(file_nml, NOPI, NOTI, kpres, ktemp, 
      &        molid, nwnos, pmol_read, tmol_read)
            crossec_kpres(spec_i) = kpres
@@ -3058,14 +3000,7 @@ C  and the total number, NWTOT, of OS frequency points for the OS-tables.
 C  spectral resolution, osresl. Else it is computed in fixed steps inside a
 C  number of prespecified intervals.
 C
-
-      
-      !IF (LISTWN .eq. 1) go to 225   ! read an existing OS - wn list
-
-
 C  compute an OS - wn list:
-
-      !if (losresl.eq.0) go to 228     ! compute list with fixed steps
 
 C  use OS list with fixed resolution, osresl, through spectrum:
       wnos(1) = wnos_first
@@ -3080,8 +3015,7 @@ C  use OS list with fixed resolution, osresl, through spectrum:
             go to 241
       end if
 240   continue
-      write(7,247)nwtot,wnos(1),wnos(wntot)
-247   format('nwtot,wnos(1),wnos(wntot):'i6,f6.1,f8.1)
+247   format('nwtot,wnos(1),wnos(nwtot):'i6,f6.1,f8.1)
 C we come here only if dimension for the OS is too small:
       wnos1 = wnos_first
       step = 1.d0 + 1.d0/osresl
@@ -3107,9 +3041,6 @@ C we come here only if dimension for the OS is too small:
       do nm=1,molno
          call opac_wrapper_read(trim(filebdir(nm)), nm, wnos) 
       end do
-      !stop !COMMENT THIS STOP OUT WHEN LWRITEOS IS NOT 1 ANYMORE 
-      !(WHICH IS THE CASE WHEN WE WANT TO RUN THE FULL SIMULATION WITH THE NEW OPACITY MODULE, OTHERWISE THIS MODULE IS DESIGNED TO JUST RUN ONCE TO READ IN THE OPACITY DATA AND WRITE IT OUT IN A PLOTABLE FORMAT)
-      !write(7,*) "OS done with ADS's routine."     
       oskres = osresl/dfloat(kos_step)
       write(7,245) nwtot,wnos_first,wnos_last,1.e4/wnos_last,
      & 1.e4/wnos_first,kos_step,oskres
@@ -3250,14 +3181,6 @@ C         GGchem matching here
             end do molloop   
           endif    
 C         
-C          ADS: debugging purposes          
-C          if (species_found) then
-C             N_matched = N_matched+1
-C          else 
-C             print*, trim(spname), 'not found'
-C          end if
-             
-
           if (type.NE.0) goto 3923 ! Done with the readin   
 
           if(nT.GT.3) then 
@@ -3483,7 +3406,7 @@ C The 54 molecules we have absorption coefficients for (March 2026) are:
      & 'ALO ','BEH ','CAF ','CH3F','CH4 ','CP  ','CS  ','H2CO','HCL ',
      & 'HNO3','KCL ','KF  ','LICL','LIF ','MGF ','NACL','NAF ','NAH ',
      & 'NH3 ','SN  ','PH3 ','PN  ','PO  ','PS  ','HS  ','SIS ','SO2 '/
-
+      common /metal_Z/metal_z
 C
 C
         IF(IOUTS.GT.1) GO TO 25
@@ -3536,7 +3459,7 @@ C and other routines from gem_init by common CI5.
       !else add to the abundances of all elements but H and He log(zscale).
       print*, "Metallicity is ", zscale, " time(s) solar."
       !REWRITE HEAD OF ELABUND AND SCREEN OUTPUT WITH GENERALIZED INPUT FORMAT AND OUTPUT FORMAT
-
+      metal_z=zscale !write out metallicity for use in other routines, e.g. VIRGA
       write(7,*) 'This model of the general type ', trim(head_elabund)
       do i=1, nelem
       if (i>2) then
@@ -3645,8 +3568,6 @@ C        XIONG IS THE IONIZATION ENERGY IN ELECTRON VOLTS FOR THE GROUND STATE,
 C        USED IN THE COMPUTATION OF IONIZATION EQUILIBRIA IN SUBROUTINE JON.
       if(i.eq.12 .and. j.eq.1) then
             iafix = iel(12)
-C            write(7,1105) iel(12), xion(jb)
-C            write(7,1106) iel(12), xiong(i,j)
             xionfix = xiong(i,j)
       end if
 1105  format('ionization of element 12:',a3,' was read to',f8.3,' eV')
@@ -3884,7 +3805,6 @@ C      The physical electron pressure is the one from ggchem. The electron press
 C      in solve is only useful for convergence of the model and SHALL NEVER BE USED ELSEWHERE
 C
       ITP=1
-
 C
 C        IS T=THE TEMPERATURE OF THE PRECEDING CALL
       IF(ABS((T-TP)/T).LT.1.E-8)GO TO 53
@@ -3895,7 +3815,6 @@ C        SOME QUANTITIES, ONLY DEPENDENT ON T
       TETA25=1.202D9/(TETA*TETA*SQRT(TETA))
       DO52 J=1,5
    52 A(J)=FL2(J)*TETA
-C        A=ALFA(BASCHEK ET AL., CITED ABOVE)
 C
       
       IF(NQTEMP.EQ.0)GO TO 53
@@ -3942,8 +3861,6 @@ C
 C        BEGINNING OF LOOP OVER ELEMENTS ('THE I-LOOP').
       DO24 I=1,NEL
       NJP=NJ(I)
-
-
 C
 C        SHOULD ELEMENT NO. I BE CONSIDERED
       IF(IELEM(I).GT.0)GO TO 9
@@ -3989,8 +3906,6 @@ C        THE PARTITION FUNCTION IS CONSTANT
    14  PARTP=PARCO(JA)
 c      print *, "constant partition function"
    15 PART(I,J)=PARTP
-
-
 C
 C        IONIZATION EQUILIBRIA AND TOTAL NUMBER OF ELECTRONS
 C
@@ -4003,14 +3918,12 @@ C
    19 JA=JA+1
 C        END OF 'THE J-LOOP'
 C
-
 C     ADS: start here with code for planets, warning we are in loop of elements here
 C     FOLLOWING GRAYS book, p.165  here
 
       IF(METPE.EQ.2) THEN 
         xphi = TETA25*PART(I,2)/PART(I,1)*EXP10(-TETA*XIONG(I,1)) 
         xmultfactor = (xphi/PE)/(1.0d0+xphi/PE)
-C        xmultfactor = 0.01d0
         xpgpesumdown = xpgpesumdown + abmarcs(I,kl)*xmultfactor
         xpgpesumup = xpgpesumup + abmarcs(I,kl)*(1.0d0+xmultfactor)
       ENDIF
@@ -4033,9 +3946,6 @@ C        xmultfactor = 0.01d0
 C        XNENH=NUMBER OF ELECTRONS FROM ELEMENTS OTHER THAN HYDROGEN (Q IN
 C        MIHALAS, METH. COMP. PHYS. 7, 1 (1967), EQ. (35))
 C        XNECNO=NUMBER OF ELECTRONS FROM ELEMENTS OTHER THAN H, C, N, O
-
-C
-C
 C        COMPUTATION OF THE ENERGY OF IONIZATION (EJON). HYDROGEN IS NOT
 C        INCLUDED.
 C
@@ -4247,9 +4157,6 @@ C setup FE so that equations match:
       EH=-XIH*F1
 
       PG = xpgpesumup/xpgpesumdown * PE
-      !write(*,*) kl,PG, PE, PPEL(kl)
-      !write(*,*) xpgpesumup, xpgpesumdown ,xpgpesumup/xpgpesumdown 
-      !write(*,*) xpgpesumup/xpgpesumdown * PPEL(kl)   
 
 **********
 C
@@ -4274,10 +4181,7 @@ C
 
 46    continue
 C
- 
-
       RO=PE*XMY(kl)*(XMH/XKBOL)/(FE*T)
-
       IF (JUMP.GE.1 .and. MOLH.eq.1) THEN
 
        PG=PE*(1.+(FSUM+SUMH(kl))/FE)
@@ -4291,11 +4195,8 @@ C
      &  (ANJON(2,1)+ANJON(2,2))
       PHE = P_ION_HE(KL) + P_NEU_HE(KL)
       PG_JON(KL) = PG
-      HN_JON(KL) = 1./(XMH*XMY(kl))
-
- 
+      HN_JON(KL) = 1./(XMH*XMY(kl)) 
       ENDIF
-
 
       XYRHO=RO
       E=1.5*PG/RO+(EH+EJON)*ENAMN(kl)
@@ -4373,7 +4274,6 @@ C
       COMMON /CXLSET/XL(20,10),NSET,NL(10)
 C
 C COMPUTE KAPPA(5000.). 73.10.17 *NORD*.
-      !print *, "absko call in kap5 "
       CALL ABSKO(1,1,T,PE,1,NL(1)+1,ABSK,SPRID,nlayer)
       
       RETURN
@@ -4506,7 +4406,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      &     ,pp24(ndp),pp54(ndp),pp24m(ndp),pp54m(ndp)
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       character*3 aifix
@@ -4575,27 +4475,6 @@ C   CS VO CrO FeO ZrO SiS AlOH KOH FeS H2S H2SO4 PH3 TiO2 O3 TiC
        close(29)
 295    format(f10.2,1p2e12.4)
       end if
-C     Iniation of natural constants for Kzz calculation
-      HPLNCK=6.62554E-27
-      BOLTZK=1.38054E-16
-      CLIGHT=2.997925E10
-      ECHARG=4.80298E-10
-      RYDBRG=1.097373E5
-      STEFAN=5.675E-5
-      CLIGHT=2.99793E10
-      PI=3.14159265
-      PI4C=PI*4./CLIGHT
-
-C Calling ROSSOS here makes it possible to list X and S as function of
-C wavelength and depth in the model, but it comes with the cost that
-C OPAC is called for each (continuums)wavelength and depth. OPAC calls
-C OSTABLOOK which runs the whole setup of GGchem.
-C Probably that's why it takes up all the computing time from the last
-C iteration to the printing of the model. Maybe it could be avoided?
-      
-
-      
-      CALL ROSSOS
 
       IREAD=5
       IWRIT=7
@@ -4741,8 +4620,6 @@ C*
 C* 90-05-13 END OF MODIFICATIONS
 C*
 4000  CONTINUE
-
-
       WRITE(7,208)
       Z0=Z(1)
       DO 5 I=1,JTAU
@@ -4753,31 +4630,18 @@ C*
       else if(metpe.eq.2) then
       WRITE(7,209) I,TAU(I),TAUS(I),Z(I),T(I),PPEL(I),PG(I),PRAD(I),
      &             PE(I),XKAPR(I),I
-C     &             PTURB(I),XKAPR(I),I
        end if
-        !pgx=PP(i)-PPR(i)-PPT(i)
         ppallsum=ppappsum(i)+ppnonappsum(i)+ppat1sum(i)+ppel(i)
-     
-c       IF (T(I).GT.TEFF) then
-c          iint = i
-         
-c          if ((t(i)-teff .gt. teff-t(i-1)) .and. 
-c      &    (iint /= 1)) iint = i-1
-         
-c       END IF
     5 CONTINUE
-
 2085  FORMAT(' K',1X,'lg(tau)',2X,'T',3X,'Pe-solve',1X,
      & 'Pe-GGchm',1x,'Pg-solve',1x,'PPapsum',2x,'PPnon-ap',1x,
      & 'PPmolsum',1x,'PPatsum',2x,'PPallsum',3x,
      & 'roGG',3x,'muGG')
 2095  FORMAT(I2,F6.2,F7.1,1P9E9.2,0pf5.2)
-     
 
 C      masslinf = 1                    !now (sept.2006) in namelist outlist 
       if (masslinf.eq.0) go to 4001
       WRITE(7,2071)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,2081)
       DO 51 I=1,JTAU
       IF (I.LE.JTAU-1) THEN
@@ -4795,16 +4659,13 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
      *         DPRDZ,VLOSS,ROSSO(I),PTAUO(I),cross(I)
    51 CONTINUE
 4001  CONTINUE
-
       WRITE(7,210)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,211)
       DO 6 I=1,JTAU
       WRITE(7,212) I,TAU(I),RO(I),EMU(I),CP(I),CV(I),AGRAD(I),Q(I),U(I),
      &             V(I),ANCONV(I),I
     6 CONTINUE
 C
-
       DO 772 I=1,JTAU
         HNIC(I) = max(1.d-99,HNIC(I))
         HNIC(I)=LOG10(HNIC(I))
@@ -4828,33 +4689,19 @@ C "if(jump.ne.1)" loop. but be aware that the spectrum program
 C may have difficult finding P(ZrO), P6 and other part.pressures then.
 C     
       IF (JUMP.GT.0) GO TO 2101
-
-
       WRITE(7,213)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-
       WRITE(7,214)
-
       DO 7 I=1,JTAU
         WRITE(7,215) I,HNIC(I),(PRESMO(JJ,I),JJ=1,13),PRESMO(31,I),I
 7     CONTINUE
-
-
       WRITE(7,213)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-
       WRITE(7,216)
       DO 8 I=1,JTAU
       WRITE(7,217) I,(PRESMO(J,I),J=14,16),(PRESMO(J,I),J=18,30),I
 8     CONTINUE
-
-
       GO TO 2109
-
 2101  CONTINUE     ! go here if jump>0 (i.e. not old marcs chem. equilibrium.
-
       IF (JUMP.EQ.3) GO TO 2102
-
 C here: JF's/Tsuji's molecular partial pressures from JANAF polynomial fits:
 
 C for Tsuji's eq names are not read in (MOL(J) as real*8...)
@@ -4866,13 +4713,7 @@ C Select which by chancing the index numbers in the data statements kions, kprat
 C in the top of the LISTMO subroutine ; do not put more than 15 species per output block.
 C With time these ought to be the only partial pressure listing in the atmosphere data files.
 C Unit=90 is an output file with more infor on the partial pressures than stored in the model atmosphere files.
-
-
-C        open(unit=90,file='allpp.dat',status='unknown')
-
-
 C The OS-molecules:
-        
         nos = 0
         do 4201 k=1,54
         do 4200 j=1,543
@@ -4926,7 +4767,6 @@ C
      &      ,'line lists for:')
         WRITE(90,4206) (osnames(j),j=1,54)
 4206    format( 9(a4,4x) )
-
 C
 C k should be the depth layer if we should be able to make the test of
 C summation in each layer, which would require a listing of the
@@ -4934,7 +4774,6 @@ C pp_j(k) for all j=1,54 OS-molecules; for now we set k=ndp here
 C to avoid it being 0 (i.e. out of dimension). ppallmol(k,..) has
 C already at this state been filled in by k=1,ntau calls to ggchem and
 C corresponding saving in the 2D array.
-
       open(unit=707,file='pp.dat')
       if (krome_on.eq.1) then !avoid overriding non-eq results with final ggchem call
        read(707,*) (dummy_ppallat(ntau,m),m=1,22)
@@ -4950,7 +4789,6 @@ C corresponding saving in the 2D array.
 708         format(i4,18x,a2)
 709           format(10a8)
       close(707)
-
 C The positive and negative ions:
         natplus = 0
         do 3200 j=1,543
@@ -4960,20 +4798,17 @@ C The positive and negative ions:
         natplus = natplus + 1
         idplus(natplus) = j
 3200    continue
-
         write(90,3201) natplus
 3201    format('There are',i4,' positive ions:')
         WRITE(90,3253) (molnames(idplus(j)),j=1,natplus)
         WRITE(90,4209) (idplus(j),j=1,natplus)
 4209    format(15i8)
-
         do 3220 i=1,jtau
         ppp(i) = 0.
         do 3221 j=1,natplus
         ppp(i) = ppp(i)+ppallmol(i,idplus(j))
 3221    continue
 3220    continue
-
         natminus = 0
         do 3203 j=1,543
         ipos = 0
@@ -4982,20 +4817,16 @@ C The positive and negative ions:
         natminus = natminus + 1
         idminus(natminus) = j
 3203    continue
-
         write(90,3204) natminus
 3204    format(/'There are',i4,' negative ions:')
         WRITE(90,3253) (molnames(idminus(j)),j=1,natminus)
         WRITE(90,4209) (idminus(j),j=1,natminus)
-
         do 3226 i=1,jtau
         ppm(i) = 0.
         do 3223 j=1,natminus
         ppm(i) = ppm(i)+ppallmol(i,idminus(j))
 3223    continue
 3226    continue
-
-
 C The neutral molecules:
         neutralmol = 0
         do 3205 j=1,543
@@ -5007,25 +4838,21 @@ C The neutral molecules:
         neutralmol = neutralmol + 1
         idmol(neutralmol) = j
 3205    continue
-
         write(90,3206) neutralmol
 3206    format(/'There are',i4,' neutral molecules:')
         WRITE(90,3207) (molnames(idmol(j)),j=1,neutralmol)
         WRITE(90,3210) (idmol(j),j=1,neutralmol)
 3207    FORMAT(2x,15a8)
 3210    FORMAT(2x,15i8)
-
         do 3227 i=1,jtau
         ppnmol(i) = 0.
         do 3228 j=1,neutralmol
         ppnmol(i) = ppnmol(i)+ppallmol(i,idmol(j))
 3228    continue
 3227    continue
-
 C The neutral atoms:
         WRITE(90,3202) (atnames(j),j=1,22)
 3202    format(/'There are 22 neutral atoms:', 22(1x,a2,1x))
-
         do 3145 jm=1,2
         jmin=(jm-1)*15 + 1
         jmax = jmin+14
@@ -5040,10 +4867,8 @@ C The neutral atoms:
                 WRITE(90,'(I2,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallat(i,j)))),J=jmin,jmax)
         end do
-
 3145    continue
 3146    continue
-
         WRITE(7,2234)
 2234    FORMAT(//' P A R T I A L  P R E S S U R E S   ',
      &  ' of 15 selected neutral atoms of the 22 calculated in GGchem')
@@ -5055,7 +4880,6 @@ C The neutral atoms:
         END DO
 3148    FORMAT(2x,15(3x,a2,3x))
 3211    FORMAT(2x,15(1x,i6,1x))
-
         WRITE(7,2235)
 2235    FORMAT(//' P A R T I A L  P R E S S U R E S   of ',
      &  '13 selected ions of the 82(+)+52(-)=134 calculated in GGchem')
@@ -5069,8 +4893,6 @@ C The neutral atoms:
      *     (log10(max(1.e-99,ppallmol(i,kions(j)))),J=1,13),patp,pelbal
         END DO
 2236    FORMAT(5x,12(a8),a6,' ions+  pe+ions-')
-
-
         WRITE(7,2239)
 2239    FORMAT(//' P A R T I A L  P R E S S U R E S   of 15 iselected ',
      &  'neutral molecules (k1mol) of the 409 calculated in GGchem')
@@ -5080,7 +4902,6 @@ C The neutral atoms:
      *          (log10(max(1.e-99,ppallmol(i,k1mol(j)))),J=1,15)
         END DO
 2240    FORMAT(5x,14a8,a6)
-
         WRITE(7,2241)
 2241    FORMAT(//' P A R T I A L  P R E S S U R E S   of 15 selected ',
      &  'neutral molecules (k2mol) of the 409 calculated in GGchem')
@@ -5089,7 +4910,6 @@ C The neutral atoms:
                  WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,ppallmol(i,k2mol(j)))),J=1,15)
         END DO
-
         WRITE(7,2242)
 2242    FORMAT(//' P A R T I A L  P R E S S U R E S   of 15 iselected ',
      &  'neutral molecules (k3mol) of the 409 calculated in GGchem')
@@ -5104,7 +4924,6 @@ C The neutral atoms:
            do 3229 j=1,22
            ppnat(i) = ppnat(i)+ppallat(i,j)
 3229       continue
-
         WRITE(7,2243)
 2243    FORMAT(//' P A R T I A L  P R E S S U R E S  -- overview of all'
      &  ,' the 565 neutral and ionized species from GGchem'/
@@ -5124,7 +4943,6 @@ C The neutral atoms:
         end do
 2245    continue
 3150    continue
-
         do 3143 jm=1,37
         jmin=(jm-1)*15 + 1
         jmax = jmin+14
@@ -5143,7 +4961,6 @@ C The neutral atoms:
      *          WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallmol(i,j)))),J=jmin,jmax)
         end do
-
 3143    continue
 3144    continue
 2153    FORMAT(' K ',15a8)
@@ -5164,7 +4981,6 @@ C The neutral atoms:
 2248     format(/' I   pat+    pat-    pnat    pnmol    psum    pel  ',
      &    'pel-stat   ppH2   ppCH4   ppNH3   ppH2O',
      &    '    ppH    ppHe')
-
            do 3231 i=1,jtau
            ppamol(i) = 0.
            do 3230 j=1,543
@@ -5213,27 +5029,18 @@ C The neutral atoms:
 !       ERC: was GT3 before, but changed to GT4 to have Pgas printed in
 !       SUB routine init_ggchem
 C output from GEM:
-
 C
-
       GO TO 2109
 2103  CONTINUE
 2109  CONTINUE     ! go here when finished the partial pressure writing
-
-
-
 1905  FORMAT(I3,18(2X,A4))
       write(7,*)' '
       write(7,*)' '
       WRITE(7,1904) NOSMOL
 1904  FORMAT
      *(I3,' MOLECULES(/+ATOMS) HAVE BEEN CONSIDERED IN THE OPACITY')
-
-
       WRITE(7,1900)
 1900  format(' A B S O R P T I O N   C O E F F I C I E N T S  [CM/MOL]')
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
-
       WRITE(7,1906) (MOLNAME(I),I=1,NOSMOL)
 1906  FORMAT(' K',52(2X,A4))
       DO 2074 k=1,JTAU
@@ -5242,7 +5049,6 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       write(7,2078) k,( log10(SUMOP(I,K)),I=1,NOSMOL )
 2074  continue
 2078  format(i3,52f6.2)
-
       write(7,*)' '
       write(7,*)' '
       WRITE(7,1901)
@@ -5257,8 +5063,6 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
 2072  continue
 2073  format(i3,52f6.1)
 C End of molecular partial pressures
-
-
       READ(IARCH)(NJ(I),I=1,NEL),NLP,(XLR(I),I=1,NLP)
      & ,NPROV,NPROVA,NPROVS,(ABNAME(KP),SOURCE(KP),KP=1,NPROV)
 C
@@ -5285,11 +5089,6 @@ C
       WRITE(7,532) (SPRTR(KLAM),KLAM=1,NLP)
 81    CONTINUE
       WRITE(7,*) ' '
-!      do k=1,ntau
-!      vert_scale_height=BOLTZK*T(k)/(emu(k)*XMH*log10(grav)) 
-!      write(*,*) V(k),palfa,BOLTZK,T(k),XMH,emu(k)
-!      write(*,*) vert_scale_height,palfa*vert_scale_height
-!      enddo
 C
 C first, identify the depth points where logtau_ross is -4, -3, ..., 2
 C for printing of opacities
@@ -5331,7 +5130,6 @@ C write only for selected layers:
 
       IF(KTAU.LE.1) WRITE(7,218)
       IF(KTAU.GT.1) WRITE(7,219)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,220) TAUI
       WRITE(7,221) TI,PEI,kr,log10(tau(kr))
       WRITE(7,222)
@@ -5356,13 +5154,6 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       DO 18 KLAM=1,NLP
       ABKLA=ABSKA(KLAM)
       STIM=1.-EXP(-HCKT/XLR(KLAM))
-C      if (lin_cia.ne.1) 
-C     *   abkla = abkla+(prov(nprova,klam)+prov(nprova-1,klam))*stim
-C      WRITE(iwrop,2261)XLR(KLAM)/1.d4
-C     *    ,log10( max(1.0d-99,ABSKA(KLAM)) )
-C     *    ,log10( max(1.0d-99,SPRIDA(KLAM)) )
-C     *    ,(log10( max(1.0d-99,PROV(J,KLAM)) ),J=1,NPROVA-2)
-C     *    ,(log10( max(1.0d-99,PROV(J,KLAM)) ),J=NPROVA+1,NPROVA+NPROVS)
       DO 180 J=1,NPROVA-2
   180 PROV(J,KLAM)=PROV(J,KLAM)/ABKLA*STIM
       if (lin_cia.ne.1) 
@@ -5391,7 +5182,6 @@ C        CONVERT TO 'PHYSICAL' FLUXES
    25 CONTINUE
    26 STMAGN=-2.5*log10(FLUXME(JNORM))
 C
-C        WRITE(7,FLUXES)
 C
       WRITE(7,521)
       N=0
@@ -5410,12 +5200,9 @@ C
 C
 C
       WRITE(7,219)
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,227)
       LLB=NLB
    60 IF(LLB.LT.NLB) WRITE(7,219)
-C      IF(LLB.LT.NLB) WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,
-C     &                            IDRAB4,IDRAB5,IDRAB6
       IF(LLB.LT.NLB) WRITE(7,227)
       WRITE(7,228)
       IRAD = 0
@@ -5514,13 +5301,10 @@ C        COMPUTE U, B, V, R, I AND COLOURS
       RI=RMAG-XIMAG
       VR=VMAG-RMAG
       VI=VMAG-XIMAG
-C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       WRITE(7,2698)
       WRITE(7,271) UB,BV,UV
       WRITE(7,272) XLB(JNORM),RI,VR,VI
       WRITE(7,273) UMAG,BMAG,VMAG,RMAG,XIMAG
-
-
       do k=1,ntau
       pall(k) = pg(k)+pe(k)+prad(k)+pturb(k)
        if(k.ge.2 .and. k.le.ntau-1) then
@@ -5543,8 +5327,6 @@ C      WRITE(7,300) TEFF,GLOG,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6
       end do
 
    1  CONTINUE !read next archiv-file and write it in a formatted file.
-
-
 5191  FORMAT(I3,f7.2,1P5E11.3,2x,4e11.3)
 5190  FORMAT(//' H Y D R O S T A T I C    E Q U I L I B R I U M')
 5192  FORMAT('  K log(tau)    z(k)     pall(k)    ro(k)     ',
@@ -5758,14 +5540,14 @@ C
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /ch4/ nch4
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
+      common /conv_help/ abund_freq,icalc_abund
+      common /virga/ ivirga_on
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
       character(len=200) :: spectrum_file
-
-
 C INITIATIONS
       HPLNCK=6.62554E-27
       BOLTZK=1.38054E-16
@@ -5773,7 +5555,6 @@ C INITIATIONS
       ECHARG=4.80298E-10
       RYDBRG=1.097373E5
       STEFAN=5.675E-5
-      CLIGHT=2.99793E10
       PI=3.14159265
       PI4C=PI*4./CLIGHT
 C
@@ -5783,31 +5564,23 @@ C LOGICAL UNITS
 C
 C TEMPERATURE, GRAVITATION
       READ(5,62) TEFF,G,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6,RELM
-      
-      !print*, teff
-      
-C
 C KONV, MIHAL
-CUGJ      ILINE=0
       ISTRAL=0
       READ(5,631) NOCONV,XMAX,TAUM,FACPLY,METBL
-     
       IF(METBL.GT.1) METBL=1
       IF(TAUM.EQ.0.) TAUM=50.
       IF(XMAX.EQ.0.) XMAX=1.E10
       READ(5,63) ILINE,AMLOSS,MOLTSUJI,LIN_CIA,ISPEC
       READ(5,51) MIHAL,KONSG,KORT,TDIFF,TCONV
-      
       read(5,635) lops,nops,dpein,dtin,metpe
-
 C CONVECTION PARAMETERS
       READ(5,50) PALFA,PBETA,PNY,PY,VFIX
-      
 C
 C MY POINTS  (warning: there are other variables with the same names xmy,h...)
 C                      
 C
       READ(5,512) MMY,NCORE,KDIFF
+      read(5,1233) abund_freq
       read(5, 1234) irrin,steff,rstar,semimajor,f_irrad,
      > input_star_spec,spectrum_scale
 
@@ -5842,7 +5615,8 @@ C
       print*, "Modelling a rocky planet with a surface temperature of ", 
      * tbottom, " and a surface albedo of ", reflect
       end if
-      read(5, 1236) krome_on, krome_photo_on, krome_photo_scale
+      read(5, 1236) krome_on, krome_photo_on, krome_photo_scale, 
+     > conv_crit
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
       read(5, 1238) krome_output,krome_debug,krome_return
       if (krome_on.eq.1) then
@@ -5854,8 +5628,12 @@ C
       else
       print*, "Non-equilibrium Chemistry is turned off"      
       endif
-
-      !print*, irrinp
+      read(5, 1239) ivirga_on
+      if (ivirga_on.eq.1) then
+       print*, "Virga cloud model is turned on"
+      else
+       print*, "Virga cloud model is turned off"
+      endif
       FLUX=STEFAN*TEFF**4/PI
       GRAV=10.**G
       RELRAD=0.5*(log10(RELM)+GSUN-G)
@@ -5865,9 +5643,7 @@ C
       RADIUS=RSUN*10.**RELRAD
       DO 100 K=1,NDP
 100   RR(K)=RADIUS
-
       TAURAT=10.**(0.1*KDIFF-0.01)
-C
       ACALL = 0.0D+0
       BCALL = 1.0D+0
       CALL GAUSI(MMY,ACALL,BCALL,H,XMY)
@@ -5885,22 +5661,16 @@ C the values from the ntau layers of the input model will be scaled
 C (inter/extra-polated)to the jtau layers of the new model to estimate a
 C new model as a starting model for the iterations.
 C
-      
       IF (NTAU.NE.JTAU) CALL SCALEMOD
-      
       DO 200 K=1,NTAU
       TAULN(K)=log(TAU(K))
 200   CONTINUE
 C
-     
-C      WRITE(7,59)NOCONV
-C      WRITE(7,57)MIHAL
-C      WRITE(7,571)KONSG,KORT,TDIFF
-      
       RETURN
 50    FORMAT(5(7X,F8.0))
 51    FORMAT(3(7X,I3,5X),7X,F8.0,7X,F8.0)
 512   FORMAT(3(7X,I3,5X))
+1233  FORMAT(7X,I3)
 1234  format(1(7X,I4,4X), 4(7X, F8.0), 1(7X,I4,4X), 1(7X,E8.1))
 1235  format(1(8X,I4,3X), 2(7X, F8.0), 1(7X, I2))
 52    FORMAT(20X,'LOG G  =',F10.2,10X,'LOG (ATM/R) =',F5.2,10X,
@@ -5930,9 +5700,10 @@ C      WRITE(7,571)KONSG,KORT,TDIFF
 67    FORMAT(20X,'TAUM   =',F10.2)
 68    FORMAT(20X,'METBL  =',I10)
 69    FORMAT(20X,'FACPLY =',F10.3)
-1236  FORMAT(7X,I3,12X,I3,12X,E8.1)
+1236  FORMAT(7X,I3,12X,I3,12X,E8.1,7X,E8.1)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
 1238  FORMAT(7X,I3,12X,I3,12X,I3)
+1239  FORMAT(7X,I3)
       END
 C
       SUBROUTINE MATINV(A,N)
@@ -5953,7 +5724,6 @@ C
       JM1=J-1
       if (A(J,J) == 0.0) A(J,J) = 1.0e-30
       DIV=A(J,J)
-      !if (div == 0.0) print*, "J at div == 0 " , J
       SUM=.0
       IF(JM1.LT.1)GOTO 2
       DO 1 L=1,JM1
@@ -6014,7 +5784,6 @@ C
       SUBROUTINE MODJON(JONTYP,IOUTS)
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
-
 C
 C 'JONTYP' DETERMINES THE QUALITY OF THE IONIZATION EQUILIBRIUM COMPUTED
 C IN JON.
@@ -6141,8 +5910,6 @@ C
 C ENTRY MODMOL
       ENTRY MODMOL(MOLTYP,IOUTS)
       MOLH=0
-      !IF(MOLTYP.LE.0) MOLH=0
-      !IF(MOLTYP.GT.0) MOLH=1
       IF(IOUTS.GT.0) CALL INJON(2)
       WRITE(7,101) MOLTYP
 101   FORMAT('0MOLTYP=',I1)
@@ -6254,18 +6021,15 @@ C STATEMENT FUNCTION FOR CORRECTIONS LIMITED TO FACTOR TWO
       ASUM(X,DX)=DMIN1(2.D0*X,DMAX1(0.5D0*X,X+DX))
 C COMPUTATION OF DISSOCIATION CONSTANTS K(AB) (AKD) AND PE/K(AB) (PK).
       TMEM=T
-
       TH=5040.D0/T
       AKD(1)=XKHM
       PK(1)=PE/XKHM
       PELOG=LOG10(PE)
       DO 100 J=2,33
         M=J-1
-        
         AKD(J)=AKA(M)-(AK1(M)-(AK2(M)-(AK3(M)-AK4(M)*TH)*TH)*TH)*TH
         PK(J)=PELOG-AKD(J)
 100   CONTINUE
-
       PK(4)=PELOG+PK(4)
       PK(14)=2.0*PELOG+PK(14)
       PK(15)=PELOG+PK(15)
@@ -6292,19 +6056,15 @@ C COMPUTATION OF DISSOCIATION CONSTANTS K(AB) (AKD) AND PE/K(AB) (PK).
 *
 * q1 is the ratio  n(Ti II)/n(Ti I)
 *
-       
         q1=.6667*t**2.5*uratio*exp(-6.82*11605./t)/pe
-      
 *
 *
 * q2 is the ratio  n(TiO)/n(Ti I)
 *
          tiokp = 10.**akd(31)
-
 *
 * xnti1 is n(Ti I)    (i.e. per cm**3)
 *
-
          ptio(kl) =  0.
          xnti1(kl) = 0.
          xnti2(kl) = 0.
@@ -6330,9 +6090,7 @@ C START WITH VALUES OF FH,FC,FN,FO,FS,FK,FE FROM LAST ITTERATION
          FS = FOLD(KL,5)
          FK = FOLD(KL,6)
          FE = FOLD(KL,7)
-
          FT = FOLD(KL,8)
-
          GO TO 159
       END IF
 C
@@ -6344,12 +6102,10 @@ C ...OR ESTIMATE THESE VALUES...
 C
 C FH, FROM H=HI+HII+H2+H-
       FE=XNENSK
-
       CAM=FE*WKH/(2.D0*PK(2))
       ROOT=DSQRT(DABS(CAM*CAM+FE/PK(2)))
       FH=-CAM+ROOT
       FE=FH*(G2-PK(1))+XNENSK
-
       IF (FE.GT.0.D0) GO TO 110
       R=PK(2)/PK(1)/PK(1)
       CAM=(WKH*XNENSK/PK(1)-1.D0-2.D0*XNENSK*R)
@@ -6380,7 +6136,6 @@ C                                  R4 = WATER CORRECTION, 4-JAN-82/NORDLUND
       SUMLOG=R1LOG+R2LOG
       IF (SUMLOG.GE.34.) THEN
          RADD=(34.-SUMLOG)/2.
-
          R1=R1*10.**RADD
          R2=R2*10.**RADD
       END IF
@@ -6416,7 +6171,6 @@ C                                  R4 = WATER CORRECTION, 4-JAN-82/NORDLUND
         IFLAG=IFLAG+1
 122   CONTINUE
       FO=abmarcs(5,kl)/(R4+FC*R1)
-C.... PRINT 120,FC**3*PALLE(1),FC**2*PALLE(2),FC*PALLE(3),PALLE(4)
       IF (IFLAG.EQ.1) GO TO 135
       IF (IFLAG.EQ.0) PRINT 123
       IF (IFLAG.GE.2) PRINT 124
@@ -6439,7 +6193,6 @@ C FO, FROM O=OI+OII+CO+H2O+SIO, C=CI+CII+CO+CN+HCN, AND SI=SI(I)+SI(II)+SIO
       SUMLOG=R1LOG+R2LOG+R5LOG
       IF (SUMLOG.GE.34.) THEN
          RADD=(34.-SUMLOG)/3.
-
          R1=R1*10.**RADD
          R2=R2*10.**RADD
          R5=R5*10.**RADD
@@ -6448,7 +6201,6 @@ C FO, FROM O=OI+OII+CO+H2O+SIO, C=CI+CII+CO+CN+HCN, AND SI=SI(I)+SI(II)+SIO
       SUMLOG=MAX(R1LOG+R4LOG,R2LOG+R3LOG)+R5LOG
       IF (SUMLOG.GE.34.) THEN
          RADD=(34.-SUMLOG)/3.
-
          R1=R1*10.**RADD
          R4=R4*10.**RADD
          R2=R2*10.**RADD
@@ -6482,7 +6234,6 @@ C.... PRINT 120,PELLE
         IFLAG=IFLAG+1
 132   CONTINUE
       FC=abmarcs(3,kl)/(WKC+R1*FO+FN*PK(8)/FE+FN*FH*PK(15)/(FE*FE))
-C.... PRINT 120,FO**3*PALLE(1),FO**2*PALLE(2),FO*PALLE(3),PALLE(4)
       IF (IFLAG.EQ.1) GO TO 135
       IF (IFLAG.EQ.0) PRINT 133
       IF (IFLAG.GE.2) PRINT 134
@@ -6533,16 +6284,11 @@ C BEFORE THE ITERATIONS ARE STOPPED.
 C
       DIFF=1.D-3
        M=8
-
-
       DO 163 J=1,500
 c        
         CALL MOLMAT(PK,G2,GC,GN,GO,GS,GK,GT,ABUC,ABUN,ABUO
      &             ,AS,AK,AT,FH,FC,FN,FO,FS,FK,FT,FE,XNENSK,F,A)
-
-
         CALL AINV3(A,M)
-
         EMAX=0.D0
         DO 162 L=1,M
           D(L)=0.D0
@@ -6555,7 +6301,7 @@ c
           EMAX=DMAX1(DABS(D(L)/FF(L)),EMAX)
 
 162     CONTINUE
-Ctemp UGJ 020308:   IF (EMAX.LT.DIFF) GO TO 170
+C
 163   CONTINUE
         GO TO 170
       write(7,*)' MOL: THE DESIRED ACCURACY WAS NOT ACHIEVED AFTER'
@@ -6573,9 +6319,6 @@ C THE ROTATION AND VIBRATION ENERGIES ARE NEGLECTED.
 C
 170   CONTINUE
 c
-C      write(7,168) FH,FC,FN,FO,FS,FK,FT,FE
-C168   FORMAT(' After molmath call: FH,C,N,O,S,Si,Ti,E='/,1P8E9.2)
-c      PRINT 160,FH,FC,FN,FO,FS,FK,FT,FE,J
 c
    98 TETA=TH
       DEH2=(B1(1)-(B1(2)-(B1(3)-(B1(4)-B1(5)*TETA)*TETA)*TETA)*TETA)*
@@ -6635,8 +6378,6 @@ C
       FOLD(KL,6) = FK
       FOLD(KL,7) = FE
       FOLD(KL,8) = FT
-
-
       RETURN
       END
 C
@@ -6690,9 +6431,7 @@ C        CALCULATION OF THE EQUILIBRIUM
       F3=F3D
       F4=F4D
       F5=F5D
-
       FE=FED
-
       FSUM=FSUMD
 C
 C        CALCULATION OF THE ENERGIES
@@ -6942,7 +6681,6 @@ C
       DIMENSION ABUND(20)
 C
 C READ OLD ARCHIV FILE
-
       READ(IARCH) DUM
       READ(IARCH) TEF,FLX,GD,PALFA,PNY,PY,PBETA,ILINE,ISTRAL,MIHAL,
      &            IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6,
@@ -7221,15 +6959,16 @@ c
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
      *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
-C      COMMON/COPPRR/ xconop(120,10),xlineop(120,10)    !100wn,10dpt
-C      COMMON/CONLIN/rconop(nwl,ndp),rlineop(nwl,ndp)
       COMMON/COPsum/ SSUM(NDP),XSUM(NDP),CONSUM(NDP)
+      common /virga/ ivirga_on
+      common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+      common /conv_help/ abund_freq,icalc_abund
 c
        dimension tau_lambda(5)
        DATA JJ/4/
        DATA FIRST/.TRUE./
        data tau_lambda/ 8.0e+4, 9.0e+4,1.0e+5, 1.1e+5, 1.2e+5 /
-C      EXP10(A)=EXP(2.302585*A)
+      integer abund_freq,icalc_abund
 C
       IF (J.EQ.1) THEN
          IF (WLOS(1).LT.XL(1,2)) THEN
@@ -7266,7 +7005,6 @@ C
       IF(J.EQ.1) JJ=4
       IF(J.NE.1)GO TO 9
       ISWITCH=1
-
 C        COMPUTATION OF CONTINUOUS ABSORPTION COEFFICIENTS AND INTERPOLATION
       NEWT=1
       JMEM=1
@@ -7288,7 +7026,6 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       end if
       enddo
     9 IF(WLOS(J).LE.XL(JMEM1,IMEM1))GO TO 11
-
       JMEM=JMEM1
       IMEM=IMEM1
       JMEM1=JMEM1+1
@@ -7300,7 +7037,6 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       IF(JMEM1.LE.NL(IMEM1))GO TO 10
       JMEM1=1
       IMEM1=IMEM1+1
-
 10    continue
       do k=1,jtau
       if(metpe.eq.1) then
@@ -7313,24 +7049,19 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       endif
       end if
       enddo
-      
-
       GO TO 9
 C        INTERPOLATION
 11    CONTINUE
 
       DO12 K=1,JTAU
-      
       DIFXL=(WLOS(J)-XL(JMEM,IMEM))/(XL(JMEM1,IMEM1)-XL(JMEM,IMEM))
-
       X(K)=(ABSK(K)+(ABSK1(K)-ABSK(K))*DIFXL)/XKAPR(K)
       x_cont(k,j) = x(k)*XKAPR(K)
       PRXC(K)=X(K)
       S(K)=(SPRID(K)+(SPRID1(K)-SPRID(K))*DIFXL)/XKAPR(K)
       s_cont(k,j) = s(k)*XKAPR(k)
       PRSC(K)=S(K)
-   12 CONTINUE  
-         
+   12 CONTINUE          
 C
 C        COMPUTATION OF LINE-ABSORPTION COEFFICIENTS
 C
@@ -7362,7 +7093,7 @@ C
       s(k) = s(k)+(dust_sca(k,j)/xkapr(k))
       end do
       end if
-
+C     READIN VIRGA FILE VIRGA_ARRAY(J,K,3) X_CLOUD VIRGA_ARRAY(J,K,4) S_CLOUD     
 
    25 CONTINUE
       DO  K=1,JTAU
@@ -7404,14 +7135,12 @@ C
             write(4297,*)
             close(4297)
             end if
-
          end do
       end if
 50    FORMAT(' X',6(' ***',1PE12.5))
 C
 C
       FIRST = .FALSE.
-
       RETURN
       END
 C
@@ -7430,7 +7159,7 @@ C START
       A=log(PE)
       PEX=PE
       CALL JON(T,PE,1,FA,RO,E,0)
-C******WRITE(7,40) T,PG,PE,FA
+C
 40    FORMAT(' T,PG,PE,PGP=',4E11.4)
       IT=IT+1
       FA=log(FA/PG)
@@ -7439,7 +7168,7 @@ C******WRITE(7,40) T,PG,PE,FA
       PEX=EXP(B)
 C ONE PEMAKE ITERATION, CF. PEMAKE
       CALL JON(T,PEX,1,FB,RO,E,0)
-C******WRITE(7,40) T,PG,PE,FB
+C
       IT=IT+1
       FB=log(FB/PG)
       IF(ABS(FB).LT.EPS) GOTO 101
@@ -7482,7 +7211,6 @@ C COUNT ENTRY
       WRITE(7,52) IT
 52    FORMAT('0TOTAL NUMBER OF CALLS TO JON FROM PEMAKE-R =',I5)
       RETURN
-
       END
 C
       FUNCTION QAS(H,XL,A,Z,PFISH,IFISH)
@@ -7632,28 +7360,15 @@ C      REAL*8 Y,YA,SUMW,ROSSO,PTAUO
      *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
      *      epsilon_cloud_old(max_eps,ndp)
       common /cdrift/ idust, ieps, idustopac, icloud_conv
-C      COMMON/CONLIN/rconop(nwl,ndp),rlineop(nwl,ndp)
 
 C CALCULATE DETAILED ROSSELAND MEAN
-C      KL=1
-C      DUMMY(1)=ROSSOP(TT(1),PPE(1))
-
 
       DO 116 K=1,NTAU
-C        KL=K
         SUMW(K)=0.
         ROSSO(K)=0.
         dummy(k) = 1.
-C        sumwy(k) = 0.
-C        sumwyxs(k) = 0.
-C        sumabs(k) = 0.
-C        DUMMY(k)=ROSSOP(TT(K),PPE(K))
 116   CONTINUE
-C          write(7,*) 
-C     *     ' j,k,wlos(j),ya,xkapr(k),xkapr(k)*x(k),xkapr(k)*s(k)',
-C     *     ' rosso(k),rconop(j,k),rlineop(j,k),tt(k) '
 
-      !print*, "opac call in rossop"
       DO 117 J=1,NWTOT
         CALL OPAC(J,X,S)
         Y=((WLOS(J)/1.E4)**2)**3
@@ -7663,25 +7378,16 @@ C     *     ' rosso(k),rconop(j,k),rlineop(j,k),tt(k) '
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 117
           ROSSO(K)=ROSSO(K)+WLSTEP(J)*YA/(xkapr(k)*(X(K)+S(K)))
-
 117   CONTINUE
 1171  format(i5,i3,1p8e12.3,0pf8.0)
 C
-C      write(7,*) ' k,sum(x(k)+s(k)),rosso(k),sumw(k),sumwy,sumwyxs = '
+
       DO 111 K=1,NTAU
-C        write(7,*) k,sumabs(k),rosso(k),sumw(k),sumwy(k),sumwyxs(k)
         ROSSO(K)=SUMW(K)/ROSSO(K)
         PTAUO(K)=GRAV*TAU(K)/ROSSO(K)
 111   CONTINUE
 C
-
-C      write(7,*)' k,pp,ptauo,rosso,tt ='
-C      do 112 k=1,ntau
-C      write(7,1172)k,pp(k),ptauo(k),rosso(k),tt(k)
-C112   continue
 1172  format(i5,1p3e12.3,0pf8.0)
-C      write(7,*) ' ******** end from rossos '
-
       RETURN
       END
 C
@@ -7708,7 +7414,6 @@ C
       COMMON /CISPH/ISPH
 C
 C READ OLD MODEL
-
       CALL OLDSTA
       ITER=0
 C
@@ -7865,7 +7570,7 @@ C STATEMENT FUNCTIONS
 C
 C TIME
 
-      CALL CLOCK
+      !CALL CLOCK
 C
 C START UP
       READ(5,66) TAUCNV,DTBLNK,TAUBLN
@@ -7875,7 +7580,6 @@ C START UP
       DT1=1.E10
       TEOLD=-DT1
 94    CONTINUE
-      
 C
 C THE PRESSURE BOUNDARY CONDITION IS PP(1)/PP(2) = PGFACT. TO FIND
 C APPROXIMATE STARTING VALUES WE START WITH AN ARBITRARY ELECTRON PRESSU
@@ -8019,7 +7723,7 @@ C END OF TAU LOOP, PRINT.
 99    continue
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
       ITER=0
       RETURN
@@ -8082,11 +7786,8 @@ C        THIS IS JUST A DUMMY STATEMENT TO GIVE NSVIT A FORMAL VALUE
 C
       DO81 NTP=1,NT
       TP=T(NTP)
-     
       KFAK=KFAK+KOMPR
       DO81 KOMP=KOMPS,NKOMP
-
-     
       IF(ISVIT(KOMP).GT.0)GO TO (51,61,70),NSVIT
       IF(ITETA(KOMP).LE.0)GO TO 2
     1 TS=5040./T(NTP)
@@ -8095,8 +7796,6 @@ C
     2 TS=T(NTP)
 C
 C        SEARCHING
-      
-    
     3 IF((TS-TBOT(KOMP,1)).GE.0.)GO TO 10
       IF(MINET(KOMP).LE.0)GO TO 70
 C
@@ -8108,12 +7807,9 @@ C        EXTRAPOLATION DOWNWARDS
       GO TO 60
 C
 C        SEARCHING CONTINUES
-
    10 INTAP=1
       IDP=IDEL(KOMP)
-      
       DO11 I=1,IDP
-      
       AP=(TS-TBOT(KOMP,I))/DELT(KOMP,I)
       IP=INT(AP)
       INTA=IP+INTAP
@@ -8205,25 +7901,20 @@ C
 C
 C 'TAUSCA' INITIATES A TAU SCALE FROM INPUT LOGTAU AND LOGTAU-DIFFERENCE
 C *NORD*
-      
 C
       include 'parameter.inc'
 C
       DIMENSION TAULNX(NDP)
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /STATEC/DUM1(10*NDP),TAULN(NDP),RO(NDP),NTAU,ITER
-     
       K=1
 C
 C READ LOGTAU AND LOGTAU-DIFFERENCE
       READ(5,50) T1,D1
-      !print*, T1, D1
 C
 1     CONTINUE
       READ(5,50) T2,D2
-      !print*, T2, D2
       TLIM=T2-.5*D1
-      
       T=T1
 2     CONTINUE
 C
@@ -8248,7 +7939,6 @@ C
       DO 4 K=2,JTAU
 4     DTAULN(K)=TAULNX(K)-TAULNX(K-1)
 C
-
       RETURN
 50    FORMAT(5(7X,F8.0))
       END
@@ -8282,11 +7972,9 @@ C
       COMMON /CMETPE/ PPEL(NDP), METPE
       common /cu2warning/nu2warning
       nu2warning = 0
-
 C
       xk_boltz=1.380649d-16
       xm_p=1.66053906660d-24 
-
       DEREP=0.01
       DERET=0.001
       DELPE=DEREP*PE
@@ -8294,7 +7982,6 @@ C
       PINV=1./(2.*DELPE)
       TINV=1./(2.*DELT)
 C     
-      
       CALL JON(T,PE,1,PG,RO,EPP,0)
       P=PRAD+PG
 C
@@ -8405,7 +8092,6 @@ C
 C
       xk_boltz=1.380649d-16
       xm_p=1.66053906660d-24 
-
       DEREP=0.01
       DERET=0.001
       DELPE=DEREP*PE
@@ -8413,7 +8099,6 @@ C
       PINV=1./(2.*DELPE)
       TINV=1./(2.*DELT)
 C     
-      
       CALL JON(T,PE,1,PG,RO,EPP,0)
       P=PRAD+PG
 C
@@ -8438,8 +8123,6 @@ C
         call calc_adiaindex(k, PG, T, gamma, xmmw)
         cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
         cv = cp/gamma
-
-
 C       Squared soundspeed
         xcs2inv = xmmw*xm_p/xk_boltz
         RO=pg/T*xcs2inv
@@ -8515,13 +8198,13 @@ C     from init_thermo
      >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
      >               xtemplimlow,xtemplimup,molactive(543),
      >               atactive(22)
-        
+        common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
         cpRsum=0.0d0
         psum=0.0d0
         diagempta(:)=''
         diagemptm(:)=''
 
-        call ggchem(k, T, p)   ! sets ggmuk for here and for termo and termon
+        call ggchem(k, T, p, .False.)   ! sets ggmuk for here and for termo and termon
         xmmw = ggmuk
 
 C       ADS: initialize thermodynamic data (NASA polynomials)      
@@ -8589,6 +8272,7 @@ C         Calculate the polynomial
             psum=psum+ppallat(k,i)
           end if
         end do
+        if (krome_on.ne.1) then !skip comp. between calculated pressure using the nasa polynomials and pgesk for non_eq calcs because pgesk comes from ggchem and is wrong for non_eq calcs
         if (psum/pgesk .LT. 0.97d0) then
 C         NOTE: if the code fails here, we need to change the matching between ggchem and nasa polynomials.
 C           This can be easily done by diagnosing the here generated file and improving the matching in
@@ -8616,7 +8300,7 @@ C           init_thermo.
           close(8895)
           stop
         endif
-        
+       endif
 C       Final heat capacities        
         cpR = cpRsum/psum
         cvR = cpR - 1
@@ -8744,6 +8428,8 @@ C DIMENSIONS
       character*24 idmodl
       logical:: first_call_rad = .True.
       logical:: file_exists
+      integer abund_freq,icalc_abund
+      integer onemor
 C
 C CONNECTIONS VIA COMMON.
 C THE COMMENTED COMMONS MUST BE INITIATED OUTSIDE THIS ROUTINE BEFORE IT
@@ -8766,7 +8452,6 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/
       COMMON /MIXC/PALFA,PBETA,PNY,PY /CVFIX/VFIX
       COMMON /CG/GRAV,KONSG /CTEFF/TEFF,FLUX
       COMMON /CMETPE/ PPEL(NDP), METPE
-
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
       COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
@@ -8815,26 +8500,26 @@ C SPACE ALLOCATION
      &     TAUPIR(NDP)
       COMMON /CIR/TAUIR(NDP),XIR(NDP,NWL),SIR(NDP,NWL),synspec(nwl),
      * DTAUIR(NDP), DTAUPLANET(NDP), DTAUP(NDP)
-     
       common /cirinp/steff,reflect,f_irrad,h_irrad,
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom         !irrin=1~comp.irrad,steff=rad*
       common /dustplot/ x_gas(ndp,nwl), s_gas(ndp,nwl), gas_opac(ndp)
-      
       common /ch4/ nch4
       character*24 file_name
       character*8 file_id
       common /ctcorlast/tcorlast 
-
       DATA IVERS,IEDIT/21,1/
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
-
+      common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+      common /virga/ ivirga_on
+      common /conv_help/ abund_freq, icalc_abund  
+      common /onemor_it/ onemor
       
       if (krome_on.EQ.1) then
-       if (krome_photo_on.EQ.1) then
+        if (krome_photo_on.EQ.1) then
         if (first_call_rad.eq..True.) then
          if (nwtot.ne.nwreal) then
          write(*,*) "Number of wavelengths after OS calc", nwtot, 
@@ -8843,8 +8528,6 @@ C SPACE ALLOCATION
          stop
          endif
         FLUX_RAD(:,:)=0 !initialize radiative flux array with zeros in case somethign goes wrong in the intensity calculations        
-
-        !write(*,*) "Open krome_flux_rad"
         inquire(file="krome_flux_rad.dat",exist=file_exists)
 
         if (file_exists) then
@@ -8873,8 +8556,25 @@ C
        endif
       endif       
 
+      if (it.eq.1) then
 
+       teff_real=400.d0 !just to initialize teff_real, guess of the effective temperature, will be updated after the first iteration    
+      else
+       teff_real=teffp
+      endif
 
+      if (mod(it,abund_freq).ne.0) then !freeze abundance updates every abund_freq iterations to speed up convergence
+       icalc_abund=0
+      endif
+      if (onemor.eq.1) then !calc abundances for one more iteration after convergence to ensure correct abundances are used in final iteration
+        icalc_abund=1
+      endif
+      if (it.eq.1) then !first iteration, need to calculate abundances
+       icalc_abund=1
+      endif
+      if (it.eq.itmax) then !last iteration, need to calculate abundances
+       icalc_abund=1
+      endif
 C     
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUA
 C LEAVING THE EXPLICIT TEMPERATURE DEPENDANCE OF FLUX AND RADIATION PRES
@@ -8888,7 +8588,6 @@ C
       FNORD=.1*INORD
 C
 C ZEROSET
-      !if (idust==1) call dust_eps
       DO 110 I=1,NTAU
       PPRG(I) = 0.
       RT(I)=0.
@@ -8902,26 +8601,20 @@ C ZEROSET
       PRPE(I,J)=0.
 110   CONTINUE
       kdtpe = 0
-C
 C 
 C CALCULATE DETAILED ROSSELAND MEAN
       REWIND 11
       KL=1
-      !print*, "rossop line 8118"
       DUMMY=ROSSOP(TT(1),PPE(1), 1)
       PGA=PGC
-
       DO 116 K=1,NTAU
         KL=K
-        !print*, "rossop line 8126"
-        !print*, "gas pressure ", pp(k)
         DUMMY=ROSSOP(TT(K),PPE(K), k)
         ROSS(K)=1.0
         RHO(K)=ROC
         SUMW(K)=0.
         ROSSP(K)=0.
 116   CONTINUE
-      !print*, "opac call for ross "
       pe_corr(1:ntau) = 0.0
       DO 117 J=1,NWTOT
         CALL OPAC(J,X,S)
@@ -8933,12 +8626,9 @@ C CALCULATE DETAILED ROSSELAND MEAN
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 117
           ROSSP(K)=ROSSP(K)+WLSTEP(J)*YA/(ROSS(K)*(X(K)+S(K)))
-C         if (j/500*500.eq.j  .and.  k.eq.10)
-C     *         write(7,1171) j,wlos(j),wlstep(j),ya,y,x(k),s(k)
 117   CONTINUE
 1171  format(i5,1p8e12.3)
       REWIND 11
-      
 C
 C TEMPERATURE AND ELECTRON PRESSURE PERTURBATIONS.
 C KEEP THEM SMALL, TO STAY ON THE LINEAR PART.
@@ -8957,12 +8647,10 @@ C      DPEX=0.001
 111   CONTINUE
       kdtpe = 1
 C
-
 C FIRST WAVELENGTH LOOP, TO CALCULATE XT,ST AND SAVE.
       REWIND 12
       pe_corr(1:ntau) = 0.0
       DO 112 J=1,NWTOT
-       ! print*, "opac call for XT and ST "
         CALL OPAC(J,X,S)
         WRITE(12) X,S
         Y=((WLOS(J)/1.E4)**2)**3
@@ -8975,18 +8663,6 @@ C FIRST WAVELENGTH LOOP, TO CALCULATE XT,ST AND SAVE.
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 112
           ROSST(K)=ROSST(K)+WLSTEP(J)*YA/(ROSS(K)*(X(K)+S(K)))
 112   CONTINUE
-c        gas_opac(1:ntau) = 0.0
-c       !integrate the gas opacities for plots
-c       do k=1, nwtot
-c             gas_opac(1:ntau) = gas_opac(1:ntau) 
-c      *       + x_gas(1:ntau, k)*wlstep(k)*(10**-8.)
-c      *       + s_gas(1:ntau, k)*wlstep(k)*(10**-8.)
-c       end do
-c       open(unit=2396, file='gas_opac.dat', status='unknown')
-c       do n=1, ntau
-c        write(2396, '(1E16.8,2x,1E15.6)') tt(n), gas_opac(n)
-c       end do
-c       close(2396)
       DO 113 K=1,NTAU
         ROSST(K)=SUMW(K)/ROSST(K)
         SUMW(K)=0.
@@ -8997,17 +8673,13 @@ c       close(2396)
 113   CONTINUE
         kdtpe = 2            !information to tstgem about computing dpg/dpe
       REWIND 12
-      CALL CLOCK
-
 C
 C SECOND WAVELENGTH LOOP, TO CALCULATE XPE,SPE AND SAVE.
       REWIND 14
       KL=1
       DUMMY=ROSSOP(TT(1),PPE(1),1)
       PGPE=PGC
-      !print*, "opac call for XPE and SPE "
       DO 114 J=1,NWTOT
-        
         CALL OPAC(J,X,S)
         WRITE(14) X,S
         Y=((WLOS(J)/1.E4)**2)**3
@@ -9020,28 +8692,19 @@ C SECOND WAVELENGTH LOOP, TO CALCULATE XPE,SPE AND SAVE.
 114   CONTINUE
       kdtpe = 3
       REWIND 14
-      CALL CLOCK
+      !CALL CLOCK
 C
 C FROM THIS POINT ON, ROSS() HOLDS THE TRUE ROSSELAND MEAN.  CROSS HOLDS
 C THE RATIO OF THE TRUE TO APPROXIMATE MEANS, WHICH ARE NEEDED IN TRYCK.
-C      write (6,*) 'rosseland values'
-C      write(7,*)' k,tt(k),ppe(k),ross(k),cross(k) in solve ='
       DO 123 K=1,NTAU
         KL=K
         ROSSPE(K)=SUMW(K)/ROSSPE(K)
         PPE(K)=PPE(K)-PE(K)
-        !print*, "rossop line 8126"
-        !print*, "gas pressure ", pp(k)
         CROSS(K)=ROSSP(K)/ROSSOP(TT(K),PPE(K),k)
         ROSS(K)=ROSSP(K)
         PTAU(K)=GRAV*TAU(K)/ROSS(K)
-C        write (6,'(1x,i3,4(1pe12.3))')
-C     &     k,ross(k),cross(k),rosst(k),rosspe(k)
-C      write(7,1171)k,tt(k),ppe(k),ross(k),cross(k)
 123   CONTINUE
-      CALL CLOCK
-      
-
+      !CALL CLOCK
 C
 C RIGHT HAND SIDE IN PRESSURE EQUATION
         KL=1
@@ -9057,14 +8720,10 @@ C SIMPSONS RULE
 101   CONTINUE
 C
 C TIME
-      CALL CLOCK
       MSA=0
 C     CALL MSLEFT(MSA)
       open(unit=960,file='wlos.dat',status='replace')
-     
-
 C WAVELENGTH LOOP
-      
       FTOT=0.
       write(960,*) '  J,  wlos[mu],   wn[cm-1]'
       DO 150 J=1,NWTOT
@@ -9080,7 +8739,6 @@ C
             BPLAN(K)=BPL(TT(K),WLOS(J))
             DBPL(K)=DIVBP(TT(K),WLOS(J))  
       END DO
-
 C
 C CALCULATE OPACITY DERIVATIVES AT CONSTANT GAS PRESSURE
       READ (11) X,S
@@ -9163,7 +8821,6 @@ C UPPER BOUNDARY
      * +YB*0.5*DC*SOURCE
      * -YA*.5*DC*(XJ(1)-BPLAN(1))*(S(1)*XT(1)-X(1)*ST(1))/(X(1)+S(1))**2
       XJT3(1)=-(HFLUX(1)*.5*DC+Y*(XJ(1)-BPLAN(1))*2.)/XSC*(XT(2)+ST(2))
-c ??
       XJPE2(1)=-(HFLUX(1)*.5*DC+Y*(XJ(K)-BPLAN(K))*2.)*(XPE(1)+SPE(1))/
      * XSC
      * -Y*(XJ(1)-BPLAN(1))*(S(1)*XPE(1)-X(1)*SPE(1))/X(1)/(X(1)+S(1))
@@ -9197,7 +8854,6 @@ C NOTE THAT DA AND DC ARE 2* AND DB 4* THE NORMAL DTAU'S
       XJT2(K)=(AAA/XSA+CCC/XSC)*(XT(K)+ST(K))+ABK*DBPL(K)
      & +(XT(K)*S(K)-ST(K)*X(K))/(X(K)+S(K))**2*(BPLAN(K)-XJ(K))
       XJT3(K)=CCC/XSC*(XT(K+1)+ST(K+1))
-c ??
       XJPE1(K)=AAA/XSA*(XPE(K-1)+SPE(K-1))
       XJPE2(K)=(AAA/XSA+CCC/XSC)*(XPE(K)+SPE(K))
      & +(XPE(K)*S(K)-SPE(K)*X(K))/(X(K)+S(K))**2*(BPLAN(K)-XJ(K))
@@ -9220,7 +8876,7 @@ C LOWER BOUNDARY
 C     
 C TEMPERATURE EQUATION
       IF (K.GT.MIHAL) GO TO 145
-
+C
 C RADIATIVE EQUILIBRIUM
       Y=-WLSTEP(J)*X(K)
       IF(K.GT.2) then
@@ -9240,11 +8896,9 @@ C RADIATIVE EQUILIBRIUM
             end if
             TPE(K,K)=TPE(K,K)+Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)  
       end if
-      
       GO TO 146
 145   CONTINUE
 C FLUX CONSTANCY
-
       Y=8.*WLSTEP(J)/DA
       RT(K)=RT(K)-Y*(XK(K)-XK(K-1))
       TJ1(K)=-FKA*Y
@@ -9256,7 +8910,6 @@ C FLUX CONSTANCY
 
 146   CONTINUE
 C
-
 C EQUATION OF RADIATION PRESSURE
       Y=PI4C*WLSTEP(J)
       RPR(K)=RPR(K)+Y*XK(K)
@@ -9287,8 +8940,6 @@ C END OF WAVELENGTH LOOP
       S01=log10(S(01))
       S25=log10(S(25))
 30    FORMAT(1X,26F5.2)
-
-
       if (krome_debug.eq.1) then
             write(7676,'(2(999E17.8e3))') WLOS(J), BPL(steff,WLOS(J))
             Rsun_au=0.00465047
@@ -9325,9 +8976,6 @@ C END OF WAVELENGTH LOOP
       do j=1, nwtot
             ftot_a = f(j) + ftot_a
       end do
-      !if (model_type > 1) then 
-      !print*, "Bond albedo estimate ", 1.0 - ftot_a/nwtot
-      !end if
       if (newmod .eq. 2) go to 900
       
       TEFFP=TEFF*(FTOT/FLUX/PI)**.25
@@ -9344,7 +8992,7 @@ C END OF WAVELENGTH LOOP
 156   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C PRINT PRESSURE EQUATION
       IF(PF) WRITE(7,48) FNORD,ITER,idmodl
@@ -9378,7 +9026,6 @@ C TAU SCALES
      * ,YC,YD,TAU5(K),TAUP,PT(K),K
 161   CONTINUE
 900   CONTINUE
-      CALL CLOCK
       RETURN
 C
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -9622,7 +9269,6 @@ C END OF TAU LOOP
       IF(PF) WRITE(7,51) K,TAU(K),HSCALE,ADIA,GRAD,CP,Q,PG,RO,PGPE
      * ,PGT,K
 200   CONTINUE
-
 C
 C SUBTRACT CENTERED TURBULENT PRESSURE
       DO 216 K=2,NTAU
@@ -9636,7 +9282,7 @@ C SUBTRACT ZZ(TAU=1) FROM ZZ
 283   ZZ(K)=ZZ(K)-ZZ0
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C PRINT
       IF(PFE.OR.PFD) WRITE(7,48) FNORD,ITER,idmodl
@@ -9663,7 +9309,7 @@ C
 C GAUSS ELIMINATION TO UPPER TRIANGULAR FORM.
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C RADIATION PRESSURE
       RP(1)=RP(1)+RPR(1)
@@ -9719,10 +9365,7 @@ C PPPE MATRIX. SIMILARILY FOR THE PPTT-MATRIX.
       Y=Y+PPPE(I+NTAU)
       YY=YY+PPTT(I+NTAU)
 322   CONTINUE
-      
-
       PEPE(J,I)=PEPE(J,I)+Y
-
       PET(J,I)=PET(J,I)+YY
       DPE(J,I)=DPE(J,I)-DP(J)*Y
       DT(J,I)=DT(J,I)-DP(J)*YY
@@ -9760,16 +9403,13 @@ C TURBULENT VELOCITY
 350   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C CONVECTIVE FLUX
-      !print*, "convective flux "
       DO 360 I=1,NTAU
       RT(I)=RT(I)-RFC(I)
       DO 361 J=1,NTAU
-      !if (j==2) print*, TTT(I,J)
       TTT(I,J)=TTT(I,J)-FCT(I,J)
-      !if (j==2) print*, TTT(I,J)
       TPE(I,J)=TPE(I,J)-FCPE(I,J)
 361   CONTINUE
       IF(I.GT.MIHAL) GO TO 360
@@ -9781,24 +9421,14 @@ C CONVECTIVE FLUX
 360   CONTINUE
 C
 C ELECTRON PRESSURE
-      
       CALL MATINV(PEPE,NTAU)
-      !print*, "PET before MULT ", pet(1,1)
-      !print*, "PEPE before MULT ", PEPE(1,1)
-      !print*, "PET before MULT ", PET(1,1)
-      !print*, "SCRATC before MULT ", SCRATC(1,1)
       CALL MULT(PET,PEPE,PET,SCRATC,NTAU,NTAU)
-      !print*, "pet after ", pet(1,1)
       CALL MULT(RPE,PEPE,RPE,SCRATC,NTAU,1)
-      !print*, "electron pressure "
       DO 374 I=1,NTAU
       DO 374 J=1,NTAU
       SUMA=0.
       DO 375 L=1,NTAU
-      !print*, "tpe(i,l) ", tpe(i,l)
-      !print*, "pet(l,j) ", pet(l,j)
       SUMA=SUMA+TPE(I,L)*PET(L,J)
-      !if (j==2) print*, SUMA
 375   CONTINUE
       
       TTT(I,J)=TTT(I,J)-SUMA
@@ -9808,14 +9438,11 @@ C ELECTRON PRESSURE
 374   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C      
-C
-C
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 C
 C BACKSUBSTITUTION IN GAUSS ELIMINATION SCHEME.
-
 C
 C INITIATE
       CALL MATINV(TTT,NTAU)
@@ -9835,19 +9462,15 @@ C SOLVE FOR TEMPERATURE CORRECTION
       RTS(I)=0.
       DO 399 J=1,NTAU
       T(I)=T(I)+TTT(I,J)*RT(J)
-      
-   
 399   CONTINUE
       ! print*, "i ", i
       ! print*, "t corr",t(i) 
 400   CONTINUE
-
 C
 C
 999   FORMAT(I3,1P5E10.3)
 C
 C---
-
 C If the maximum temperature correction the program suggest to any model layer
 C is smaller than TCONV (from input), then we will finish with computing one 
 C more iteration where we will write the output etc. 
@@ -9880,7 +9503,6 @@ C                    call osatom
          end if
       END IF
       IF(TCORMX.LE. TCONV )  THEN 
-         
          ITSTOP=.TRUE.
 C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       END IF
@@ -9898,11 +9520,8 @@ C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       write(987, *) TCORMXM
       close(987)
       end if
-      
 406   FORMAT(' Max corr. to T wanted was ',F8.1,' K for iteration ',I3)
 C
-C
-C     CALL DISPLA(' TCORMX ',TCORMX)
 C---
 C
 C CHECK T CORR
@@ -9914,8 +9533,6 @@ C CHECK T CORR
       DO 407 I=2,NTAU
       PM = T(I)/ABS(T(I))
  407  TCORMX=MAX(TCORMX,ABS(T(I)))
-      
-      
       PRINT4061, TCORMX
 4061  FORMAT(' Max corr. to T wanted for kort=1 was',F6.1)
       END IF
@@ -9932,11 +9549,8 @@ C
       PM = T(I)/ABS(T(I))
       TCORMX=MAX(TCORMX,ABS(T(I)))
 4071  TCORMXM=PM*TCORMX
-      
-      !print*, "maximum temperature correction LINE 9129"
       write(file_id,'(i3)') iter
       file_name = 'PT_struct_' // trim(adjustl(file_id)) // '.dat'
-      !print*, file_name
       open(unit=73972, file=file_name, status='new')
       do i=1, ntau
       write(73972,*) 
@@ -9947,7 +9561,6 @@ C
 408   FORMAT(' Maximum correction applied was',F6.1,
      *     ' for applied kort =',I2)
       END IF
-      
       IF (KORT.EQ.6) THEN
       IF(IT.EQ.1) TCORPRV = 1.D3
       IF(IT.EQ.1) TCORMIN = 1.D3
@@ -9972,12 +9585,10 @@ C         T(I)=PPK*t(i)/abs(t(i))
         end if
 4082    CONTINUE
         END IF
-
       PRINT4083, TCORPRV,KORT
 4083  FORMAT(' Maximum correction applied was',F6.1,
      *     ' for applied kort =',I2)
       END IF
-
 C
 C SUBTRACT TEMPERATURE
       DO 410 I=1,NTAU
@@ -10005,7 +9616,6 @@ C TOTAL PRESSURE
       P(1)=P(1)+PR(1)-RPR(1)
       DO 425 I=2,NTAU
       P(I)=P(I)+P(I-1)
-      !print*, "i ", i , " p ", p(i)
 425   CONTINUE
 C
 C SUBTRACT VELOCITY
@@ -10013,10 +9623,6 @@ C SUBTRACT VELOCITY
       PT(I)=PT(I)-PTV(I)*V(I)
 430   CONTINUE
 C
-C PRINT
-      ! IF(PFE.OR.PFD) WRITE(7,48) FNORD,ITER,idmodl
-      ! IF(PFE.OR.PFD) WRITE(7,56)
-      ! IF(PFE.OR.PFD) WRITE(7,52)
       DO 440 I=1,NTAU
 C
 C SOLVE FOR CONVECTIVE EFFICIENCY AND GRADIENT DIFFERENCE
@@ -10031,7 +9637,7 @@ c      * ,FC(I),PE(I),T(I),I
 440   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C APPLY CORRECTIONS
       IPRESS=0
@@ -10054,7 +9660,6 @@ C
       PP(I)=PP(I)+P(I)
 450   CONTINUE
       IF(IPRESS.EQ.1) CALL TRYCK
-
 C
 C PRINT PRESENT STATE OF THE ATMOSPHERE
       ENTRY PRESNT
@@ -10072,7 +9677,6 @@ C PRINT PRESENT STATE OF THE ATMOSPHERE
      * ,VV(I),FFC(I),PPE(I),TT(I),I,I=1,NTAU)
 C
 C TIME
-      CALL CLOCK
       RETURN
 C
 C FORMATS
@@ -10107,7 +9711,6 @@ C FORMATS
 66    FORMAT(7X,F8.0)
 67    FORMAT(1X,10F7.1)
 68    FORMAT(' ITERATION',I3)
-      
       END
 C*
 C*NEW PDS MEMBER FOLLOWS
@@ -10160,10 +9763,8 @@ C
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom  
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
-
 C
 C INITIATE
-      
       if (irrin>0) then
         if (input_star_spec==1) then
         bstar = spectrum_scale*stellar_spectrum(index_wlambda)
@@ -10178,7 +9779,6 @@ C INITIATE
       XK(K)=0.
       ERROR(K)=BPLAN(K)*X(K)/(X(K)+S(K))
       SOURCE(K)=0.
-
       end do
 C
 C CALCULATE THE MATRIX ELEMENTS
@@ -10195,7 +9795,6 @@ C
 C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
       h_irrad = 1.0
       CALL SCATTR
-
       DO 120 K=1,JTAU
       if (irrin>0) then 
        XJ(K)=XJ(K)+P(K) + Pstar(K)
@@ -10220,15 +9819,11 @@ C AITKEN EXTRAPOLATION USED FOR CONVERGENCE ACCELLERATION
       DS=DS/FACT(K)
       IF(IT.GE.2) DSO(K)=DS
 120   SOURCE(K)=SOURCE(K)+DS
-
       !different call for taking into account the gaussian weights 
       !in the irradiation routine
-      
 C
 C SOLVE THE TRANSFER EQUATION WITH GIVEN SOURCE FUNCTION
-
       CALL FORMAL
-
 C
 C CHECK ERROR IN SOURCE FUNCTION
       DO 130 K=1,JTAU
@@ -10354,7 +9949,6 @@ C MU LOOP
       XH(1)=0.
       HSURF=0.
       DO 170 I=1,MMU_PP
-      
 C
 C INITIATE APPROXIMATIVE SOURCE FUNCTION
       P(1)=SOURCE(1)+AN(1)*(3.*XMU2(I)-1.)
@@ -10486,7 +10080,6 @@ C INITIATE INHOMOGENOUS TERMS
 C PRELIM
       if (irrin<=0) then
             P(1)=P(1)*(1.+C*EX)
-            
       else if (irrin>0) then
       !IRRADIATION
       Rsun_au=0.00465047
@@ -10501,7 +10094,6 @@ C
 C ACCUMULATE INHOMOGENOUS TERMS
       DO 130 K=1,JTAU2
 130   P(K+1)=P(K+1)+SP1(K)*P(K)
-C
       if (irrin>0) then
       do k=1, JTAU1
        Pstar(k+1) = SP1(k)*Pstar(k)
@@ -10510,7 +10102,6 @@ C
        Pstar(JTAU) = Pstar(jtau) + reflect*Pstar(jtau)
       end if 
       end if
-
 C BACKSUBSTITUTE
       P(JTAU)=P(JTAU)/SP2(JTAU)
       Pstar(jtau)=Pstar(jtau)/SP2(JTAU)
@@ -10552,8 +10143,6 @@ C
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE 
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
-CUGJ98DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
-
 C
 C START
 C     CALL MSLEFT(MSA)
@@ -10565,14 +10154,11 @@ C DT=(TT(2)/TT(1)-1.)/DLNTAU(2)
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
-
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       i =0
 100   CONTINUE
       KL=1
-C      call rossos
-
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
       PP(1)=PGC+PPT(1)+PPR(1)
       PG=PGC
@@ -10587,10 +10173,7 @@ C      call rossos
       NABSKO=NABSKO+3
       DP=(1.+DT*(ROSSPE*PGT/PGPE-ROSST))/(1.+ROSSPE/PGPE)
       DP=MAX(DP,0.1D+0)
-      
-
       DLNPE=log(GRAV*TAU(1)/(PG*ROSS(1)*DP))/(PGPE+ROSSPE)
-
       PPE(1)=PPE(1)*EXP(DLNPE)
       IF(ABS(DLNPE).GT.EPS) then
       i = i+1
@@ -10607,16 +10190,13 @@ C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
       NABSKO=NABSKO+1
       PP(1)=PGC+PPT(1)+PPR(1)
-
 C
 C TAU LOOP
       DPE=(DP-DT*PGT)/PGPE
       DEDLNP=-(PGPE*PG/PP(1)+.5*DLNTAU(2)*GRAV*TAU(1)/(PP(1)*ROSS(1))*
      & (PGPE*PG/PP(1)+ROSSPE))
-
       DO 110 K=2,NTAU
       PPE(K)=PPE(K-1)*EXP(DPE*DLNTAU(K))
-
       NABSKO=0
 C
 C ITERATION LOOP
@@ -10632,7 +10212,6 @@ C ITERATION LOOP
       CALL ZEROF(ERROR,DLNPE,DEDLNP)   
       PPE(K)=PPE(K)*EXP(DLNPE)
 
-C2023  format(2i4,1p7e12.3,0pf8.3)
       IF(ABS(DLNPE).GT.EPS) then
        i = i+1
        if (i>200) then
@@ -10645,7 +10224,6 @@ C2023  format(2i4,1p7e12.3,0pf8.3)
       end if
 C
 C END TAU LOOP
-C      call rossos
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
       NABSKO=NABSKO+1
       PP(K)=PGC+PPT(K)+PPR(K)
@@ -10664,7 +10242,6 @@ C
       implicit real*8 (a-h,o-z)
 C
       DIMENSION X(N),F(N),W(2*N)
-C was : dim x(1) etc...
 C
 C TRAPEZOIDAL QUADRATURE PLUS NEXT ORDER CORRECTION FOR NON-
 C -EQUIDISTANT GRID.
@@ -10795,7 +10372,6 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/PI
      * STEFAN
       COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
       LOGICAL PF,PFE,PFD,FIXROS,ITSTOP
-CUGJ FFR in excess     COMMON /CSPHER/NCORE,DIFLOG,RADIUS,RR(NDP),FFR(NDP)
       dimension ffr(ndp)
       COMMON /CSPHER/DIFLOG,RADIUS,RR(NDP),NCORE 
 C OWN COMMONS
@@ -10819,8 +10395,6 @@ C SPACE ALLOCATION
       COMMON /SPACE2/ SPACEDUM1(NDP*7+NDP*NRAYS*5+NRAYS*2),
      &       SPACEDUM2(NDP*2),PFEAU(NRAYS,NDP),XMU(NRAYS,NDP),
      &       MMU(NDP),KSPACE2DUM(NRAYS+1)
-
-
 C
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUATIONS
 C LEAVING THE EXPLICIT TEMPERATURE DEPENDANCE OF FLUX AND RADIATION PRESSURE
@@ -10830,7 +10404,6 @@ C
       INORD=IEDIT+10*IVERS
       FNORD=.1*INORD
 C
-      
 C
 C ZEROSET
       DO 110 I=1,NTAU
@@ -10861,19 +10434,13 @@ C CALCULATE DETAILED ROSSELAND MEAN
 	SUMW(K)=0.
 	ROSSP(K)=0.
 116   CONTINUE
-C      DO 117 J=1,NLAM
-      !print*, "opac call for ROSS"
       DO 117 J=1,NWTOT
         CALL OPAC(J,X,S)
         WRITE(11) X,S
-C        Y=((XL(J)/1.E4)**2)**3
         Y=((WLOS(J)/1.E4)**2)**3
         DO 117 K=1,NTAU
-C          YA=EXP(-1.438E8/(TT(K)*XL(J)))
           YA=EXP(-1.438E8/(TT(K)*WLOS(J)))
           YA=YA/(1.-YA)**2/Y
-C          SUMW(K)=SUMW(K)+W(J)*YA
-C          ROSSP(K)=ROSSP(K)+W(J)*YA/(ROSS(K)*(X(K)+S(K)))
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 117
           ROSSP(K)=ROSSP(K)+WLSTEP(J)*YA/(ROSS(K)*(X(K)+S(K)))
@@ -10882,8 +10449,7 @@ C          ROSSP(K)=ROSSP(K)+W(J)*YA/(ROSS(K)*(X(K)+S(K)))
 C
 C TEMPERATURE AND ELECTRON PRESSURE PERTURBATIONS.
 C KEEP THEM SMALL, TO STAY ON THE LINEAR PART.
-C      DTX=0.001
-C      DPEX=0.001
+C
       DTX=dtin
       DPEX=dpein
       DO 111 K=1,NTAU
@@ -10898,18 +10464,13 @@ C      DPEX=0.001
 C
 C FIRST WAVELENGTH LOOP, TO CALCULATE XT,ST AND SAVE.
       REWIND 12
-C      DO 112 J=1,NLAM
       DO 112 J=1,NWTOT
         CALL OPAC(J,X,S)
         WRITE(12) X,S
-C        Y=((XL(J)/1.E4)**2)**3
         Y=((WLOS(J)/1.E4)**2)**3
         DO 112 K=1,NTAU
-C          YA=EXP(-1.438E8/(TT(K)*XL(J)))
           YA=EXP(-1.438E8/(TT(K)*WLOS(J)))
           YA=YA/(1.-YA)**2/Y
-C          SUMW(K)=SUMW(K)+W(J)*YA
-C          ROSST(K)=ROSST(K)+W(J)*YA/(ROSS(K)*(X(K)+S(K)))
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 112
           ROSST(K)=ROSST(K)+WLSTEP(J)*YA/(ROSS(K)*(X(K)+S(K)))
@@ -10923,32 +10484,27 @@ C          ROSST(K)=ROSST(K)+W(J)*YA/(ROSS(K)*(X(K)+S(K)))
 113   CONTINUE
         kdtpe = 2            !information to tstgem about computing dpg/dpe
       REWIND 12
-      CALL CLOCK
+      !CALL CLOCK
 C
 C SECOND WAVELENGTH LOOP, TO CALCULATE XPE,SPE AND SAVE.
       REWIND 14
       KL=1
       DUMMY=ROSSOP(TT(1),PPE(1),1)
       PGPE=PGC
-C      DO 114 J=1,NLAM
       DO 114 J=1,NWTOT
         CALL OPAC(J,X,S)
         WRITE(14) X,S
-C        Y=((XL(J)/1.E4)**2)**3
         Y=((WLOS(J)/1.E4)**2)**3
         DO 114 K=1,NTAU
-C          YA=EXP(-1.438E8/(TT(K)*XL(J)))
           YA=EXP(-1.438E8/(TT(K)*WLOS(J)))
           YA=YA/(1.-YA)**2/Y
-C          SUMW(K)=SUMW(K)+W(J)*YA
-C          ROSSPE(K)=ROSSPE(K)+W(J)*YA/(ROSS(K)*(X(K)+S(K)))
           SUMW(K)=SUMW(K)+WLSTEP(J)*YA
         if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 114
           ROSSPE(K)=ROSSPE(K)+WLSTEP(J)*YA/(ROSS(K)*(X(K)+S(K)))
 114   CONTINUE
       kdtpe = 3
       REWIND 14
-      CALL CLOCK
+      !CALL CLOCK
 C
 C FROM THIS POINT ON, ROSS() HOLDS THE TRUE ROSSELAND MEAN.  CROSS HOLDS
 C THE RATIO OF THE TRUE TO APPROXIMATE MEANS, WHICH ARE NEEDED IN TRYCK.
@@ -10962,7 +10518,7 @@ C THE RATIO OF THE TRUE TO APPROXIMATE MEANS, WHICH ARE NEEDED IN TRYCK.
         PTAU(K)=GRAV*TAU(K)/ROSS(K)
 	
 123   CONTINUE
-      CALL CLOCK
+      !CALL CLOCK
 C
 C RIGHT HAND SIDE IN PRESSURE EQUATION
       KL=1
@@ -10985,29 +10541,23 @@ C CALCULATE RADII
       IF (TAU(K).LT.0.67) K0=K
 102   RR(K)=RR(K-1)-0.5*DTAULN(K)
      & *(TAU(K)/(ROSS(K)*RHO(K))+TAU(K-1)/(ROSS(K-1)*RHO(K-1)))
-
       Y=RADIUS-RR(K0)
       DO 103 K=1,NTAU
       RR(K)=RR(K)+Y
       IF (KONSG.EQ.1) RR(K)=RADIUS      !study effect of const R and g
 103   PTAU(K)=PTAU(K)*(RADIUS/RR(K))**2
 C
-      
 104   CONTINUE
 C
 C TIME
-      CALL CLOCK
       MSA=0
 C
 C WAVELENGTH LOOP
-      
       FTOT=0.
-
       DO 150 J=1,NWTOT
       DO 130 K=1,NTAU
       BPLAN(K)=BPL(TT(K),WLOS(J))
 130   DBPL(K)=DIVBP(TT(K),WLOS(J))
-      
 C
 C CALCULATE OPACITY DERIVATIVES AT CONSTANT GAS PRESSURE
       READ (11) X,S
@@ -11020,16 +10570,12 @@ C CALCULATE OPACITY DERIVATIVES AT CONSTANT GAS PRESSURE
         ST(K)=ST(K)/ROSST(K)
         XPE(K)=XPE(K)/ROSSPE(K)
         SPE(K)=SPE(K)/ROSSPE(K)
-C	if (j.eq.100.and.k.eq.1) write (7,'(1x,7(1pe10.2))')
-C     &   x(k),t(k),xt(k),log(xt(k)/x(k)),log(xt(k)/x(k))*tt(k)/t(k)
         XLOG(K)=log10(X(K))
         XT(K)=log(XT(K)/X(K))*X(K)/T(K)
         ST(K)=log(ST(K)/S(K))*S(K)/T(K)
         XPE(K)=log(XPE(K)/X(K))*X(K)/PE(K)
         SPE(K)=log(SPE(K)/S(K))*S(K)/PE(K)
         DLNX(K)=XT(K)*(TT(K)/2.3)/X(K)
-C	if (j.eq.100) write (7,'(1x,7(1pe10.2))')
-C     &    x(k),xt(k)/x(k)*tt(k),xpe(k)/x(k)*ppe(k)
 131   CONTINUE
 C TIME
       MS=MSA
@@ -11039,7 +10585,6 @@ C
 C SOLVE TRANSPORTEQUATION WITH OLD STRATIFICATION.
       CALL TRANEQ_sph
 C
-C ??
       DO 132 K=1,NTAU
       IF(XT(K).LT.0.0.AND.XT(K)*(XJ(K)-BPLAN(K)).GT.X(K)*DBPL(K))
      & XT(K)=X(K)*DBPL(K)/(XJ(K)-BPLAN(K))
@@ -11049,13 +10594,10 @@ C ??
       MSTRAN=MS-MSA
 C
 C FLUX TO PRINT
-C      HFLUX1=4.*PI*HSURF*(RR(1)/RADIUS)**2
       HFLUX1=4.*PI*HSURF
       HFLUX1=MAX(1.0D-99,HFLUX1)
       HFLUX2=4.*PI*HFLUX(NTAU)*(RR(NTAU)/RADIUS)**2
       FLUXME(J)=HFLUX1/PI
-C      GFLUX1=HFLUX1/PI*XL(J)**2/CLIGHT
-C      GFLUX2=HFLUX2/PI*XL(J)**2/CLIGHT
       GFLUX1=HFLUX1/PI*WLOS(J)**2/CLIGHT
       GFLUX2=HFLUX2/PI*WLOS(J)**2/CLIGHT
       FFLUX1=-2.5*log10(MAX(GFLUX1,1.0D-99))
@@ -11064,7 +10606,6 @@ C      GFLUX2=HFLUX2/PI*XL(J)**2/CLIGHT
       spec(j,2) = hsurf
       spec(j,3) = fluxme(j)
 C
-
 C
 C SUM UP RADIATIVE FLUXES
       DO 133 K=1,NTAU
@@ -11133,20 +10674,15 @@ C OPTICALLY THICK POINTS
 C
 C TEMPERATURE EQUATION
 170   IF (K.GT.MIHAL) GO TO 171
-C      Y=W(J)*X(K)
       Y=WLSTEP(J)*X(K)
       IF (K.GT.2) Y=Y*((TAU(K+1)-TAU(K))*(X(K)+S(K)+X(K+1)+S(K+1))
      & +(TAU(K)-TAU(K-1))*(X(K)+S(K)+X(K-1)+S(K-1)))/(X(K)+S(K))
       RT(K)=RT(K)+Y*(XJ(K)-BPLAN(K))
       TJ2(K)=-Y*FJ(K)
       TJ1(K)=0.
-c ??
-***      TTT(K,K)=TTT(K,K)+AMAX1(0.,Y*DBPL(K)+Y*(BPLAN(K)-XJ(K))
-***     & *XT(K)/X(K))
       TTT(K,K)=TTT(K,K)+Y*DBPL(K)+Y*(BPLAN(K)-XJ(K))*XT(K)/X(K)
       TPE(K,K)=TPE(K,K)+Y*(BPLAN(K)-XJ(K))*XPE(K)/X(K)
       GO TO 172
-C171   Y=4.*W(J)
 171   Y=4.*WLSTEP(J)
       RT(K)=RT(K)-Y*HFLUX(K)
       XHK=0.557*(PB-PA)/DTAUS(K)
@@ -11154,11 +10690,9 @@ C171   Y=4.*W(J)
 C
 C DEBUG
       IF (FH.GT.0.7.AND.FH.LT.1.4) GO TO 174
-      
       IF (K.GT.JTAU1) GO TO 174
       NMU=MMU(K-1)
       NMU=MMU(K)
-
 174   CONTINUE
 C
       TJ1(K)=-Y*FH*0.557/DTAUS(K)
@@ -11174,7 +10708,6 @@ C
 172   CONTINUE
 C
 C EQUATION OF RADIATIVE PRESSURE
-C      Y=PI4C*W(J)
       Y=PI4C*WLSTEP(J)
       RPR(K)=RPR(K)+Y*XK(K)
       PRJ(K)=-Y*XK(K)*FJ(K)/XJ(K)
@@ -11195,20 +10728,12 @@ C TIME
       MS=MS-MSA
 C
 C END OF WAVELENGTH LOOP
-C      HW1=HFLUX1*W(J)
       HW1=HFLUX1*WLSTEP(J)
       FTOT=FTOT+HW1
       HW2=HFLUX2*WLSTEP(J)
-C      HW2=HFLUX2*W(J)
-C      WAVEN=1.E4/XL(J)
-C      TRAD1=1.438E8/(XL(J)*log(1.+1.191E7*PI/HFLUX1*WAVEN**5))
       WAVEN=1.E4/WLOS(J)
       TRAD1=1.438E8/(WLOS(J)*
      #  log(1.0D+0+1.191D7*PI/HFLUX1*WAVEN**5))
-      !X01=log10(X(01))
-      !X25=log10(X(25))
-      !S01=log10(S(01))
-      !S25=log10(S(25))
 
 150   CONTINUE
 C
@@ -11229,7 +10754,7 @@ C
 
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C PRINT PRESSURE EQUATION
       
@@ -11260,7 +10785,7 @@ C TAU SCALES
       ROST=ROSST(K)*TT(K)/ROSS(K)
      
 161   CONTINUE
-      CALL CLOCK
+      !CALL CLOCK
 900   CONTINUE
 
       RETURN
@@ -11519,7 +11044,6 @@ C SUBTRACT ZZ(TAU=1) FROM ZZ
 283   ZZ(K)=ZZ(K)-ZZ0
 C
 C TIME
-      CALL CLOCK
 
 C SAVE DD-MATRICES
       DO 270 K=1,NTAU
@@ -11539,7 +11063,7 @@ C
 C GAUSS ELIMINATION TO UPPER TRIANGULAR FORM.
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C RADIATION PRESSURE
       RP(1)=RP(1)+RPR(1)
@@ -11633,7 +11157,7 @@ C TURBULENT VELOCITY
 350   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C CONVECTIVE FLUX
       DO 360 I=1,NTAU
@@ -11665,7 +11189,7 @@ C ELECTRON PRESSURE
 374   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -11687,18 +11211,12 @@ C SOLVE FOR TEMPERATURE CORRECTION
       DO 400 J=1,NTAU
       T(I)=T(I)+TTT(I,J)*RT(J)
 400   CONTINUE
-      
-!      WRITE(7,68) ITER
-!      WRITE(7,67) (T(I),I=1,NTAU)
 C---
       TCORMX=ABS(T(1))
       DO 405 I=2,NTAU
  405  TCORMX=MAX(TCORMX,ABS(T(I)))
       write(*,*) TCORMX,TCONV
       IF(TCORMX.LE. tconv)  ITSTOP=.TRUE.
-      
-    
-      !PRINT406, TCORMX,ITER
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
       open(unit=987,file= 'tcormx.dat',status='replace')
@@ -11709,7 +11227,6 @@ C---
       write(987, *) TCORMXM
       close(987)
       end if
-      !print*, "max corr wanted ", tcormx
 406   FORMAT(' Max corr. to T wanted was',F6.1,' K for iteration',I2)
 C
 C CHECK T CORR
@@ -11730,11 +11247,6 @@ C
       PRINT4061, TCORMX
 4061  FORMAT(' Max corr. to T wanted for kort=1 was',F6.1)
       END IF
-
-
-C      DO 401 I=1,NTAU
-C       T(I)=T(I)/SQRT(1.+100.*(T(I)/TT(I))**2)
-C 401  CONTINUE
 C
       IF(KORT.LE.1) GO TO 412 !no temperature inversion fix in corr
 C
@@ -11754,13 +11266,11 @@ C
  402  CONTINUE
       
 C
-C      IF(KORT.LE.2) GO TO 412 !no .le.-limitits in temperature correction
 C
 C Avoid growing oscillations in temperature correction
 C (UGJ/900614)
 C
-
-c
+C
       IF (NFIRST.eq.0) THEN
          DO 403 I=1,NTAU
 403      TLAST(I)=T(I)
@@ -11783,18 +11293,11 @@ c
       endif
 C
 C
-C      IF(KORT.LE.3) GO TO 412 ! damping in temperature correction
 C
 C Damp oscillations in temperature correction
 C (UGJ/900719)
 C
-C      DO 407 I=1,NTAU
-C      IF ( T(I)/TLAST(I).LE.-0.6  .AND. ABS(T(I)).GT.TVD(I) ) 
-C     -     T(I)=-0.3*TLAST(I)
 C407   CONTINUE
-C
-C
-C      IF(KORT.LE.4) GO TO 412 ! damping in temperature correction
 C
 
       IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
@@ -11816,13 +11319,10 @@ C
      *     ' for applied kort =',I2)
       END IF
 
-
-
+C
 C Limit temperature correction to TDIFF
 C (AB/950519)
-C
-
-      
+C      
       PPK = TDIFF
       DO  I=1,NTAU
       IF (ABS(T(I)).GT.ABS(PPK)) 
@@ -11836,17 +11336,11 @@ C
       TCORMX=ABS(T(1))
       DO 414 I=2,NTAU
 414   TCORMX=MAX(TCORMX,ABS(T(I)))
-      !PRINT415, TCORMX,ITER
 415   FORMAT(' Max corr. applied to T was',F6.1,' K for iteration ',I3)
 C
 C
       DO 4081 I=1,NTAU
 4081   TLAST(I)=T(I)
-C
-C
-     
-!      WRITE(7,*) ' applied corrections: '
-!      WRITE(7,67) (T(I),I=1,NTAU)
 C
 C SUBTRACT TEMPERATURE
       DO 410 I=1,NTAU
@@ -11895,7 +11389,7 @@ C SOLVE FOR CONVECTIVE EFFICIENCY AND GRADIENT DIFFERENCE
 440   CONTINUE
 C
 C TIME
-      CALL CLOCK
+      !CALL CLOCK
 C
 C APPLY CORRECTIONS
       IPRESS=0
@@ -11936,7 +11430,6 @@ C PRINT PRESENT STATE OF THE ATMOSPHERE
       
 C
 C TIME
-      CALL CLOCK
       RETURN
 C
 C FORMATS
@@ -12049,8 +11542,6 @@ C CALCULATE THE MATRIX ELEMENTS
       CALL TRANFR_sph
       CALL FORMAL_sph
       NIMP1=NIMPAC+1
-C_temp      IF (DEBUG) PRINT 132,XJ,SOURCE,ERROR,FJ
-C_temp     & ,((PFEAU(I,K),K=1,NDP),I=1,NIMP1)
       IF (IDEBUG.GT.1) GO TO 150
 C
 C ITERATION LOOP
@@ -12062,8 +11553,6 @@ C
 C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
       CALL TRANSC_sph
       CALL SCATTR_sph
-C_temp      IF (DEBUG) PRINT 122,EX(ISCAT),DUM,P,DTAUS
-C_temp 122   FORMAT(' EX,SP1,SP2,SP3,P,DTAUS=',E10.4/(/4(1X,1P,10E12.4/)))
 C
 C CORRECTION TO THE SOURCE FUNCTION
       DO 120 K=1,JTAU1
@@ -12093,7 +11582,6 @@ C END OF ITERATION LOOP
 C
 C NOT CONVERGED
       IDEBUG=1
-
 C
 C CONVERGED, IF IN FIRST ITERATION, HAVE TO CALCULATE FJ().
 141   IF (ITM.GT.1) GO TO 143
@@ -12103,7 +11591,7 @@ C CONVERGED, IF IN FIRST ITERATION, HAVE TO CALCULATE FJ().
 143   CONTINUE
 C
 C CALCULATE MOMENTS, AND CHECK DEBUG CONTROL
-
+C
       CALL TRMOM_sph
 
       IF (DEBUG.AND.IDEBUG.GT.1) STOP ' stop in traneq_sph at 150 '
@@ -12165,7 +11653,6 @@ C CALCULATE DTAUT ALONG THE RAY
       DO 101 K=2,NTAU
 101   TAUT(K)=TAUT(K-1)+DTAUT(K)
 C
-
 C SAVE THE TAU SCALE FOR THE RADIAL RAY (I=1).  THIS IS USED IN
 C THE EXTRA/INTERPOLATION OF THE PFEAU FOR MU=0., FURTHER DOWN.
 C
@@ -12187,8 +11674,6 @@ C
 C K=2,NTAU-1
       DO 110 K=2,NTAU1
       DTAUC=0.5*(DTAUT(K)+DTAUT(K+1))
-C...      AD(K,I)=0.1666667*DTAUT(K)/DTAUC
-C...      BD(K,I)=0.1666667*DTAUT(K+1)/DTAUC
       AD(K,I)=0.
       BD(K,I)=0.
       SP1(K,I)=-1./(DTAUT(K)*DTAUC)+AD(K,I)
@@ -12216,8 +11701,6 @@ C
 C FIND A GOOD RAY FOR TRANSC.  THE XMU VALUES ARE INCREASING FROM
 C -1.0 TOWARDS 0.0, AND WE THUS ALWAYS FIND A VALUE FOR ISCAT.
 C
-C      IMAX=MIN0(MMU(JTAU0),NCORE)
-C
 C NCORE MUST BE SMALLER THAN MMU(K) FOR ALL K, SO EFFECTIVELY THE
 C MIN0(MMU(),NCORE) IS EQUAL TO NCORE.  SHOULD ONE REQUIRE ISCAT TO
 C BE A CORE RAY?  PROBABLY NOT, SINCE WITH A LARGE TAUM (ALLOWED),
@@ -12227,8 +11710,6 @@ C
       IMAX=MMU(JTAU0)
       TMP1=1.
       DO 132 I=1,IMAX
-C
-C      IF (XMU(I,JTAU0).LT.-0.577) ISCAT=I
 C
 C  Better to look for the ray which is closest to the Eddington angle
 C
@@ -12273,7 +11754,6 @@ C END MU LOOP
       FUN(I)=-XMU(I,1)*(PFEAU(I,1)-SOURCE(1)*EX(I))
       IF (YSURF(I).LE.0.0) GO TO 231
 170   CONTINUE
-
 C
       IF (NCORE.EQ.NIMPAC) THEN
 C
@@ -12281,7 +11761,6 @@ C  TEMPORARY SECURITY TO AVOID DIVIDE BY ZERO ERRORS IN COMPUTATION OF PX,
 C  WHEN THE OPACITY IS SO LARGE THAT THERE ARE ONLY NCORE RAYS.
 C  IN THAT CASE, ONE USES THE OLD INTERPOLATION ROUTINE
 C
-
       DO 1810 K=1,JTAU1
         II=MMU(K)
         IF (KIMPAC(II).EQ.K) GO TO 1810
@@ -12325,7 +11804,6 @@ C
 181   CONTINUE
 
       ENDIF
-
 C
 C CALCULATE MEAN INTENSITY
       DO 190 K=1,JTAU1
@@ -12402,18 +11880,11 @@ C
 C EMERGENCY EXIT
 230   KK=NTAU-K
       IDEBUG=2
-C      PRINT 232,I,KK,JTAU0,JTAU1,NTAU
-C232   FORMAT('0NON-POSITIVE RESULT AT I,K,J0,J1,N=',5I3)
       GO TO 233
 231   KK=0
       IDEBUG=3
-C      PRINT 232,I,KK,JTAU0,JTAU1,NTAU
-C233   PRINT 237,NCORE,ISCAT,DIFLOG,RADIUS,EX(I)
 233   continue
 237   FORMAT(' NCORE,ISCAT,DIFLOG,RADIUS,EX(I)=',2I3,3G12.3)
-C      WRITE (13,*) JTAU,TAU,X,S,BPLAN,RADIUS,RR,RHO,ROSS
-C      PRINT 236,TAU,X,S,BPLAN,RR,RHO,ROSS,SOURCE
-C     & ,(YSURF(I),(PFEAU(I,K),K=1,39),I=1,NMU)
 236   FORMAT('0TAU=',4(/10E12.4)/'0X=',4(/10E12.4)/'0S=',4(/10E12.4)
      & /'0BPLAN=',4(/10E12.4)/'0RR=',4(/10E12.4)/'0RHO=',4(/10E12.4)
      & /'0ROSS=',4(/10E12.4)/'0SOURCE=',4(/10E12.4)
@@ -12545,12 +12016,7 @@ C
 C
 C START
       MSA=0
-C      WRITE(7,101)
-C101   FORMAT('1PRESSURE INTEGRATION'/'  K',6X,'TAU',10X,'TT',
-C     & 9X,'PPE',8X,'PTOT',8X,'ROSS',10X,'DP',9X,'NABSKO')
       DT=0.
-C USE 'DLNT/DLNTAU'=DT=0. TO BE COMPATIBLE WITH SOLVE. OTHERWISE
-C DT=(TT(2)/TT(1)-1.)/DLNTAU(2)
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
@@ -12583,8 +12049,6 @@ C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
       NABSKO=NABSKO+1
       PP(1)=PGC+PPT(1)+PPR(1)
-C      WRITE(7,102) KK,TAU(1),TT(1),PPE(1),PP(1),ROSS(1),DP,NABSKO
-C102   FORMAT(I3,6E12.5,I12)
 C
 C TAU LOOP
       DPE=(DP-DT*PGT)/PGPE
@@ -12617,17 +12081,14 @@ C END TAU LOOP
       PP(K)=PGC+PPT(K)+PPR(K)
       DP=GRVR*TAU(K)/(PGC*ROSS(K))
       DPE=log(PPE(K)/PPE(K-1))/DLNTAU(K)
-C      WRITE(7,102) K,TAU(K),TT(K),PPE(K),PP(K),ROSS(K),DP,NABSKO
 110   CONTINUE
 C
 C END
       MSB=0
       MSB=MSA-MSB
-C     PRINT 120,MSB
 120   FORMAT(' TRYCK_sph TIME=',I5,' MS')
       RETURN
       END
-C
 C
       FUNCTION TRQUAD_sph(N,X,F,W)
       implicit real*8 (a-h,o-z)
@@ -12757,7 +12218,6 @@ C FIND THE NUMBER OF MU-PNTS FOR EACH K, PLUS ONE EXTRA FOR MU=0.0
       RETURN
       END
 C
-C
 C_ugj950523:  here the sphereical part ends@@@@@
 C
       SUBROUTINE VAAGL(NLB,XL,W)
@@ -12847,25 +12307,13 @@ C
       implicit real*8 (a-h,o-z)
 C
 C  RETURNS THE SMALLEST VALUE X02AAF SUCH THAT 1+X02AAF>1
-C
-C CYBER ?
-C     X02AAF=7.2E-15
-C IBM DOUBLE PREC.
-C      X02AAF = 2.2205D-16
-C VAX DOUBLE PREC.
-C     X02AAF=1.E-16
-C
-C APOLLO/DOMAIN WORKSTATION DN 3000/4000  (TRY CALCULATING IT . . . )
-C
       X02AAF = 1.0D-15
-C
+
       RETURN
           END
-C
+
       SUBROUTINE X1MAKE(N,XXI,W,XI)
       implicit real*8 (a-h,o-z)
-C
-C      IMPLICIT REAL*8(A-H,O-Z)
       PARAMETER(NDIM=100)
       DIMENSION XI(NDIM),W(NDIM),XXI(NDIM)
 C
@@ -12874,25 +12322,21 @@ C
         XI(I)=XXI(I-1)
         I=I-1
     5 CONTINUE
-C
+
       F=.5
       XI(1)=XI(2)+F*(XI(2)-XI(3))/(W(3)/W(2)-1.)
-C
-C
+
       RETURN
-C
-C
-C
+
       E  N  D
-C
+
       SUBROUTINE XIINIT(WVAL,K,XIVAL,N,XI,W)
       implicit real*8 (a-h,o-z)
-C
-C      IMPLICIT REAL*8(A-H,O-Z)
+
       PARAMETER (NDIM=100)
       DIMENSION XI(NDIM),W(NDIM)
       DIMENSION A(NDIM),B(NDIM),C(NDIM),ITYPE(NDIM)
-C
+
       D1=(XI(2)-XI(1))/(W(2)-W(1))
       D2=(XI(3)-XI(2))/(W(3)-W(2))
       YPI=D1*D1/D2
@@ -12914,31 +12358,21 @@ C
           YPI=B(I)+2.*C(I)*W(I)
         END IF
   105 CONTINUE
-C
-C
+
       RETURN
-C
       ENTRY XIMAKE(WVAL,K,XIVAL,N,XI,W)
-C
       IF(WVAL.LE.W(K).OR.K.EQ.N) GOTO 12
-C
       DO 10 I=1,N-K-1
         K=K+1
         IF(WVAL.LE.W(K)) GO TO 12
    10 CONTINUE
-C
       K=N
 
    12 IF(ITYPE(K).EQ.1) THEN
       XIVAL=A(K)+WVAL*(B(K)+C(K)*WVAL)
       ELSE
         YYY=B(K)*B(K) - (A(K)-WVAL)/C(K)
-        IF(YYY.LT.0.) THEN
-C        PRINT 1234,K,B(K),A(K),WVAL,C(K),YYY
-C      DO 2727 II7=1,N
-C      PRINT 1235,II7,W(II7),XI(II7),A(II7),B(II7),C(II7)
-C2727  CONTINUE
-C
+      IF(YYY.LT.0.) THEN
 1234  FORMAT('XIMAKE: K,B(K),A(K),WVAL,C(K),YYY '/I5,1P5E13.5)
 1235  FORMAT(I5,F8.5,F10.5,1P3E15.5)
          STOP 'XIMAKE-KRASCH'
@@ -12954,26 +12388,18 @@ C
 C
       SUBROUTINE XMETAL(ID,N,W,XI)
       implicit real*8 (a-h,o-z)
-C
-C      IMPLICIT REAL*8(A-H,O-Z)
-C
       include 'parameter.inc'
-C
       DIMENSION W(6),XI(6)
       COMMON /ODFAD/ V(NDP,4)
-C
       DO 5 I=1,N-2
         XI(I)=V(ID,I)
     5 CONTINUE
-C
+
       FN=.5
       XI(N-1)=XI(N-2)+FN*((XI(N-3)-XI(N-2))*(1.-W(N-2))/
      &                          (W(N-3)-W(N-2)))
-C
+
       RETURN
-C
-C
-C
       E  N  D
 C
       SUBROUTINE ZEROF(F,DX,DFDX)
@@ -12983,26 +12409,19 @@ C FIND DX=-F/DFDX, TO MAKE F ZERO. IF DX=0 AT ENTRY, THEN DFDX IS A
 C START APPROXIMATION, AND IT IS THE FIRST CALL. OTHERWISE USE OLD
 C INFO.  780926/NORDLUND.
 C
-      !write(*,*) 'F',F
-      !write(*,*) 'FOLD',FOLD
-      !write(*,*) 'DXOLD',DXOLD
       if (F.eq.FOLD) then
       write(*,*) "F equals F_OLD, which would make the derivative zero,
      >   currently no fix in place Sorry :( Try a different setup"
        stop
       endif  
       IF(DX.NE.0.) DFDX=(F-FOLD)/DXOLD
-      !write(*,*) 'DFDX',DFDX
       DX=-F/DFDX
-      !write(*,*) 'DX',DX
 C
 C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT 
       IF (DX.GT.2.) DX=2.
 C
       FOLD=F
       DXOLD=DX
-      !write(*,*) 'FOLD',FOLD
-      !write(*,*) 'DXOLD',DXOLD
       RETURN
       END
 
@@ -13065,7 +12484,7 @@ C     parameter(nspec=892)
       common /cgem/pres_gem(ndp,nspec)
       common /cgemnames/natms_gem,nions_gem,nspec_gem,name_gem(nspec)
 C atms,ions,spec ~ highest index of neutral atoms, ions, species total
-      common /cdrift/ idust, ieps, idustopac
+      common /cdrift/ idust, ieps, idustopac,icloud_conv
       character name_gem*8
       common /cabink/abink(ndp,nspec)
       common /ch4/ nch4
@@ -13103,18 +12522,30 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
       common /dpeset/ dpein,dtin, pe_corr(ndp)
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       character*20 file_id, file_name
       dimension nmid(20)
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
-  
+      common /virga/ ivirga_on 
+      common /eddy_diff/K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+      COMMON /CG/GRAV,KONSG
+      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
+     * STEFAN
+      common /metal_Z/metal_z
+      common /conv_help/ abund_freq,icalc_abund 
 
+      character(len=50) condensates(nr_cond)
+      real*8 :: cond_pp_init(nr_cond)
+      real*8 :: x_virga(nwreal,ndp),s_virga(nwreal,ndp)
+      real*8 :: cond_pp(nr_cond,ndp)
+      character(len=100) dummy_header
+      real*8 :: dummy_wn, dummy_P
+      integer abund_freq,icalc_abund
       if (first) then
       TOSREAD = 0.
       TPART = 0.
       call_counter = 0
       end if
-
       call timex1
       do it=1,ntau
          do jv=1,nwtot
@@ -13132,6 +12563,8 @@ C CALCULATE THE PARTIAL PRESSURE
         ptot(k)=pp(k)-ppr(k)-ppt(k)+pe_corr(k)
        
       end do
+
+      if (icalc_abund .eq. 1) then
       DO  K=1,NTAU
         KL=K         
 
@@ -13139,8 +12572,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
           
 ! use here ggrho(k) from GGchem instead ro(k) from jon and skip calling
 ! jon here
-            call GGCHEM(k,t(k),ptot(k))
-            
+            call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
             ggmu(k) = ggmuk
             ggrho(k) = ggrhok
@@ -13163,8 +12595,79 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             rHe(k) = rHegg
             ro_dt(k) = ggrhok
       enddo
+      !calculate the pressure scale height and Kzz profile for virga and vertical mixing timescale for photochemistry
+      h1mbar=0
+      p1mbar=1d99
+      amu=1.66053906660e-24
+      do k=1,ntau
+        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
+        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
+        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
+          p1mbar = p1mbar_diff
+          h1mbar = H_p(k)
+        end if
+      end do
+      do k=1,ntau !calc Kzz from Moses et al. 2021 Equation 1
+       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
+     >       *h1mbar/(620e5)*(teff_real/1450)**4 
+       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
+      enddo
 
-      
+      if (ivirga_on.eq.1) then
+      open(unit=23961, file='virga_condensates.dat', status='old')!read in condensates to be considered in virga
+      do i=1,nr_cond
+       read(23961,'(A)') condensates(i)
+       write(*,*) condensates(i)
+      molnames_index=777
+       do j=1,543 !number of molecues in molnames
+       if (trim(molnames(j)).eq.trim(condensates(i))) then
+            molnames_index=j
+            write(*,*) 'match found for ', trim(condensates(i)), 
+     >        ' at index ', molnames_index
+            cond_pp_init(i) = ppallmol(ntau,molnames_index)
+       exit    
+       endif
+      enddo
+      if (molnames_index.eq.777) then
+       write(*,*) 'condensate not found in molnames: ', 
+     >        trim(condensates(i))
+       stop 'check virga_condensates.dat and molnames.dat'
+      endif
+
+      enddo
+
+      open(unit=369, file='marcs2virga.dat', status='replace')!generate input file for virga
+      write(369,*) '# mean molecular weight',ggmu(ntau)
+      write(369,*) '# metallicity',metal_z
+      write(369,*) '# surface gravity',grav
+      write(369,*) '# Begin Condensates'
+      do i=1,nr_cond
+            write(369,'(A2,A20,A1,F12.4)') '# '
+     >       , adjustl(condensates(i)), ':', cond_pp_init(i)       
+      enddo
+      write(369,*) '# End Condensates'
+      write(369,*) '# T[K] ', 'Ptot[dyne/cm^2] ', 'K_zz[cm^2/s]'
+      do k=1,ntau
+       write(369,*) t(k), ptot(k), K_zz(k)
+      enddo
+      close(369)
+      call_python=.False.
+      if (call_python .eq. .True.) then
+        call system('python3 call_virga.py') !with written out PT profile
+      endif
+      open(unit=248, file='virga2marcs.dat', status='old')!read out from virga
+      read(248,*) dummy_header
+      x_virga = 0.
+      s_virga = 0.
+      do j=1,nwtot
+        do k=1,ntau
+          read(248,*) dummy_wn,dummy_P,
+     >     x_virga(j,k), s_virga(j,k)
+        end do    
+      enddo
+      close(248)
+      endif
+C     Header Pressure WAbs. Coeff Sca. Coeff      
 C     Updating stuff for ggchem
       DO K=1,NTAU
         partpp(k,0) = ppallat(k,1)
@@ -13182,6 +12685,7 @@ C ------------ USING KROME TO COMPUTE NON-EQ CHEMISTRY------------
 
       if (krome_on.eq.1) then
        call krome_solve(ntau,T,ptot)
+      endif
       endif
 C ------------ KROME DONE------------
 
@@ -13259,8 +12763,6 @@ C      open(unit=23975, file='osplots.dat', status='replace')
       do nm=1, molno
        write(23962,*) molnames_new(nm)
        write(23963,*) molnames_new(nm)
-C           if(larciv.eq.1) write(424,425) nm, molnames_new(nm)
-C425        format(i4,2x,a4)
           do it=1, ntau
             sumop(nm,it) = 0.
             sumkap(nm,it) =0.
@@ -13292,7 +12794,6 @@ C ....printout for understanding and plotting the opacities
                        jvfirst = jv
                        locfirst = 1
               end if
-C                       if(locfirst.eq.1 .and. lop10.eq.10) then !average over say 10 frequencies
                         do i=1,11
                         nmi = i
                         if(nm.eq.nmid(i)) go to 3401
@@ -13370,8 +12871,7 @@ C ....the plot
               write(430,*) 'i,iop = ',i,iop
               do j=1,50
               if (j.le.50)
-     &          write(430,431)i,nmid(i),1.e4/wnav(j),wnav(j),opav(i,j)    !(opav(i,j),in=1,11)
-C     *                    nmi,iop,wnav(iop),1.e4/wnav(iop),opav(nmi,iop)
+     &          write(430,431)i,nmid(i),1.e4/wnav(j),wnav(j),opav(i,j)    
               end do
               end do
            end if  
@@ -13668,30 +13168,12 @@ C in STATEC and TAUC
       if (ntau.gt.ndp) STOP  ' increase dimension ndp '
       I1 = 2
       IN = 2
-          !print*, "ntau ", ntau
           DO 1 K=1,NTAU
 1         Sx(K) = LOG(P(K))
           CALL TB04A(NTAU,tauln,SX,SXDER,W)
           DO 11 K=1,JTAU
-            !print*, k
-            !print*, "TAU(K)", tau(k)
           X = LOG(TAU(K))
 11        P(K)=EXP(TG01B(-1,NDP,NTAU,TAULN,SX,SXDER,X))
-C
-C          DO 2 K=1,NTAU
-C2         Sx(K) = LOG(G(K))
-C          CALL TB04A(NTAU,tauln,SX,SXDER,W)
-C          DO 12 K=1,JTAU
-C          X = LOG(TAU(K))
-C12        G(K)=EXP(TG01B(-1,NDP,NTAU,TAULN,SX,SXDER,X))
-C
-C          DO 3 K=1,NTAU
-C3         Sx(K) = LOG(Z(K))
-C          CALL TB04A(NTAU,tauln,SX,SXDER,W)
-C          DO 13 K=1,JTAU
-C          X = LOG(TAU(K))
-C13        Z(K)=EXP(TG01B(-1,NDP,NTAU,TAULN,SX,SXDER,X))
-C
           DO 4 K=1,NTAU
 4         Sx(K) = LOG(PE(K))
           CALL TB04A(NTAU,tauln,SX,SXDER,W)
@@ -14826,15 +14308,9 @@ C
             ! Size parameter - limit to 1e-6 and 10000 (micron)(2000 for low memory)
             x = (pi2*(a*1.0000e+8_dp))/wlos(l)
             x = max(1.00001e-2_dp, x)
-            !x = min(1.0000e+8_dp, x)
-            ! if (x<=1.0e-2) then
-            ! kabs_dust(l) = 0.0
-            ! ksca_dust(l) = 0.0
-            ! else 
             x = min(1.0000e+8_dp, x)
             N_efft = N_eff(l)
 
-            !print*, N_efft, x
             ! Mie theory routine - careful with memory in parallel and large n_wl
             call shexqnn2(N_efft, x, rQext, rQsca, rQabs, 
      >      rQbk, rQpr, ralbedo, rg, 
@@ -15081,13 +14557,11 @@ C
             mm = cmplx(xnew(1),xnew(2),kind=dp)
             call Bruggeman(mm,M_inc,V_inc,Fnew)
             qnew = Fnew(1)*Fnew(1)+Fnew(2)*Fnew(2)
-            !write(*,*) it,qold,qnew
             unphysical = .False.
             if (qnew < qold) then
             exit
             end if
             else
-            !write(*,*) it,"negative (n,k)",xnew
             unphysical = .True.
             endif
 
@@ -15376,7 +14850,6 @@ C
       do j=1, nwtot
             kappa_cloud(i,j) = 
      *       dust_abs(i,j) + dust_sca(i,j)
-      !print*, dust_abs(i,j) + dust_sca(i,j)
      
       end do
       end do
@@ -15385,14 +14858,6 @@ C
       kappa_cloud_int(1:ntau) = kappa_cloud_int(1:ntau)+
      *  kappa_cloud(1:ntau, i)*wlstep(i)*1.0e-4
       end do
-c       open(unit=0302, file='kappa_cloud_lay.dat', status="replace", 
-c      *       position="append", action="write")
-c       !print*, "Integrated cloud opacity"
-c       do i=1, ntau
-      
-c       write(0302, *) kappa_cloud_int(i)
-c       end do
-c       close(0302)
 
       open(unit=880, file='driftmarcs_it.in')
       read(880,*) it_driftmarcs
@@ -15400,7 +14865,6 @@ c       close(0302)
 
       end if
       
-      !if (icloud_conv == 0) then
 
       call cloud_opac(f_opac)
 
@@ -15495,11 +14959,6 @@ c       close(0302)
             read(0302,*) kappa_cloud_old(i)
       end do
       close(0302)
-      !do i=1, ncloud
-      !print*, i
-      !print*, 'new ', kappa_cloud_int(i)
-      !print*, 'old ', kappa_cloud_old(i)
-      !end do
       do i=1, ncloud
       
        if (kappa_cloud_int(i)>0.0) then
@@ -15529,54 +14988,19 @@ c       close(0302)
      * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
      * kappa_cloud_old(i)
           end if
-      !     if (kappa_cloud_diff(i)<=1.0e-1) then
-      !       icloud_diff(i) = 0
-      !       else
-      !       icloud_diff(i) = 1
-      !     end if
         end if 
       else 
-      !if (i==1) then
       kappa_cloud_diff(i) = 
      * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
      * kappa_cloud_old(i)
-      !if (mag1==mag2) then
-      !icloud_diff(i) = 0
-      !else
-      !icloud_diff(i) = 1
-      !end if
-
-      !else
-      !kappa_cloud_diff(i) = 
-      !* (abs(kappa_cloud_int(i) - kappa_cloud_old(i)))/
-      !* kappa_cloud_old(i)
-      !if (kappa_cloud_diff(i)<=1.0e-1) then
-      !icloud_diff(i) = 0
-      !else
-      !icloud_diff(i) = 1
-      !end if
       end if
 
-      !else
-      !kappa_cloud_diff(i) = 
-      !* (abs(kappa_cloud_int(i) - kappa_cloud_old(i)))/
-      !* kappa_cloud_old(i)
-      !if (kappa_cloud_diff(i)<=5.0e-2) then
-      !icloud_diff(i) = 0
-      !else
-      !icloud_diff(i) = 1
-      !end if
-      !end if
       end do
       
-      ! do i=1, ntau
-      ! print*, i, kappa_cloud_diff(i)
-      ! end do
       do i=1, ntau
       kappa_cloud_abs(i) = abs(kappa_cloud_diff(i))
       end do
 
-      !idiff_kappa = maxval(abs(icloud_diff(1:ntau)))
       index_kappa = maxloc(kappa_cloud_abs(1:ntau), dim=1)
       print*, "Max cloud opacity difference was ", 
      * kappa_cloud_diff(index_kappa)
@@ -15727,7 +15151,7 @@ c       close(0302)
      *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
      *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
      *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac
+      common /cdrift/ idust, ieps, idustopac, icloud_conv
       common /cmolrat/ fold(ndp,8),molold,kl
       common /cmetpe/ ppel(ndp), metpe
       common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
@@ -15753,7 +15177,6 @@ c       close(0302)
       write(2873,*) nwtot
       close(2873)
 
-      !print*, "at marcs2drift"
 
       sun_rad = 6.96342e10   ! cm
       
@@ -15764,7 +15187,6 @@ c       close(0302)
       do k=1,ntau
         kl = k
         furem = fure
-        !call termo(k,tt(k),ppel(k),ppr(k),ptot,rro,cp,cv,agrad,q,u2)
         fure = 1./(xkapr(k)*ro(k))
         if(k .eq. 1) cycle
         flip_rad(k) = flip_rad(k-1) + (tau(k)-tau(k-1))*(fure+furem)*0.5
@@ -15824,14 +15246,11 @@ c       close(0302)
 ! Mean molecular mass
       do k=1,ntau
         kl = k
-        !call termo(k,tt(k),ppel(k),ppr(k),ptot,rro,cp,cv,agrad,q,u2)
         emu(k) = (1.38*ro(k)*tt(k))/(1.67e-8*pg(k))
 
       end do  
       
 ! Save to file
-      
-      !print*, "writting marcs2drift file"
       open(unit=33, file='marcs2drift.dat')
       
       write(33,'(a2)') ' !'
@@ -15952,7 +15371,7 @@ c and total molecular pressure.
 !
 ************************************************************************
 
-      subroutine GGCHEM(k,temp,pgas)
+      subroutine GGCHEM(k,temp,pgas,update_abund)
       
       implicit real*8 (a-h, o-z)
       include 'parameter.inc'     
@@ -15961,6 +15380,7 @@ c and total molecular pressure.
       character*4 abcname
       real*8, dimension(48) :: abundforgg
       real*8,intent(in) :: temp,pgas
+      logical, intent(in) :: update_abund
       real*8 :: pphsum
       character atnames*2, molnames*8, molnames2*4
       character(len=2) :: Al, He, Si, C, Mg
@@ -16007,8 +15427,6 @@ c and total molecular pressure.
      * isw(max_eps)
 
       bar=1.Q+6
-      
-      
       do n=1, 48
             abundforgg(n) = abinit(n)
       end do
@@ -16071,14 +15489,12 @@ c and total molecular pressure.
              read(809,124) 
      * ((idmarcspart(m), idggchempart(m),molnames2(m)), m=1, 75)
 124          format(i4,3x,i3,4x,a4)
-      close(809)      
+      close(809)  
+      if (update_abund) then
         open(unit=321, file='ndensity.dat')
-        
             read(321,*) (rhonallat(k,m),m=1,22)
             read(321,*) (rhonallmol(k,m), m=1,543)
         close(321)
-
-      
         open(unit=707,file='pp.dat')
               read(707,*) (ppallat(k,m),m=1,22)
               read(707,*) (ppallmol(k,m),m=1,543)
@@ -16092,9 +15508,7 @@ c and total molecular pressure.
 709             format(10a8)
               
         close(707)
-        
-        
-
+      endif
         Al = 'AL'
         He = 'HE'
         Si = 'SI'
@@ -16334,7 +15748,6 @@ C       enddo
       end if
       do i=1,n_dust
         read(110,*) dust_names(i)
-        !print*, dust_names(i)
       end do
       read(110,'(i4)') n_eps
       if (n_eps>max_eps) then 
@@ -16342,10 +15755,6 @@ C       enddo
       stop
       end if
       print*, "Number of affected elements by cloud formation: ", n_eps
-      !if(n_eps .gt. max_eps) then
-       ! print *, 'Error: increase max_eps.'
-       ! stop
-      !end if
       do i=1,n_eps
         read(110,*) ielnr(i)
       end do
@@ -16371,11 +15780,9 @@ C       enddo
       open(unit=189, file='dust_file.dat', readonly)
       do n=1, max_inc
             read(189,'(A)') dname
-            !print*, 'dust in dust file ', trim(dname)
             n_on = 0
             do i=1, n_dust
               if (trim(dname)== dust_names(i)) then
-                  !print*, "dust present ", dust_names(i)
                   read(189, '(A)') get_path
                   path= trim(get_path)
                   dust_files(i) = path
@@ -16451,7 +15858,6 @@ C       enddo
       
       do i=1, n_dust
         u = 6785
-        !print*, dust_files(i)
         open(unit=u,file=dust_files(i))
         
         read(u,*) n_lines, conducting
@@ -16461,7 +15867,6 @@ C       enddo
 
         do l = 1, n_lines
             read(u,*) wl_work(l),n_work(l),k_work(l)
-            !print*, wl_work(l),n_work(l),k_work(l)
             n_work(l) = max(0.0D+0, n_work(l))
             k_work(l) = max(0.0D+0, k_work(l))
             if (dust_names(i) == 'CaSiO3[s]') then
@@ -16473,17 +15878,14 @@ C       enddo
 
         wl_work(:) = wl_work(:)*1.0e+4
         do l = 1, nwtot
-            !if (i==4) print*, wlos(l)
             ! If required wavelength is less than available data - keep constant
          if (wlos(l) < wl_work(1)) then
-            !if (i==4) print*, "first wl smaller for SiO2"
             ndata(i,l) = n_work(1)
             kdata(i,l) = k_work(1)
             ! If required wavelength is greater than available data - extrapolate
             ! Non conducting: n is constant - k is linear decreasing
             ! Conducting: n and k are log-log extrapolated
          else if (wlos(l) > wl_work(n_lines)) then
-            !if (i==4) print*, "extrapolation!"
             if (conducting .eqv. .False.) then
                 ndata(i,l) = n_work(n_lines)
                 kdata(i,l) = k_work(n_lines)*wl_work(n_lines)/wlos(l)
@@ -16568,7 +15970,7 @@ C      implicit none
       real*8::ss_time(ntau)
       real*8::krome_tmax
       real*8::conv_crit
-      logical::use_conv = .False.
+      logical::use_conv = .True.
       logical::is_conv
       real*8,dimension(nwreal)::FLUX_RAD_eV
       real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
@@ -16577,12 +15979,13 @@ C      implicit none
       character(len=8),dimension(nsp)::chem_spec
       character atnames*2, molnames*8, molnames2*4    
       real*8 :: krome_photo_scale
+      real*8 :: num_den_save(ndp,nsp) 
+      save num_den_save
       integer ,parameter:: output_freq=100
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
       COMMON /CPF/PF,PFE,PFD,FIXROS,ITSTOP
-      LOGICAL PF,PFE,PFD,FIXROS,ITSTOP
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       common /cit/it,itmax
@@ -16593,19 +15996,17 @@ C      implicit none
      >                ,idmarcspres(32),idggchempres(32)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
-      common /noneq/ krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
-
+      common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
       call krome_init() !init krome (mandatory)
 
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
-      if (use_conv .eqv. .True.) then
-            conv_crit=1e-16
-      endif
+      default_abun=1E-20 !default abundance for species not found in MARCS/GGchem
 
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
@@ -16627,23 +16028,16 @@ C      implicit none
         endif 
       enddo
       close(12)
-      !if (first_call.eq..True.) then
-        !write(*,*) nsp,'Species are found'
         write(*,*) 'The following',nsp,
      >   'species are found in your krome build'
         write(*,*) chem_spec(1:nsp)
-        !first_call = .False.
-      !endif      
       !check if species is in atomnames, molnames, molnames2 and safe indices
       !check also if speices not in MARCS database
       atom_counter=0
       mol_counter=0
       mol2_counter=0
       not_counter=0
-      
-      !write(*,*) atomnames
-      !write(*,*) molnames
-      !write(*,*) molnames2
+           
       do i=1,krome_nmols
        not_found=.True.
        do k=1,22 !number of atoms    
@@ -16674,7 +16068,6 @@ C      implicit none
         endif        
        enddo
        if (trim(chem_spec(i)).eq.'M') then
-        !write(*,*) 'M identified as', i
         M_counter=1
         M_index = i
         not_found=.False.
@@ -16715,15 +16108,14 @@ C      implicit none
          open(unit=3535,file='krome_bins_rates.dat')
        endif
       endif
-      first_call=.False. 
+      
+      first_call=.False.
       endif
-      !end of initilazation routine
       do k = 1,ntau
         Pcon(k) = 0.1*Na/(R*T(k))*1E-6
         num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
         num_den_at(k,:)=ppallat(k,:)*Pcon(k)
-      enddo                        
-
+      enddo   
       do k=1,ntau
         do i=1,atom_counter
          num_den(k,index_at(i,2)) = num_den_at(k,index_at(i,1))
@@ -16735,15 +16127,13 @@ C      implicit none
          num_den(k,index_mol2(i,2)) = num_den_mol(k,index_mol2(i,1))
         enddo
         do i=1,not_counter
-         num_den(k,index_not(i)) = 1d-20
+         num_den(k,index_not(i)) = default_abun
         enddo
         if (M_counter==1) then
          num_den(k,M_index) = ptot(k)*Pcon(k)
         endif
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
-
       enddo
-      !write(*,*) 'before krome num_den',num_den(1,:)
       !write header of full output file
       if (krome_debug.eq.1) then
         open(unit=13,file='krome_full_output.dat')
@@ -16756,12 +16146,12 @@ C      implicit none
       endif 
 
       !main loop
-
       do k=1,ntau
+        tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
+543     continue !restart point if time is not sufficient for convergence
         istep = 1
         dt = dt_start
         time=0.0
-
         FLUX_RAD_eV=FLUX_RAD(k,nwreal:1:-1) !invert FLUX_RAD to align with energies as KROME requires it
 
         if (krome_photo_on.eq.1) then
@@ -16791,26 +16181,19 @@ C      implicit none
           end if
          end if
          dt = min(dt*dt_inc,dt_max)
-       if (use_conv.eqv..True.) then
+       if (use_conv.eqv..True.) then 
          if (dt.ge.dt_max) then !break loop if convergence is reached and timestep on max timestep length
             is_conv=.True.
             do j=1,nsp
- 
-            if (abs(num_den_cont(istep,j)-num_den_cont(istep-1,j))
-     >                     /num_den_cont(istep,j)            
-     >          .ge.conv_crit) then
+            conv_denominator = max(num_den_cont(istep,j),default_abun)
+            num_den_diff = abs(num_den_cont(istep,j)-
+     >       num_den_cont(istep-1,j))
+            if ((num_den_diff/conv_denominator).ge.conv_crit) then                    
                 is_conv=.False.
-                !write(*,*) k,j
-                !write(*,*) time,istep,istep-1
-                !write(*,*) num_den_cont(istep,j),num_den_cont(istep-1,j)
-                !write(*,*) (abs(num_den_cont(istep,j)
-     >          !           -num_den_cont(istep-1,j))
-     >          !           /num_den_cont(istep,j))
-                !write(*,*) abs(num_den_cont(istep,j)
-     >          !           -num_den_cont(istep-1,j))
-                exit
             endif
-
+            if (is_conv.eqv..True.) then
+             exit
+            endif
             enddo
             if (is_conv.eq..True.) then
               if (krome_debug.eq.1) then
@@ -16821,22 +16204,17 @@ C      implicit none
             endif
           endif
          endif
-         if(time>krome_tmax) then !break loop if maximum time is reached
+         if(time>tmax) then !break loop if maximum time is reached
+           if (use_conv.eqv..True.) then
+            if (is_conv.eqv..False.) then
+              tmax=max(tmax,vert_mix_time(k)) !restart loop with a larger time
+              goto 543
+            endif
+           endif
            if (krome_debug.eq.1) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
      >      num_den(k,:)        
-
            endif
-          if (use_conv.eqv..True.) then
-           write(*,*) 'Layer', k, 
-     >      'did not converge within given time'
-           write(*,*) 'relative change between timesteps'
-           write(*,*) abs(num_den_cont(istep,j)-num_den_cont(istep-1,j))
-     >                     /num_den_cont(istep,j) 
-           write(*,*) 'with given conv. criteria', conv_crit 
-           write(*,*) ' '    
-            
-          endif
           exit
          endif
          time = time + dt !increase time         
@@ -16873,9 +16251,9 @@ C Returning the krome values to MARCS
           enddo
           ppallmol(k,:) = num_den_mol(k,:)/Pcon(k)
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
+          num_den_save(k,:) = num_den(k,:)
         enddo
       endif
-
 
       if (krome_photo_on.eq.1) then
        if (krome_output.eq.1) then
