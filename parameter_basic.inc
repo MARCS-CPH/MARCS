@@ -66,6 +66,10 @@
       INTEGER MAX_LAY, MAX_INC, MAX_EPS
       PARAMETER (MAX_LAY = 1000, MAX_INC = 18, MAX_EPS = 12)
 
+* Virga
+* nr_cond number of condesnates considered in VIRGA, condensates species shall be put into virga_condensates.dat
+      integer nr_cond
+      parameter (nr_cond = 1)
 
 
 
