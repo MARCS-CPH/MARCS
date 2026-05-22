@@ -8181,6 +8181,7 @@ C
         character atnames*2, molnames*8
         character diagempta*2(22), diagemptm*8(543)
         logical thermo_initialized, molactive, atactive
+        logical:: warnnasa=.True.
       common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
      >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
      >                ,gg_partpp(ndp,400)
@@ -8204,7 +8205,6 @@ C     from init_thermo
         psum=0.0d0
         diagempta(:)=''
         diagemptm(:)=''
-
         call ggchem(k, T, p, .False.)   ! sets ggmuk for here and for termo and termon
         xmmw = ggmuk
 
@@ -8273,7 +8273,7 @@ C         Calculate the polynomial
             psum=psum+ppallat(k,i)
           end if
         end do
-        if (krome_on.ne.1) then !skip comp. between calculated pressure using the nasa polynomials and pgesk for non_eq calcs because pgesk comes from ggchem and is wrong for non_eq calcs
+        if (warnnasa.ne..True.) then !skip comp. between calculated pressure using the nasa polynomials and pgesk for non_eq calcs because pgesk comes from ggchem and is wrong for non_eq calcs
         if (psum/pgesk .LT. 0.97d0) then
 C         NOTE: if the code fails here, we need to change the matching between ggchem and nasa polynomials.
 C           This can be easily done by diagnosing the here generated file and improving the matching in
@@ -8299,7 +8299,8 @@ C           init_thermo.
           write(8895, *) '# UNmatched molecules:'
           write(8895, *) merge(diagemptm, molnames, molactive)
           close(8895)
-          stop
+          warnnasa = .False.
+          !stop
         endif
        endif
 C       Final heat capacities        
