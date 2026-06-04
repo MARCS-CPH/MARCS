@@ -172,7 +172,6 @@ class reaction:
 				RR = self.reactants[0].name
 				PP = ("_".join([x.name for x in self.products]))
 				self.xsecFile = "leiden_"+RR+"__"+PP+".dat"
-
 			#replace with rate
 			self.krate = self.krate.replace("@xsecFile=SWRI", "#XSECS#")
 			self.krate = self.krate.replace("@xsecFile=LEIDEN", "#XSECS#")
@@ -366,7 +365,7 @@ def LEIDEN2KROME(build_folder,reactant,products,nPhotoBins):
 		print(" This module is necessary to use LEIDEN xsecs.")
 		sys.exit()
 
-	prods = sorted([x.name for x in products])
+	prods = [x.name for x in products]
 	data_folder = "data/database/leiden_xsecs/"
 	fname1 = data_folder+reactant.name+"__"+("_".join(prods))+".dat"
 	fname2 = data_folder+reactant.name+"__"+("_".join(prods[::-1]))+".dat"
@@ -389,7 +388,6 @@ def LEIDEN2KROME(build_folder,reactant,products,nPhotoBins):
 
 	print("automatic reaction from LEIDEN database found: " + reactant.name
 		  + " -> "+(" + ".join(prods)))
-
 	#columns references: wavelength, absorption, dissociation, and ionization
 	header = ["wlen","abs","diss","ion"]
 	data = {k: [] for k in header}

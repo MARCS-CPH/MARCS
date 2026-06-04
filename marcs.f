@@ -109,8 +109,9 @@ C      STEFF=5770
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
-      common /virga/ ivirga_on 
+      common /virga/ ivirga_on
       common /conv_help/ abund_freq,icalc_abund
       common /onemor_it/ onemor
 C    
@@ -4407,6 +4408,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq_initabund/ krome_init_abund_on
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
       character*3 aifix
@@ -4775,21 +4777,21 @@ C pp_j(k) for all j=1,54 OS-molecules; for now we set k=ndp here
 C to avoid it being 0 (i.e. out of dimension). ppallmol(k,..) has
 C already at this state been filled in by k=1,ntau calls to ggchem and
 C corresponding saving in the 2D array.
-      open(unit=707,file='pp.dat')
-      if (krome_on.eq.1) then !avoid overriding non-eq results with final ggchem call
-       read(707,*) (dummy_ppallat(ntau,m),m=1,22)
-       read(707,*) (dummy_ppallmol(ntau,m),m=1,543)
-      else
-       read(707,*) (ppallat(ntau,m),m=1,22)
-       read(707,*) (ppallmol(ntau,m),m=1,543)
-      endif
-      read(707,708) ((km,atnames(m)),m=1,22)   
-      read(707,*)
-      read(707,709) (molnames(m),m=1,543)
+!      open(unit=707,file='pp.dat')
+!      if (krome_on.eq.1) then !avoid overriding non-eq results with final ggchem call
+!       read(707,*) (dummy_ppallat(ntau,m),m=1,22)
+!       read(707,*) (dummy_ppallmol(ntau,m),m=1,543)
+!      else
+!       read(707,*) (ppallat(ntau,m),m=1,22)
+!       read(707,*) (ppallmol(ntau,m),m=1,543)
+!      endif
+!      read(707,708) ((km,atnames(m)),m=1,22)   
+!      read(707,*)
+!      read(707,709) (molnames(m),m=1,543)
 
-708         format(i4,18x,a2)
-709           format(10a8)
-      close(707)
+!708         format(i4,18x,a2)
+!709           format(10a8)
+!      close(707)
 C The positive and negative ions:
         natplus = 0
         do 3200 j=1,543
@@ -5544,6 +5546,7 @@ C
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_initabund/ krome_init_abund_on
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /conv_help/ abund_freq,icalc_abund
       common /virga/ ivirga_on
@@ -5618,8 +5621,12 @@ C
       end if
       read(5, 1236) krome_on, krome_photo_on, krome_photo_scale, 
      > conv_crit
+      read(5, 1240) krome_init_abund_on
+
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
       read(5, 1238) krome_output,krome_debug,krome_return
+
+
       if (krome_on.eq.1) then
       print*, "Non-equilibrium Chemistry is turned on"
         if (krome_photo_on.eq.1) then
@@ -5628,6 +5635,11 @@ C
         endif
       else
       print*, "Non-equilibrium Chemistry is turned off"      
+      endif
+      if (krome_init_abund_on.eq.1) then
+        print*, "Initial abund. mode on: Reading krome_init_abund.dat"
+      else
+        print*, "Initial abund. mode off: using GGchem abundances"
       endif
       read(5, 1239) ivirga_on
       if (ivirga_on.eq.1) then
@@ -5705,6 +5717,7 @@ C
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
 1238  FORMAT(7X,I3,12X,I3,12X,I3)
 1239  FORMAT(7X,I3)
+1240  FORMAT(7X,I3)
       END
 C
       SUBROUTINE MATINV(A,N)
@@ -8201,6 +8214,7 @@ C     from init_thermo
      >               xtemplimlow,xtemplimup,molactive(543),
      >               atactive(22)
         common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+        common /noneq_initabund/ krome_init_abund_on
         cpRsum=0.0d0
         psum=0.0d0
         diagempta(:)=''
@@ -8513,6 +8527,7 @@ C SPACE ALLOCATION
       DATA IVERS,IEDIT/21,1/
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
@@ -10099,6 +10114,7 @@ C ACCUMULATE INHOMOGENOUS TERMS
       if (irrin>0) then
       do k=1, JTAU1
        Pstar(k+1) = SP1(k)*Pstar(k)
+       Pstar(k+1) = min(Pstar(k+1), 1.0d30)
       end do
       if (irrinp >0) then
        Pstar(JTAU) = Pstar(jtau) + reflect*Pstar(jtau)
@@ -10211,6 +10227,7 @@ C ITERATION LOOP
       NABSKO=NABSKO+1
       ERROR=(.5*DLNTAU(K)*GRAV*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
      & TAU(K)/(PP(K)*ROSS(K)))-log(PP(K)/PP(K-1)))
+      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations 
       CALL ZEROF(ERROR,DLNPE,DEDLNP)   
       PPE(K)=PPE(K)*EXP(DLNPE)
 
@@ -11217,7 +11234,6 @@ C---
       TCORMX=ABS(T(1))
       DO 405 I=2,NTAU
  405  TCORMX=MAX(TCORMX,ABS(T(I)))
-      write(*,*) TCORMX,TCONV
       IF(TCORMX.LE. tconv)  ITSTOP=.TRUE.
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
@@ -12073,6 +12089,7 @@ C ITERATION LOOP
       ERROR=(.5*DLNTAU(K)*GRVR*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
      & TAU(K)/(PP(K)*ROSS(K)))-log(PP(K)/PP(K-1)))
 C       print*,'error,dedlnp ', error,dedlnp
+      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations 
       CALL ZEROF(ERROR,DLNPE,DEDLNP)
       PPE(K)=PPE(K)*EXP(DLNPE)
       IF(ABS(DLNPE).GT.EPS) GOTO 111
@@ -12411,12 +12428,12 @@ C FIND DX=-F/DFDX, TO MAKE F ZERO. IF DX=0 AT ENTRY, THEN DFDX IS A
 C START APPROXIMATION, AND IT IS THE FIRST CALL. OTHERWISE USE OLD
 C INFO.  780926/NORDLUND.
 C
-      if (F.eq.FOLD) then
-      write(*,*) "F equals F_OLD, which would make the derivative zero,
-     >   currently no fix in place Sorry :( Try a different setup"
-       stop
-      endif  
-      IF(DX.NE.0.) DFDX=(F-FOLD)/DXOLD
+      !if (F.eq.FOLD) then
+      !write(*,*) "F equals F_OLD, which would make the derivative zero,
+      !>   currently no fix in place Sorry :( Try a different setup"
+      ! stop
+      !endif  
+      IF(DX.NE.0. .and. F.ne.FOLD) DFDX=(F-FOLD)/DXOLD
       DX=-F/DFDX
 C
 C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT 
@@ -12525,6 +12542,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      * molno, ggchem_mol, ggchem_index_read
       common /dpeset/ dpein,dtin, pe_corr(ndp)
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq_initabund/ krome_init_abund_on
       character*20 file_id, file_name
       dimension nmid(20)
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
@@ -15390,6 +15408,7 @@ c and total molecular pressure.
      > C_id, Mg_id,H_id
       real*8, dimension(500) :: Al_x, He_x, Si_x, C_x, 
      > Mg_x, H_x 
+      character*2000 pprdline
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
@@ -15427,7 +15446,7 @@ c and total molecular pressure.
       common /cdusteps/ ielnr(max_eps)
       common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
      * isw(max_eps)
-
+      
       bar=1.Q+6
       do n=1, 48
             abundforgg(n) = abinit(n)
@@ -15493,18 +15512,93 @@ c and total molecular pressure.
 124          format(i4,3x,i3,4x,a4)
       close(809)  
       if (update_abund) then
-        open(unit=321, file='ndensity.dat')
-            read(321,*) (rhonallat(k,m),m=1,22)
-            read(321,*) (rhonallmol(k,m), m=1,543)
-        close(321)
-        open(unit=707,file='pp.dat')
-              read(707,*) (ppallat(k,m),m=1,22)
-              read(707,*) (ppallmol(k,m),m=1,543)
-              
+        !open(unit=321, file='ndensity.dat')
+        !    read(321,*) (rhonallat(k,m),m=1,22)
+        !    read(321,*) (rhonallmol(k,m), m=1,543)
+        !close(321)
+      !inrd — count of values successfully read so far; the outer loop runs until this reaches 22 (or 543)
+      !iosrd — I/O status flag from each read call; non-zero means an error or end-of-file
+      !ilenrd — length of the current line after stripping trailing spaces (len_trim)
+      !ipprd — current position (character index) within the line; advances left-to-right as tokens are consumed
+      !iqrd — end position of the current token; scans forward from ipprd until a space is hit, so pprdline(ipprd:iqrd-1) is the token text
+      open(unit=707,file='pp.dat')
+      inrd=0
+      do while (inrd.lt.22)
+        read(707,'(a)',iostat=iosrd) pprdline
+        if (iosrd.ne.0) exit
+        ilenrd=len_trim(pprdline)
+        if (ilenrd.eq.0) cycle
+        ipprd=1
+        do while (ipprd.le.ilenrd.and.inrd.lt.22)
+          do while (ipprd.le.ilenrd.and.
+     >               pprdline(ipprd:ipprd).eq.' ')
+            ipprd=ipprd+1
+          end do
+          if (ipprd.gt.ilenrd) exit
+          iqrd=ipprd
+          if (pprdline(iqrd:iqrd).eq.'*') then
+            do while (iqrd.le.ilenrd.and.
+     >                 pprdline(iqrd:iqrd).eq.'*')
+              iqrd=iqrd+1
+            end do
+          else
+            do while (iqrd.le.ilenrd.and.
+     >                 pprdline(iqrd:iqrd).ne.' '.and.
+     >                 pprdline(iqrd:iqrd).ne.'*')
+              iqrd=iqrd+1
+            end do
+          end if
+          inrd=inrd+1
+          if (index(pprdline(ipprd:iqrd-1),'*').gt.0) then
+            ppallat(k,inrd)=2.2D-308
+          else
+            read(pprdline(ipprd:iqrd-1),*,iostat=iosrd)
+     >        ppallat(k,inrd)
+            if (iosrd.ne.0) ppallat(k,inrd)=2.2D-308
+          end if
+          ipprd=iqrd
+        end do
+      end do
+      inrd=0
+      do while (inrd.lt.543)
+        read(707,'(a)',iostat=iosrd) pprdline
+        if (iosrd.ne.0) exit
+        ilenrd=len_trim(pprdline)
+        if (ilenrd.eq.0) cycle
+        ipprd=1
+        do while (ipprd.le.ilenrd.and.inrd.lt.543)
+          do while (ipprd.le.ilenrd.and.
+     >               pprdline(ipprd:ipprd).eq.' ')
+            ipprd=ipprd+1
+          end do
+          if (ipprd.gt.ilenrd) exit
+          iqrd=ipprd
+          if (pprdline(iqrd:iqrd).eq.'*') then
+            do while (iqrd.le.ilenrd.and.
+     >                 pprdline(iqrd:iqrd).eq.'*')
+              iqrd=iqrd+1
+            end do
+          else
+            do while (iqrd.le.ilenrd.and.
+     >                 pprdline(iqrd:iqrd).ne.' '.and.
+     >                 pprdline(iqrd:iqrd).ne.'*')
+              iqrd=iqrd+1
+            end do
+          end if
+          inrd=inrd+1
+          if (index(pprdline(ipprd:iqrd-1),'*').gt.0) then
+            ppallmol(k,inrd)=2.2D-308
+          else
+            read(pprdline(ipprd:iqrd-1),*,iostat=iosrd)
+     >        ppallmol(k,inrd)
+            if (iosrd.ne.0) ppallmol(k,inrd)=2.2D-308
+          end if
+          ipprd=iqrd
+        end do
+      end do
                 read(707,708) ((km,atnames(m)),m=1,22)
                 read(707,*)
                 read(707,709) (molnames(m),m=1,543)
-
 
 708             format(i4,18x,a2)
 709             format(10a8)
@@ -15963,6 +16057,12 @@ C      implicit none
       logical:: first_call = .True.
       logical:: first_not_call = .True.
       integer:: krome_photo_on
+      real*8, save :: init_mix_rat(nsp)
+      logical, save :: init_abund_mask(nsp)
+      character(len=100) :: abund_line
+      character(len=20)  :: spec_read
+      real*8 :: abun_read
+      integer :: ios_ab
       real*8::Tgas,dt,num_den(ntau,nsp)
       real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
       real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
@@ -16001,6 +16101,7 @@ C      implicit none
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
       call krome_init() !init krome (mandatory)
@@ -16034,64 +16135,64 @@ C      implicit none
      >   'species are found in your krome build'
         write(*,*) chem_spec(1:nsp)
       !check if species is in atomnames, molnames, molnames2 and safe indices
-      !check also if speices not in MARCS database
+      !check also if species not in MARCS database
       atom_counter=0
       mol_counter=0
       mol2_counter=0
       not_counter=0
-           
       do i=1,krome_nmols
        not_found=.True.
-       do k=1,22 !number of atoms    
+       do k=1,22 !number of atoms
         if (trim(atnames(k)).eq.trim(chem_spec(i))) then
-         atom_counter=atom_counter+1        
+         atom_counter=atom_counter+1
          index_at(atom_counter,1)=k
          index_at(atom_counter,2)=i
          not_found=.False.
          cycle
         endif
        enddo
-       do k=1,543 !number of molecues in molnames
+       do k=1,543 !number of molecules in molnames
         if (trim(molnames(k)).eq.trim(chem_spec(i))) then
-         mol_counter=mol_counter+1    
+         mol_counter=mol_counter+1
          index_mol(mol_counter,1)=k
          index_mol(mol_counter,2)=i
-         not_found=.False.     
-         cycle    
+         not_found=.False.
+         cycle
         endif
-       enddo 
-       do k=1,75 !number of molecues in molnames2
+       enddo
+       do k=1,75 !number of molecules in molnames2
         if (trim(molnames2(k)).eq.trim(chem_spec(i))) then
-         mol2_counter=mol2_counter+1      
+         mol2_counter=mol2_counter+1
          index_mol2(mol2_counter,1)=k
          index_mol2(mol2_counter,2)=i
-         not_found=.False.    
-         cycle     
-        endif        
+         not_found=.False.
+         cycle
+        endif
        enddo
        if (trim(chem_spec(i)).eq.'M') then
         M_counter=1
         M_index = i
         not_found=.False.
         cycle
-       endif  
+       endif
        if (not_found==.True.) then
         not_counter=not_counter+1
         index_not(not_counter)= i
         if (first_not_call.eq. .True.) then
         write(*,*) trim(chem_spec(i)),
-     >  ' has not been found in MARCS' 
+     >  ' has not been found in MARCS'
         endif
-       endif  
+       endif
       enddo
 
       if (not_counter.gt.0) then
        if (first_not_call.eq..True.) then
        write(*,*) 'Species not found in MARCS will be set to ',
-     > 'default abundance of 1E-20'  
+     > 'default abundance of 1E-20'
        first_not_call=.False.
        endif
       endif
+
       if (krome_photo_on.eq.1) then !initializing of photobins
          J_to_eV_conv=6.242E18!Joule to eV
          HC_to_SI_conv=1E-9 !convert hplanck and clight to SI from CGS
@@ -16111,19 +16212,46 @@ C      implicit none
        endif
       endif
       
+      if (krome_init_abund_on.eq.1) then
+        init_mix_rat(:) = default_abun
+        init_abund_mask(:) = .False.
+        open(unit=88, file='./data/krome_init_abund.dat',
+     >       status='old', action='read')
+        do
+          read(88,'(A)',iostat=ios_ab) abund_line
+          if (ios_ab /= 0) exit
+          if (len_trim(abund_line).eq.0) cycle
+          if (abund_line(1:1).eq.'#') cycle
+          read(abund_line,*,iostat=ios_ab) spec_read, abun_read
+          if (ios_ab /= 0) cycle
+          do i=1,nsp
+            if (trim(spec_read).eq.trim(chem_spec(i))) then
+              init_mix_rat(i) = abun_read
+              init_abund_mask(i) = .True.
+              exit
+            endif
+          enddo
+        enddo
+        close(88)
+        write(*,*) 'krome_init_abund.dat: loaded initial mixing ratios'
+      endif
       first_call=.False.
       endif
       do k = 1,ntau
         Pcon(k) = 0.1*Na/(R*T(k))*1E-6
+      enddo
+
+      ! GGchem abundances: always convert equilibrium partial pressures to number densities
+      do k=1,ntau
         num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
         num_den_at(k,:)=ppallat(k,:)*Pcon(k)
-      enddo   
+      enddo
       do k=1,ntau
         do i=1,atom_counter
          num_den(k,index_at(i,2)) = num_den_at(k,index_at(i,1))
-        enddo    
+        enddo
         do i=1,mol_counter
-         num_den(k,index_mol(i,2)) = num_den_mol(k,index_mol(i,1))    
+         num_den(k,index_mol(i,2)) = num_den_mol(k,index_mol(i,1))
         enddo
         do i=1,mol2_counter
          num_den(k,index_mol2(i,2)) = num_den_mol(k,index_mol2(i,1))
@@ -16131,11 +16259,22 @@ C      implicit none
         do i=1,not_counter
          num_den(k,index_not(i)) = default_abun
         enddo
-        if (M_counter==1) then
-         num_den(k,M_index) = ptot(k)*Pcon(k)
-        endif
+        if (M_counter.eq.1) num_den(k,M_index) = ptot(k)*Pcon(k)
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
       enddo
+
+      ! Initial abundance mode: overwrite GGchem values only for species in the file
+      if (krome_init_abund_on.eq.1) then
+        do k=1,ntau
+          do i=1,nsp
+            if (init_abund_mask(i)) then
+              num_den(k,i) = init_mix_rat(i) * (ptot(k)*Pcon(k))
+            endif
+          enddo
+          !if (M_counter.eq.1) num_den(k,M_index) = ptot(k)*Pcon(k)
+          !mix_rat(k,:) = num_den(k,:) / (ptot(k)*Pcon(k))
+        enddo
+      endif
       !write header of full output file
       if (krome_debug.eq.1) then
         open(unit=13,file='krome_full_output.dat')
@@ -16209,8 +16348,15 @@ C      implicit none
          if(time>tmax) then !break loop if maximum time is reached
            if (use_conv.eqv..True.) then
             if (is_conv.eqv..False.) then
-              tmax=max(tmax,vert_mix_time(k)) !restart loop with a larger time
-              goto 543
+              tmax_new=max(vert_mix_time(k),krome_tmax) !if not converged, increase tmax to the maximum of the current tmax, vertical mixing timescale and user defined tmax
+              if (tmax_new.eq.tmax) then
+                  write(*,*) 'Convergence not reached for layer ',k, 
+     >             'in time ', tmax
+                  exit
+              else
+                  tmax=tmax_new !restart loop with a larger time
+                  goto 543
+              endif
             endif
            endif
            if (krome_debug.eq.1) then
@@ -16240,7 +16386,6 @@ C      implicit none
      >    num_den(k,:)
         enddo
       endif
-
 
 C Returning the krome values to MARCS
       if (krome_return == 1) then
