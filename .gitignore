@@ -1,0 +1,24 @@
+# --- MARCS / KROME build artifacts ---
+# Compiled objects and Fortran modules
+*.o
+*.mod
+
+# MARCS executable (root)
+/marcs
+
+# KROME build output directories
+krome/MARCS_build/
+krome/build_*/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Log files
+*.log
+
+# --- Local run copies ---
+# Renamed from the tracked *_basic templates so the code can run here.
+# Kept out of git: the repo keeps Makefile_basic / parameter_basic.inc.
+/Makefile
+/parameter.inc
