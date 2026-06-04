@@ -46,6 +46,9 @@ Convection related input parameters:
 - NCORE (Realted to spherical models. Ignore in PP case. Number of rays for raytracing of the in the core. Default 5, but honestly I dont know.)
 - KDIFF (Realted to spherical models. Ignore in PP case. Manipulated how TAURAT is calculated. I dont think TAURAT does anything. Probably depricated.)
 
+
+- ABUNDF (Integer number that determines how often are abundances updated. Setting it to a number X means only every X-th iteration updates the abundances. Useful for models that oscillate and speeds up convergence.)
+
 Irradiation related input parameters:
 
 - IRRAD (Switch to turn on irradition by another star.)
@@ -53,6 +56,8 @@ Irradiation related input parameters:
 - RSTAR (Radius of the irradiating star. In units of solar radii.)
 - SMAJOR (Distance of the irradiating star. In units of A.)
 - FACTOR (Heat redistribution factor. See Eq. 3.1 in Azzurra d'Alessandros PhD thesis)
+- SPECTR (Switch to have the code use and input spectrum as input)      
+- SPECSC  (Scaling factor for the incoming radiation for spectrum. Useful for slowly converging a model or to model stellar evolution effects.)
 
 Surface related input parameters:
 
@@ -66,7 +71,8 @@ The noneq input parameters are:
  - PHOTO (Basic on/off switch for including photo rates. Expects a numeric value of 0 (off) or 1 (on).
           currently only able to turn on/off the photolysis module for ozone with more potential features later)
  - phSCAL(Factor that scales the inensity of the radiation that the photo chemistry works with. Quick and easy parameter
-          to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)         
+          to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)  
+ - INITAB(Flag to turn on or off the use of initial abundances for the KROME runs)      
  - DTMIN (Starting timstep for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTMAX (Maximal timestep size for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
