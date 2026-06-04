@@ -16349,12 +16349,15 @@ C      implicit none
            if (use_conv.eqv..True.) then
             if (is_conv.eqv..False.) then
               tmax_new=max(vert_mix_time(k),krome_tmax) !if not converged, increase tmax to the maximum of the current tmax, vertical mixing timescale and user defined tmax
+
               if (tmax_new.eq.tmax) then
                   write(*,*) 'Convergence not reached for layer ',k, 
      >             'in time ', tmax
                   exit
               else
                   tmax=tmax_new !restart loop with a larger time
+                  dt_max = tmax_new/10.0 !increase maximum timestep to speed up convergence
+                  dt_inc = dt_inc*2 !increase timestep increase factor to speed up convergence
                   goto 543
               endif
             endif
