@@ -2,7 +2,7 @@
 
 * Number of depth points in the model.
       INTEGER   NDP
-      PARAMETER ( NDP=60)
+      PARAMETER ( NDP=300)
 
 * Maximal number of rays for the solution of the transfer equation.
 * This should be at least NDP/2 +3.
