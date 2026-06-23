@@ -3461,7 +3461,8 @@ C and other routines from gem_init by common CI5.
       print*, "Metallicity is ", zscale, " time(s) solar."
       !REWRITE HEAD OF ELABUND AND SCREEN OUTPUT WITH GENERALIZED INPUT FORMAT AND OUTPUT FORMAT
       metal_z=zscale !write out metallicity for use in other routines, e.g. VIRGA
-      write(7,*) 'This model of the general type ', trim(head_elabund)
+      write(7,*) 'This model has the elemental abundances ',
+     >  'of the general type ', trim(head_elabund)
       do i=1, nelem
       if (i>2) then
             abinit(i) = abinit(i) + log10(zscale)
@@ -4409,8 +4410,19 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_initabund/ krome_init_abund_on
+      common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
+      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /virga/ ivirga_on
+      integer krome_on,krome_photo_on,krome_output,krome_debug
+      integer krome_return,krome_init_abund_on,ivirga_on
+      real*8 dt_start,dt_max,dt_inc,krome_tmax
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      *STEFAN
+      integer krome_not_count
+      real*8 krome_not_pp(ndp,1000)
+      character*12 krome_not_cnames(1000)
+      common /krome_not_nums/ krome_not_pp, krome_not_count
+      common /krome_not_cname/ krome_not_cnames
       character*3 aifix
       common /pefix/xionfix,aifix
       dimension idplus(543),idminus(543),idmol(543),idos(543)
@@ -4521,33 +4533,69 @@ C        CONVERT TO 'PHYSICAL FLUX'
 1533  format('mass (in units of earth mass):', f6.3) 
       ENDIF
       IF (irrin == 1) THEN
+        write(7,516)
+516     FORMAT(/'The model takes irradiation into account,',
+     &    ' based on the parameters:')
+        write(7,406) f_irrad
+406     format('  Irradiation redistribution factor: ',f6.3)
+        if (input_star_spec == 1) then
+          write(7,408) spectrum_scale
+408       format('  Irradiation source: input spectrum',
+     &      ' (data/stellar_spectrum.dat, scaling =',1pe10.3,')')
+        else
+          write(7,401) steff
+401       format('  Irradiation source: blackbody, Teff(star) =',
+     &      f8.0,' K')
+        endif
+          write(7,402) rstar
+402       format('  Stellar radius: ',f7.2,' solar radii')
+          write(7,403) semimajor
+403       format('  Semi-major axis: ',f7.3,' AU')
+        if (irrinp == 1) then
+          write(7,404) tbottom, reflect
+404       format('  Rocky or ocean planet with T_surface =',f6.0,
+     &      ' K, and surface albedo =',f5.3)
+        else
+          write(7,*) '  Planet/BD type: gas planet, brown dwarf,',
+     &      ' or star (no reflecting lower boundary)'
+        end if
+      ELSE
+        write(7,*) 'Irradiation: off'
+      END IF
 
-      write(7,516)
-516   FORMAT(/'The model takes irradiation into account,',
-     & ' based on the parameters:')
-      write(7,401) steff
-401   format("Stellar effective temperature ", f8.0, " Kelvin ")
-      write(7,402)rstar
-402   format("Stellar radius of  ", f7.2, " solar radii")
-      write(7,403)semimajor
-403   format("Planet at ",f6.3, " AU from star") 
-      write(7,406) f_irrad
-406   format('irradiation factor:',f6.2)
-      write(7,407) teffp
-407   format('final planetary Teff:',f8.1)
-
-      if (irrinp == 1) then
-      write(7,404) tbottom, reflect
-404   format("The model is a rocky planet with surface temperature ", 
-     * f5.0, " K and surface albedo ",f4.2)
+      write(7,5300)
+5300  FORMAT(/'Chemistry:')
+      if (krome_on .eq. 1) then
+        write(7,*) 'Disequilibirum Status: ON'
+        if (krome_photo_on .eq. 1) then
+          write(7,5310) krome_photo_scale
+5310       format('  Photochemistry: ON (scaling =',1pe10.3,')')
+        else
+          write(7,*) '  Photochemistry: OFF'
+        end if
+        if (krome_init_abund_on .eq. 1) then
+          write(7,*) '  Initial abundances: from krome_init_abund.dat'
+        else
+          write(7,*) '  Initial abundances: from GGchem'
+        end if
+        write(7,5320) conv_crit
+5320     format('  Convergence criterion: ',1pe10.3)
+        write(7,5330) dt_start,dt_max,krome_tmax,dt_inc
+5330     format('  Time integration: dt_start=',1pe9.2,
+     &    '  dt_max=',1pe9.2,'  t_max=',1pe9.2,'  dt_inc=',0pf5.2)
+        write(7,5340) krome_output,krome_debug,krome_return
+5340     format('  I/O flags: krome_output=',i2,
+     &    '  krome_debug=',i2,'  krome_return=',i2)
       else
-      write(7,*) 'the irradiated model is a gas-planet, a brown dwarf',
-     * ' or star and therefore has no "reflecting surface" '
+        write(7,*) 'Disequilibrium Status: OFF '
+      end if
+      if (ivirga_on .eq. 1) then
+        write(7,*) 'Virga cloud model: ON'
+      else
+        write(7,*) 'Virga cloud model: OFF'
       end if
 
-      END IF   
-
-      write(7,1540) tconv,abs(tcorlast)
+      write(7,1540) tconv,abs(tcorlast) !look into this
 1540  format(/'The convergence criterium was delta(T)=',f4.1,' K and ',
      & 'temp. corr. in the last iteration was',f5.2,' K'//)
 
@@ -4562,6 +4610,7 @@ C        CONVERT TO 'PHYSICAL FLUX'
 
       if(metpe.eq.2) write(7,*)
      &  '(listed Pe is from GGchem; Pe for converg. in colm Pturb)'
+
       write(7,2020)
 2020  FORMAT(/1X,81('*')//)
       if (nu2warning .eq. 1) then
@@ -4710,89 +4759,9 @@ C here: JF's/Tsuji's molecular partial pressures from JANAF polynomial fits:
 C for Tsuji's eq names are not read in (MOL(J) as real*8...)
 
       IF (jump.eq.4) THEN
+      open(unit=90,file='full_output.dat',status='unknown')
 
-C Here comes output blocks for selected of the 22 atoms and 543 molecules directly from GGchem; 
-C Select which by chancing the index numbers in the data statements kions, kpratoms, k1mol, k2mol, k3mol
-C in the top of the LISTMO subroutine ; do not put more than 15 species per output block.
-C With time these ought to be the only partial pressure listing in the atmosphere data files.
-C Unit=90 is an output file with more infor on the partial pressures than stored in the model atmosphere files.
-C The OS-molecules:
-        nos = 0
-        do 4201 k=1,54
-        do 4200 j=1,543
-        ipos = 0
-        molnam8 = molnames(j)
-        molnam4 = molnam8(1:4)
-        ipos = index(molnames(j),osnames(k))
-        if (ipos.ne.1) go to 4200
-        nos = nos + 1
-        idos(nos) = j
-        go to 4201
-4200    continue
-4201    continue
-C
-4218    format('there were no GGchem partial pressure for OS molecule:')
-        write(90,*) 'noggos,k,ipos, osnames(k)'
-4219    format(3i4,2x,a4)
-        noggos = 0
-        write(90,4218)
-        do 4226 k=1,54
-        do 4225 j=1,nos
-        ipos = 0
-        ipos = index(molnames(idos(j)),osnames(k))
-        if (ipos.ne.1) go to 4225
-        go to 4226
-4225    continue
-        noggos = noggos + 1
-        write(90,4219) noggos,k,ipos, osnames(k)
-4226    continue
-      WRITE(90,4232) NOSMOL
-4232  format(' Following ',i3,
-     &       ' molecules are included in opacity for this calculation:')
-      WRITE(90,4233) (MOLNAME(I),I=1,NOSMOL)
-4233  FORMAT(18(2X,A4))
-C
-        write(90,*)
-        write(90,*)
-     &  'Compute partial pressure sums of molecules with known OS:'
-
-        write(90,4202) nos
-4202    format('There are',i4,
-     &    ' OS molecules with known GGchem partial pressure:')
-        WRITE(90,4203) (molnames(idos(j)),j=1,nos)
-        WRITE(90,4208) (idos(j),j=1,nos)
-4203    format(9A8)
-4208    format(9i8)
-C
-C
-        write(90,4205) 
-4205    format('There are 54 OS molecules in total that we have '
-     &      ,'line lists for:')
-        WRITE(90,4206) (osnames(j),j=1,54)
-4206    format( 9(a4,4x) )
-C
-C k should be the depth layer if we should be able to make the test of
-C summation in each layer, which would require a listing of the
-C pp_j(k) for all j=1,54 OS-molecules; for now we set k=ndp here
-C to avoid it being 0 (i.e. out of dimension). ppallmol(k,..) has
-C already at this state been filled in by k=1,ntau calls to ggchem and
-C corresponding saving in the 2D array.
-!      open(unit=707,file='pp.dat')
-!      if (krome_on.eq.1) then !avoid overriding non-eq results with final ggchem call
-!       read(707,*) (dummy_ppallat(ntau,m),m=1,22)
-!       read(707,*) (dummy_ppallmol(ntau,m),m=1,543)
-!      else
-!       read(707,*) (ppallat(ntau,m),m=1,22)
-!       read(707,*) (ppallmol(ntau,m),m=1,543)
-!      endif
-!      read(707,708) ((km,atnames(m)),m=1,22)   
-!      read(707,*)
-!      read(707,709) (molnames(m),m=1,543)
-
-!708         format(i4,18x,a2)
-!709           format(10a8)
-!      close(707)
-C The positive and negative ions:
+C Compute ion/molecule sums needed by unit 7 summary (ppp, ppm, ppnmol):
         natplus = 0
         do 3200 j=1,543
         ipos = 0
@@ -4801,11 +4770,6 @@ C The positive and negative ions:
         natplus = natplus + 1
         idplus(natplus) = j
 3200    continue
-        write(90,3201) natplus
-3201    format('There are',i4,' positive ions:')
-        WRITE(90,3253) (molnames(idplus(j)),j=1,natplus)
-        WRITE(90,4209) (idplus(j),j=1,natplus)
-4209    format(15i8)
         do 3220 i=1,jtau
         ppp(i) = 0.
         do 3221 j=1,natplus
@@ -4820,17 +4784,12 @@ C The positive and negative ions:
         natminus = natminus + 1
         idminus(natminus) = j
 3203    continue
-        write(90,3204) natminus
-3204    format(/'There are',i4,' negative ions:')
-        WRITE(90,3253) (molnames(idminus(j)),j=1,natminus)
-        WRITE(90,4209) (idminus(j),j=1,natminus)
         do 3226 i=1,jtau
         ppm(i) = 0.
         do 3223 j=1,natminus
         ppm(i) = ppm(i)+ppallmol(i,idminus(j))
 3223    continue
 3226    continue
-C The neutral molecules:
         neutralmol = 0
         do 3205 j=1,543
         ipos = 0
@@ -4841,37 +4800,65 @@ C The neutral molecules:
         neutralmol = neutralmol + 1
         idmol(neutralmol) = j
 3205    continue
-        write(90,3206) neutralmol
-3206    format(/'There are',i4,' neutral molecules:')
-        WRITE(90,3207) (molnames(idmol(j)),j=1,neutralmol)
-        WRITE(90,3210) (idmol(j),j=1,neutralmol)
-3207    FORMAT(2x,15a8)
-3210    FORMAT(2x,15i8)
         do 3227 i=1,jtau
         ppnmol(i) = 0.
         do 3228 j=1,neutralmol
         ppnmol(i) = ppnmol(i)+ppallmol(i,idmol(j))
 3228    continue
 3227    continue
-C The neutral atoms:
-        WRITE(90,3202) (atnames(j),j=1,22)
-3202    format(/'There are 22 neutral atoms:', 22(1x,a2,1x))
-        do 3145 jm=1,2
-        jmin=(jm-1)*15 + 1
-        jmax = jmin+14
-        if(jmin.gt.22) go to 3146
-        if(jmax.ge.22) jmax=22
-        WRITE(90,2233)
-2233    FORMAT(//' P A R T I A L  P R E S S U R E S ',
-     &    ' of all the 22 neutral atoms from GGchem')
-        WRITE(90,3148) (atnames(j),j=jmin,jmax)
-        WRITE(90,3211) (j,j=jmin,jmax)
-        DO I=1,JTAU
-                WRITE(90,'(I2,15F8.3)')I,
-     *          (log10(max(1.e-99,(ppallat(i,j)))),J=jmin,jmax)
+
+C --- Unit 90: Model atmosphere P/T table (same layout as marcs_output.dat) ---
+      WRITE(90,207)
+      WRITE(90,208)
+      DO I=1,JTAU
+        if(metpe.eq.1) then
+          WRITE(90,209) I,TAU(I),TAUS(I),Z(I),T(I),PE(I),
+     &        PG(I),PRAD(I),PTURB(I),XKAPR(I),I
+        else
+          WRITE(90,209) I,TAU(I),TAUS(I),Z(I),T(I),PPEL(I),
+     &        PG(I),PRAD(I),PE(I),XKAPR(I),I
+        end if
+      END DO
+
+C --- Unit 90: Single species-header line (22 atoms + 543 mols + KROME-only) ---
+      WRITE(90,'(3x)',Advance='No')
+      do J=1,22
+        WRITE(90,'(a12)',Advance='No')
+     &      repeat(' ',12-len_trim(atnames(J)))//trim(atnames(J))
+      end do
+      do J=1,543
+        WRITE(90,'(a12)',Advance='No')
+     &      repeat(' ',12-len_trim(molnames(J)))//trim(molnames(J))
+      end do
+      if (krome_on.eq.1) then
+        do J=1,krome_not_count
+          WRITE(90,'(a12)',Advance='No')
+     &        repeat(' ',12-len_trim(krome_not_cnames(J)))//
+     &        trim(krome_not_cnames(J))
         end do
-3145    continue
-3146    continue
+      end if
+      WRITE(90,'(a)') ' '
+
+C --- Unit 90: One data row per atmospheric layer ---
+      DO I=1,JTAU
+        WRITE(90,'(i3)',Advance='No') I
+        do J=1,22
+          WRITE(90,'(f12.3)',Advance='No')
+     &        log10(max(1.e-99,ppallat(i,j)))
+        end do
+        do J=1,543
+          WRITE(90,'(f12.3)',Advance='No')
+     &        log10(max(1.e-99,ppallmol(i,j)))
+        end do
+        if (krome_on.eq.1) then
+          do J=1,krome_not_count
+            WRITE(90,'(f12.3)',Advance='No')
+     &          log10(max(1.e-99,krome_not_pp(i,j)))
+          end do
+        end if
+        WRITE(90,'(a)') ' '
+      END DO
+
         WRITE(7,2234)
 2234    FORMAT(//' P A R T I A L  P R E S S U R E S   ',
      &  ' of 15 selected neutral atoms of the 22 calculated in GGchem')
@@ -4951,15 +4938,9 @@ C The neutral atoms:
         jmax = jmin+14
         if(jmin.gt.543) go to 3144
         if(jmax.ge.543) jmax=543
-        WRITE(90,2133)
-        WRITE(90,3147) TEFF,GLOG,jm,jmin,jmax
-        WRITE(90,3153) (molnames(j),j=jmin,jmax)
-                WRITE(90,'(2x,15(2x,i3,3x))')((j),J=jmin,jmax)
         WRITE(7,3153) (molnames(j),j=jmin,jmax)
                 WRITE(7,'(2x,15(2x,i3,3x))')((j),J=jmin,jmax)
         DO I=1,JTAU
-                WRITE(90,'(I3,15F8.3)')I,
-     *          (log10(max(1.e-99,(ppallmol(i,j)))),J=jmin,jmax)
                 if(i.eq.1 .or. i.eq.jtau)
      *          WRITE(7,'(I3,15F8.3)')I,
      *          (log10(max(1.e-99,(ppallmol(i,j)))),J=jmin,jmax)
@@ -5552,6 +5533,11 @@ C
       common /virga/ ivirga_on
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
       character(len=200) :: spectrum_file
+      character(len=200) :: readin_line
+      character(len=1),parameter :: sep=' '
+      real*8 :: dummy_wl, first_wl_spec
+      integer :: ios_ab
+      integer :: sep_pos
 C INITIATIONS
       HPLNCK=6.62554E-27
       BOLTZK=1.38054E-16
@@ -5592,15 +5578,36 @@ C
       print*, "Irradiation is turned on"
        if (input_star_spec==1) then
         print*, 'Using input spectrum for irradiation'
-
         spectrum_file = trim("./data/stellar_spectrum.dat")
         stellar_spectrum = 0.0d0
         print*, "Stellar specturm scaling set to", spectrum_scale    
         open(unit=20, file=spectrum_file, status='old', action='read')
-        do j=1,nwreal
-         read(20,*) stellar_spectrum(j) 
-        end do
+        index_wlambda = 1
+        do
+        read(20,'(A200)',iostat=ios_ab) readin_line
+        readin_line = trim(adjustl(readin_line))
+        if (ios_ab /= 0) exit
+        if (trim(readin_line(1:1)) == '#') cycle
+        sep_pos = index(trim(readin_line), sep)
+        if (sep_pos > 1) then
+            read(readin_line(1:sep_pos-1), *) dummy_wl
+            read(readin_line(sep_pos+1:), *)
+     >       stellar_spectrum(index_wlambda)
+            if (index_wlambda == 1) first_wl_spec = dummy_wl
+            index_wlambda = index_wlambda + 1
+        endif
+        if (index_wlambda > nwreal+1) then
+          print*, "Warning: more lines in stellar spectrum file than expected. ' 
+     >     'Stopping reading at ", nwreal, " lines."
+          exit
+
+        end if
+ 
+        enddo
         close(20)
+        print*, "Stellar spectrum read:", index_wlambda-1, "points.",
+     >    " First entry: wl =", first_wl_spec,
+     >    " flux =", stellar_spectrum(1)
 
        else
       print*, 'Using blackbody spectrum for irradiation'
@@ -9449,8 +9456,6 @@ C ELECTRON PRESSURE
 375   CONTINUE
       
       TTT(I,J)=TTT(I,J)-SUMA
-      ! print*, "i ", i 
-      ! print*, "j ", 
       RT(I)=RT(I)-TPE(I,J)*RPE(J)
 374   CONTINUE
 C
@@ -9480,8 +9485,6 @@ C SOLVE FOR TEMPERATURE CORRECTION
       DO 399 J=1,NTAU
       T(I)=T(I)+TTT(I,J)*RT(J)
 399   CONTINUE
-      ! print*, "i ", i
-      ! print*, "t corr",t(i) 
 400   CONTINUE
 C
 C
@@ -9514,18 +9517,17 @@ C atomic (T,Pg dependent Vogit profiles) absorption coefficient.
          end if
       IF(TCORMX.LE. 5.*TCONV )  THEN 
          if(newosatom.eq.1) then 
-C                    call osatom
                      newosatom = 2
                      tcormxend = 0.
          end if
       END IF
       IF(TCORMX.LE. TCONV )  THEN 
          ITSTOP=.TRUE.
-C        if(newosatom.eq.2 .and. tcormxend.gt.20.0*tconv) call osatom
       END IF
       IF(TCORMX.GT.TCONV )  THEN !catch cases where in the onemor iteration TCORMX can become larger than TCONV
-               ITSTOP=.FALSE.
+         ITSTOP=.FALSE.
       ENDIF
+
       PRINT406, TCORMXM,IT
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
@@ -9813,20 +9815,16 @@ C SOLVE THE CONTINUUM SCATTERING PROBLEM IN THE EDDINGTON APPROXIMATION
       h_irrad = 1.0
       CALL SCATTR
       DO 120 K=1,JTAU
-      if (irrin>0) then 
-       XJ(K)=XJ(K)+P(K) + Pstar(K)
+      if (irrin>0) then
+       XJ(K)=XJ(K)+P(K)+Pstar(K)
+       XK(K)=XK(K)+.333333*(P(K)+Pstar(K))
       else
        XJ(K)=XJ(K)+P(K)
-      end if 
-
-      if (irrin>0) then
-      XK(K)=XK(K)+.333333*(P(K)+Pstar(k))
-      else
-      XK(K)=XK(K)+.333333*P(K)
+       XK(K)=XK(K)+.333333*P(K)
       end if
 C
 C AITKEN EXTRAPOLATION USED FOR CONVERGENCE ACCELLERATION
-      if (irrin>0) then
+      if (irrin>0)  then
       DS=ERROR(K)+(P(K)+Pstar(k))*S(K)/(X(K)+S(K))
       else
       DS=ERROR(K)+P(K)*S(K)/(X(K)+S(K))
@@ -9836,8 +9834,6 @@ C AITKEN EXTRAPOLATION USED FOR CONVERGENCE ACCELLERATION
       DS=DS/FACT(K)
       IF(IT.GE.2) DSO(K)=DS
 120   SOURCE(K)=SOURCE(K)+DS
-      !different call for taking into account the gaussian weights 
-      !in the irradiation routine
 C
 C SOLVE THE TRANSFER EQUATION WITH GIVEN SOURCE FUNCTION
       CALL FORMAL
@@ -10050,6 +10046,7 @@ C
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
+      common /cit/ it, itmax
       DATA XMU,XMU2/0.5773503,0.3333333/
 C
 C K=1
@@ -10101,11 +10098,11 @@ C PRELIM
       !IRRADIATION
       Rsun_au=0.00465047
       Rstar_au= rstar*Rsun_au
-      delta_omega = (Rstar_au/(semimajor))**2.0 / 
+      delta_omega = (Rstar_au/(semimajor))**2.0 /
      & (4.0*(f_irrad))
-      Pstar(1) = (C*(1-EX))* 
+      Pstar(1) = (C*(1-EX))*
      & (delta_omega/h_irrad) *bstar
-      P(1)=P(1) *(1.+C*EX)*(1.-delta_omega) 
+      P(1)=P(1)*(1.+C*EX)*(1.-delta_omega) + Pstar(1)
       end if
 C
 C ACCUMULATE INHOMOGENOUS TERMS
@@ -10114,7 +10111,6 @@ C ACCUMULATE INHOMOGENOUS TERMS
       if (irrin>0) then
       do k=1, JTAU1
        Pstar(k+1) = SP1(k)*Pstar(k)
-       Pstar(k+1) = min(Pstar(k+1), 1.0d30)
       end do
       if (irrinp >0) then
        Pstar(JTAU) = Pstar(jtau) + reflect*Pstar(jtau)
@@ -10122,11 +10118,15 @@ C ACCUMULATE INHOMOGENOUS TERMS
       end if
 C BACKSUBSTITUTE
       P(JTAU)=P(JTAU)/SP2(JTAU)
+      if (irrin>0) then
       Pstar(jtau)=Pstar(jtau)/SP2(JTAU)
       DO 140 K=1,JTAU1
       Pstar(JTAU-K)=(Pstar(JTAU-K)
-     & -SP3(JTAU-K)*Pstar(JTAU-K+1))/SP2(JTAU-K)
-140   P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K)*P(JTAU-K+1))/SP2(JTAU-K)
+     & -SP3(JTAU-K)*Pstar(JTAU-K+1))/MAX(SP2(JTAU-K),1.0D-10)
+140   P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K)*P(JTAU-K+1))
+     >/MAX(SP2(JTAU-K),1.0D-10)     
+      end if
+C BACKSUBSTITUTE PSTAR
 C
       RETURN
       END
@@ -10941,6 +10941,7 @@ CC    GGG IS UNITY
 CC    RG IS ZERO
 C
 C GRADIENT DIFFERENCE
+
       IF(K.LE.NOCONV) GO TO 206
       DELP=PP(K)-PP(K-1)
       DELT=TT(K)-TT(K-1)
@@ -16068,7 +16069,7 @@ C      implicit none
       real*8::num_den_mol(ndp,543), num_den_at(ndp,22)
       real*8::mix_rat(ntau,nsp)
       real*8::num_den_cont(100000,nsp),time_cont(100000)
-      real*8::time,dtmax,dt_inc
+      real*8::time,dt_max,dt_inc
       real*8::ss_time(ntau)
       real*8::krome_tmax
       real*8::conv_crit
@@ -16078,12 +16079,20 @@ C      implicit none
       real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
       real*8::aa_to_m_conv,J_to_eV_conv,HC_to_SI_conv
       character(len=100)::spec_name
-      character(len=8),dimension(nsp)::chem_spec
-      character atnames*2, molnames*8, molnames2*4    
+      character(len=12),dimension(nsp)::chem_spec
+      character atnames*2, molnames*8, molnames2*4
+      integer krome_not_count
+      real*8 krome_not_pp(ndp,1000)
+      character*12 krome_not_cnames(1000)
+      common /krome_not_nums/ krome_not_pp, krome_not_count
+      common /krome_not_cname/ krome_not_cnames
       real*8 :: krome_photo_scale
       real*8 :: num_den_save(ndp,nsp) 
+      real*8 :: num_den_diff(nsp)
       save num_den_save
       integer ,parameter:: output_freq=100
+      integer :: it,itmax
+      logical :: ITSTOP
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
      *    kos_step,nwtot
       COMMON/COSWR/osresl
@@ -16109,7 +16118,7 @@ C      implicit none
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
-      default_abun=1E-20 !default abundance for species not found in MARCS/GGchem
+      default_abun=1D-20 !default abundance in relative terms for species not found in MARCS/GGchem
 
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
@@ -16187,11 +16196,15 @@ C      implicit none
 
       if (not_counter.gt.0) then
        if (first_not_call.eq..True.) then
-       write(*,*) 'Species not found in MARCS will be set to ',
-     > 'default abundance of 1E-20'
+       write(*,*) 'Species not found in MARCS or initial abundances',
+     >  'will be set to default abundance ',default_abun
        first_not_call=.False.
        endif
       endif
+      krome_not_count = not_counter
+      do i=1,not_counter
+        krome_not_cnames(i) = chem_spec(index_not(i))
+      enddo
 
       if (krome_photo_on.eq.1) then !initializing of photobins
          J_to_eV_conv=6.242E18!Joule to eV
@@ -16257,7 +16270,7 @@ C      implicit none
          num_den(k,index_mol2(i,2)) = num_den_mol(k,index_mol2(i,1))
         enddo
         do i=1,not_counter
-         num_den(k,index_not(i)) = default_abun
+         num_den(k,index_not(i)) = default_abun*ptot(k)*Pcon(k)
         enddo
         if (M_counter.eq.1) num_den(k,M_index) = ptot(k)*Pcon(k)
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
@@ -16324,18 +16337,28 @@ C      implicit none
          dt = min(dt*dt_inc,dt_max)
        if (use_conv.eqv..True.) then 
          if (dt.ge.dt_max) then !break loop if convergence is reached and timestep on max timestep length
+            num_den_tot=0.0
+            num_den_diff(:)=0.0
+            do j=1,nsp
+            num_den_tot=num_den_tot+
+     >       num_den_cont(istep,j)
+            enddo
             is_conv=.True.
             do j=1,nsp
-            conv_denominator = max(num_den_cont(istep,j),default_abun)
-            num_den_diff = abs(num_den_cont(istep,j)-
+            if (num_den_cont(istep,j).lt.default_abun*num_den_tot) cycle !skip convergence check for species with very low abundance to avoid division by small numbers and noisy convergence behaviour
+            conv_denominator = max(num_den_cont(istep,j),
+     >       default_abun*num_den_tot)
+            num_den_diff(j) = abs(num_den_cont(istep,j)-
      >       num_den_cont(istep-1,j))
-            if ((num_den_diff/conv_denominator).ge.conv_crit) then                    
-                is_conv=.False.
+            num_den_diff(j) = num_den_diff(j)/conv_denominator
+            enddo
+            max_diff = maxval(num_den_diff(:))
+            if ((max_diff).ge.conv_crit) then                    
+             is_conv=.False.
             endif
             if (is_conv.eqv..True.) then
              exit
             endif
-            enddo
             if (is_conv.eq..True.) then
               if (krome_debug.eq.1) then
                   write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
@@ -16402,12 +16425,15 @@ C Returning the krome values to MARCS
           ppallmol(k,:) = num_den_mol(k,:)/Pcon(k)
           ppallat(k,:) = num_den_at(k,:)/Pcon(k)
           num_den_save(k,:) = num_den(k,:)
+          do i=1,not_counter
+            krome_not_pp(k,i) = num_den(k,index_not(i))/Pcon(k)
+          enddo
         enddo
       endif
 
       if (krome_photo_on.eq.1) then
        if (krome_output.eq.1) then
-        if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
+        !if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
          open(unit=7070,file='krome_flux_rad.dat')
          write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
      >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
@@ -16419,7 +16445,7 @@ C Returning the krome values to MARCS
         enddo
         close(7070) 
         endif
-       endif
+       !endif
       endif
       return      
       end
