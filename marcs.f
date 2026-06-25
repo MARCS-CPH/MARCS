@@ -4590,9 +4590,11 @@ C        CONVERT TO 'PHYSICAL FLUX'
         write(7,*) 'Disequilibrium Status: OFF '
       end if
       if (ivirga_on .eq. 1) then
-        write(7,*) 'Virga cloud model: ON'
+        !add a new line
+        write(7,*) 'Cloud model: ON'
       else
-        write(7,*) 'Virga cloud model: OFF'
+        !add a new line    
+        write(7,*) 'Cloud model: OFF'
       end if
 
       write(7,1540) tconv,abs(tcorlast) !look into this
@@ -12538,9 +12540,17 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       logical ggchem_mol(maxosmol), ggchem_index_read, species_found
       integer ggchem_index(maxosmol), molno
       character(len=5) molnames_new(maxosmol)
-      common /molupdate/ molnames_new, 
+      common /molupdate/ molnames_new,
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
+      logical is_krome_not(maxosmol)
+      integer krome_not_idx(maxosmol)
+      common /krome_os_match/ krome_not_idx, is_krome_not
+      integer krome_not_count
+      real*8 krome_not_pp(ndp,1000)
+      character*12 krome_not_cnames(1000)
+      common /krome_not_nums/ krome_not_pp, krome_not_count
+      common /krome_not_cname/ krome_not_cnames
       common /dpeset/ dpein,dtin, pe_corr(ndp)
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_initabund/ krome_init_abund_on
@@ -12722,7 +12732,11 @@ C     processed and read in. The order in mol_names.dat can be whatever.
 
 C     Lets now search for the ggchem index of our species      
       if (.not. ggchem_index_read) then
-C           Note: we only need to do this once!!       
+C           Note: we only need to do this once!!
+      do nm=1,molno
+        is_krome_not(nm) = .FALSE.
+        krome_not_idx(nm) = 0
+      end do
       do nm=1, molno
           species_found = .FALSE.
 C         We first try to match the species to a molecule
@@ -12754,9 +12768,22 @@ C         We then check if our species is an atom
              endif
           end do atmloop
           if (.not. species_found) then
-            print*,' species is not an atom or molecule from ggchem: '
-     &         ,nm,molnames_new(nm)
-            STOP 'Check species name in mol_names.dat'
+            if (krome_on.eq.1) then
+              kromeloop: do ikn=1,krome_not_count
+                if (trim(upper(krome_not_cnames(ikn))) .eq.
+     &              trim(upper(molnames_new(nm)))) then
+                  is_krome_not(nm) = .TRUE.
+                  krome_not_idx(nm) = ikn
+                  species_found = .TRUE.
+                  exit kromeloop
+                end if
+              end do kromeloop
+            end if
+            if (.not. species_found) then
+              print*,' species not in ggchem or krome-only list: '
+     &           ,nm,molnames_new(nm)
+              STOP 'Check species name in mol_names.dat'
+            end if
           endif
       end do
       ggchem_index_read = .TRUE.
@@ -12850,7 +12877,12 @@ C ....the plot
 
             do it=1, ntau
                   TRIX=T(it)*RO(it)
-                  if (ggchem_mol(nm)) then
+                  if (is_krome_not(nm)) then
+                      if (jv==1) then
+                       write(23962,*) krome_not_pp(it,krome_not_idx(nm))
+                      end if
+                        ppx_os = krome_not_pp(it,krome_not_idx(nm))
+                  else if (ggchem_mol(nm)) then
                         if (jv==1) then
                         write(23962,*) ppallmol(it,ggchem_index(nm))
                         end if
@@ -12858,7 +12890,7 @@ C ....the plot
                   else
                         ppx_os = ppallat(it,ggchem_index(nm))
                   endif
-                  px_os = ppx_os / TRIX*1.20274D-8    
+                  px_os = ppx_os / TRIX*1.20274D-8
 
                   akapmol(it) = opjv(jv,it)
                   if(it.eq.ltop .and. akapmol(it) .gt. akapmax(it)) then
