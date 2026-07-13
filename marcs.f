@@ -16121,6 +16121,12 @@ C      implicit none
       real*8 :: krome_photo_scale
       real*8 :: num_den_save(ndp,nsp) 
       real*8 :: num_den_diff(nsp)
+      real*8 :: num_den_pre(nsp)    ! abundances before KROME, for tau_chem
+      real*8 :: tau_chem_i          ! chemical timescale for species i [s]
+      real*8 :: dz_k                ! vertical layer spacing [cm]
+      real*8 :: flux_up             ! upward eddy flux [cm^-2 s^-1]
+      real*8 :: delta_n_mix         ! abundance transferred upward [cm^-3]
+      logical :: mixing_on = .false. ! eddy mixing off by default
       save num_den_save
       integer ,parameter:: output_freq=100
       integer :: it,itmax
@@ -16151,7 +16157,9 @@ C      implicit none
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
       default_abun=1D-20 !default abundance in relative terms for species not found in MARCS/GGchem
-
+      if (conv_crit.ge.0) then !quick trick to turn off convergence check if conv_crit is zero or positive
+        use_conv=.False.
+      endif
       !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
       !write relevant species out from info.log
       if (first_call.eq..True.) then !initialization of krome. Checking for molecules in MARCS and finding their indices, setting Photobins if photochem is needed
@@ -16331,8 +16339,8 @@ C      implicit none
          write(13,'(A,/)') ' '
       endif 
 
-      !main loop
-      do k=1,ntau
+      !main loop (bottom-to-top so mixed abundances feed upward into next layer)
+      do k=ntau,1,-1
         tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
 543     continue !restart point if time is not sufficient for convergence
         istep = 1
@@ -16353,6 +16361,8 @@ C      implicit none
           endif
          endif 
         endif
+
+        num_den_pre(:) = num_den(k,:)  ! snapshot before KROME for tau_chem
 
         do
          call krome(num_den(k,:), T(k), dt) !call KROME
@@ -16423,9 +16433,43 @@ C      implicit none
            endif
           exit
          endif
-         time = time + dt !increase time         
+         time = time + dt !increase time
          istep = istep + 1 !increase timestep
         end do
+C ------ UPWARD EDDY MIXING (Eq. 2 term 1, Bangera et al. 2025) ------
+C       Phi = -K_zz * (dn_i/dz + n_i/H_p), Bangera et al. 2025
+C       Applied per species when tau_chem > tau_mix. Disabled by default
+C       (mixing_on = .false.); set mixing_on = .true. to activate.
+      if (mixing_on .and. k .gt. 1 .and. time .gt. 0.0d0) then
+        dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
+        do i = 1, nsp
+C         Chemical timescale: n_i / |dn_i/dt_net| from KROME integration
+          if (abs(num_den(k,i) - num_den_pre(i)) .gt. 0.0d0) then
+            tau_chem_i = abs(num_den(k,i))
+     >        / (abs(num_den(k,i) - num_den_pre(i)) / time)
+          else
+            tau_chem_i = 1.0d30
+          end if
+          if (tau_chem_i .gt. vert_mix_time(k)) then
+C           Phi = -K_zz * (dn_i/dz + n_i/H_p); Phi>0 means upward (k->k-1)
+            flux_up = -K_zz(k) * (
+     >          (num_den(k-1,i) - num_den(k,i)) / dz_k
+     >        +  num_den(k,i) / H_p(k))
+C           Amount transferred upward over the chemistry time step
+            delta_n_mix = flux_up * time / dz_k
+C           Stability guard: at most 50% of either layer per step
+            if (delta_n_mix .gt. 0.0d0) then
+              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
+            else
+              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
+            end if
+C           Conserving transport: layer k loses, layer k-1 gains
+            num_den(k,i)   = num_den(k,i)   - delta_n_mix
+            num_den(k-1,i) = num_den(k-1,i) + delta_n_mix
+          end if
+        end do
+      end if
+C ------ END EDDY MIXING ------
       end do
       if (krome_debug.eq.1) then         
        close(3535)
