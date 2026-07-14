@@ -16126,7 +16126,13 @@ C      implicit none
       real*8 :: dz_k                ! vertical layer spacing [cm]
       real*8 :: flux_up             ! upward eddy flux [cm^-2 s^-1]
       real*8 :: delta_n_mix         ! abundance transferred upward [cm^-3]
-      logical :: mixing_on = .false. ! eddy mixing off by default
+      logical :: mixing_on = .True. ! eddy mixing off by default
+      real*8 :: dt_max_loc, dt_inc_loc ! per-layer working copies; dt_max/dt_inc
+                                        ! (common block) are never written to,
+                                        ! so a retry on one layer can't leak
+                                        ! into later layers or later iterations
+      logical :: extend_time           ! true when time>tmax but we're resuming
+                                        ! with a larger tmax instead of exiting
       save num_den_save
       integer ,parameter:: output_freq=100
       integer :: it,itmax
@@ -16342,7 +16348,9 @@ C      implicit none
       !main loop (bottom-to-top so mixed abundances feed upward into next layer)
       do k=ntau,1,-1
         tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
-543     continue !restart point if time is not sufficient for convergence
+        is_conv = .False.
+        dt_max_loc = dt_max !seed local working copies from the (read-only) common block
+        dt_inc_loc = dt_inc
         istep = 1
         dt = dt_start
         time=0.0
@@ -16376,9 +16384,9 @@ C      implicit none
      >     num_den(k,:)     
           end if
          end if
-         dt = min(dt*dt_inc,dt_max)
-       if (use_conv.eqv..True.) then 
-         if (dt.ge.dt_max) then !break loop if convergence is reached and timestep on max timestep length
+         dt = min(dt*dt_inc_loc,dt_max_loc)
+       if (use_conv.eqv..True.) then
+         if (dt.ge.dt_max_loc) then !break loop if convergence is reached and timestep on max timestep length
             num_den_tot=0.0
             num_den_diff(:)=0.0
             do j=1,nsp
@@ -16411,27 +16419,32 @@ C      implicit none
           endif
          endif
          if(time>tmax) then !break loop if maximum time is reached
+           extend_time = .False.
            if (use_conv.eqv..True.) then
             if (is_conv.eqv..False.) then
               tmax_new=max(vert_mix_time(k),krome_tmax) !if not converged, increase tmax to the maximum of the current tmax, vertical mixing timescale and user defined tmax
 
               if (tmax_new.eq.tmax) then
-                  write(*,*) 'Convergence not reached for layer ',k, 
+                  write(*,*) 'Convergence not reached for layer ',k,
      >             'in time ', tmax
-                  exit
               else
-                  tmax=tmax_new !restart loop with a larger time
-                  dt_max = tmax_new/10.0 !increase maximum timestep to speed up convergence
-                  dt_inc = dt_inc*2 !increase timestep increase factor to speed up convergence
-                  goto 543
+C                Extend the time budget and resume from the current
+C                (time,dt,num_den) state instead of restarting from time=0 -
+C                avoids redoing the whole dt_start->dt_max ramp from scratch.
+                  tmax=tmax_new
+                  dt_max_loc = max(dt_max_loc,tmax_new/10.0) !allow a bigger timestep ceiling to reach the new tmax
+                  dt_inc_loc = dt_inc_loc*2 !ramp faster towards the new ceiling
+                  extend_time = .True.
               endif
             endif
            endif
+           if (.not. extend_time) then
            if (krome_debug.eq.1) then
             write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
-     >      num_den(k,:)        
+     >      num_den(k,:)
            endif
           exit
+           endif
          endif
          time = time + dt !increase time
          istep = istep + 1 !increase timestep
@@ -16440,7 +16453,7 @@ C ------ UPWARD EDDY MIXING (Eq. 2 term 1, Bangera et al. 2025) ------
 C       Phi = -K_zz * (dn_i/dz + n_i/H_p), Bangera et al. 2025
 C       Applied per species when tau_chem > tau_mix. Disabled by default
 C       (mixing_on = .false.); set mixing_on = .true. to activate.
-      if (mixing_on .and. k .gt. 1 .and. time .gt. 0.0d0) then
+      if (mixing_on .and. k .gt. 1 .and. time .ge. tmax) then
         dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
         do i = 1, nsp
 C         Chemical timescale: n_i / |dn_i/dt_net| from KROME integration
@@ -16458,11 +16471,11 @@ C           Phi = -K_zz * (dn_i/dz + n_i/H_p); Phi>0 means upward (k->k-1)
 C           Amount transferred upward over the chemistry time step
             delta_n_mix = flux_up * time / dz_k
 C           Stability guard: at most 50% of either layer per step
-            if (delta_n_mix .gt. 0.0d0) then
-              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
-            else
-              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
-            end if
+C            if (delta_n_mix .gt. 0.0d0) then
+C              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
+C            else
+C              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
+C            end if
 C           Conserving transport: layer k loses, layer k-1 gains
             num_den(k,i)   = num_den(k,i)   - delta_n_mix
             num_den(k-1,i) = num_den(k-1,i) + delta_n_mix
