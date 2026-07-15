@@ -1,0 +1,1171 @@
+dust species
+============
+121
+
+ZrO2[s]                  BADDELEYITE
+ 3.00     (estimated)
+2
+ 1 Zr
+ 2 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.14 kJ/mol
+  5  2.64872267e+05 -3.34055858e+00 -3.41496362e+01  3.63523063e-03 -4.58434075e-07 
+
+ZrSiO4[s]                ZIRCON
+ 3.00     (estimated)
+3
+ 1 Zr
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.26 kJ/mol
+  5  4.90061111e+05 -8.78710304e+00 -5.52714551e+01  8.61306156e-03 -1.02724731e-06 
+
+Al2O3[s]                 CORUNDUM
+ 3.99
+2
+ 2 Al
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.42 kJ/mol
+  5  3.68631485e+05 -8.64120449e+00 -3.79872066e+01  8.87467709e-03 -1.02420689e-06 
+
+Ca2Al2SiO7[s]            GEHLENITE
+ 3.04
+4
+ 2 Ca
+ 2 Al
+ 1 Si
+ 7 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.53 kJ/mol
+  5  8.62597495e+05 -1.53345752e+01 -1.14305763e+02  1.63212875e-02 -1.83667862e-06 
+
+Ca3Al2Si3O12[s]          GROSSULAR
+ 3.59
+4
+ 3 Ca
+ 2 Al
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.28 kJ/mol
+  5  1.45719985e+06 -3.04984976e+01 -1.69187911e+02  3.16437267e-02 -3.65779361e-06 
+
+Ca2SiO4[s]               LARNITE
+ 3.34
+3
+ 2 Ca
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.23 kJ/mol
+  5  4.92571744e+05 -7.56137298e+00 -7.35021393e+01  8.81859057e-03 -9.61819286e-07 
+
+CaAl2SiO6[s]             Ca-TSCHERMAKS
+ 3.44
+4
+ 1 Ca
+ 2 Al
+ 1 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.57 kJ/mol
+  5  7.29279681e+05 -1.48894048e+01 -8.65986040e+01  1.58236436e-02 -1.81091120e-06 
+
+Ca3Si2O7[s]              RANKINITE
+ 3.00     (estimated)
+3
+ 3 Ca
+ 2 Si
+ 7 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.60 kJ/mol
+  5  8.53321857e+05 -1.38930305e+01 -1.21316275e+02  1.56421923e-02 -1.81418851e-06 
+
+MgAl2O4[s]               SPINEL
+ 3.58
+3
+ 1 Mg
+ 2 Al
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.42 kJ/mol
+  5  4.91219733e+05 -1.04383622e+01 -6.07063793e+01  1.10721508e-02 -1.21372690e-06 
+
+CaSiO3[s]                WOLLASTONITE
+ 2.91
+3
+ 1 Ca
+ 1 Si
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.26 kJ/mol
+  5  3.60349810e+05 -6.69048740e+00 -4.57722344e+01  7.14529588e-03 -8.10889049e-07 
+
+Ca5P3O12F[s]             FLUORAPATITE
+ 3.00     (estimated)
+4
+ 5 Ca
+ 3 P
+12 O
+ 1 F
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.84 kJ/mol
+  5  1.41129898e+06 -2.34848127e+01 -2.13468071e+02  2.69904279e-02 -3.11835863e-06 
+
+Ca3MgSi2O8[s]            MERWINITE
+ 3.15
+4
+ 3 Ca
+ 1 Mg
+ 2 Si
+ 8 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.68 kJ/mol
+  5  9.72854201e+05 -1.61873998e+01 -1.39244376e+02  1.80433189e-02 -2.02067789e-06 
+
+CaAl2Si2O8[s]            ANORTHITE
+ 2.76
+4
+ 1 Ca
+ 2 Al
+ 2 Si
+ 8 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.84 kJ/mol
+  5  9.52931774e+05 -2.00948275e+01 -1.04659642e+02  2.00005489e-02 -2.27759735e-06 
+
+CaTiSiO5[s]              SPHENE
+ 3.52
+4
+ 1 Ca
+ 1 Ti
+ 1 Si
+ 5 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.61 kJ/mol
+  5  5.92271373e+05 -1.23820867e+01 -6.59000768e+01  1.32375557e-02 -1.58473413e-06 
+
+Ca2MgSi2O7[s]            AKERMANITE
+ 2.94
+4
+ 2 Ca
+ 1 Mg
+ 2 Si
+ 7 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.37 kJ/mol
+  5  8.40531797e+05 -1.26967540e+01 -1.27578849e+02  1.37140148e-02 -1.45018181e-06 
+
+Al2SiO5[s]               KYANITE
+ 3.14
+3
+ 2 Al
+ 1 Si
+ 5 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.55 kJ/mol
+  5  5.91732588e+05 -1.43336151e+01 -5.77318594e+01  1.43818475e-02 -1.67000576e-06 
+
+CaMgSiO4[s]              MONTICELLITE
+ 3.04
+4
+ 1 Ca
+ 1 Mg
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.34 kJ/mol
+  5  4.81844838e+05 -8.78742664e+00 -6.71523836e+01  9.91201889e-03 -1.16045874e-06 
+
+CaMgSi2O6[s]             DIOPSIDE
+ 3.28
+4
+ 1 Ca
+ 1 Mg
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.62 kJ/mol
+  5  7.08708048e+05 -1.48463038e+01 -8.41922600e+01  1.55572157e-02 -1.79311352e-06 
+
+MgAl2SiO6[s]             Mg-TSCHERMAKS
+ 3.00     (estimated)
+4
+ 1 Mg
+ 2 Al
+ 1 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.46 kJ/mol
+  5  7.11849089e+05 -1.53853501e+01 -8.32497575e+01  1.59118149e-02 -1.72483918e-06 
+
+CaO[s]                   LIME
+ 3.35
+2
+ 1 Ca
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.11 kJ/mol
+  5  1.27379971e+05 -1.45597493e+00 -2.47956022e+01  2.33388201e-03 -2.66403099e-07 
+
+KMg3AlSi3O10F2[s]        FLUORPHLOGOPITE
+ 2.88
+6
+ 1 K
+ 3 Mg
+ 1 Al
+ 3 Si
+10 O
+ 2 F
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.12 kJ/mol
+  5  1.34266473e+06 -2.66243666e+01 -1.79716580e+02  2.65961491e-02 -2.83538665e-06 
+
+Mg3Al2Si3O12[s]          PYROPE
+ 3.56
+4
+ 3 Mg
+ 2 Al
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.23 kJ/mol
+  5  1.40265581e+06 -3.07260062e+01 -1.63585114e+02  3.13648140e-02 -3.58252193e-06 
+
+TiO2[s]                  RUTILE
+ 3.00     (estimated)
+2
+ 1 Ti
+ 2 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.07 kJ/mol
+  5  2.29696147e+05 -3.39257220e+00 -3.33841621e+01  3.42697398e-03 -3.57218285e-07 
+
+MgTiO3[s]                GEIKIELITE
+ 3.00     (estimated)
+3
+ 1 Mg
+ 1 Ti
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.34 kJ/mol
+  5  3.51714278e+05 -6.69867186e+00 -4.77352838e+01  7.80285702e-03 -9.36654031e-07 
+
+Ca2Al3Si3O13H[s]         CLINOZOISITE
+ 3.34
+5
+ 2 Ca
+ 3 Al
+ 3 Si
+13 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.37 kJ/mol
+  5  1.56074650e+06 -3.51036797e+01 -1.68036144e+02  3.35240014e-02 -3.80688673e-06 
+
+CaSi2O5[s]               CaSi-TITANITE
+ 3.00     (estimated)
+3
+ 1 Ca
+ 2 Si
+ 5 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.83 kJ/mol
+  5  5.75998296e+05 -1.51359339e+01 -4.98523423e+01  1.54838842e-02 -1.89321113e-06 
+
+Mg2SiO4[s]               FORSTERITE
+ 3.21
+3
+ 2 Mg
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.30 kJ/mol
+  5  4.68565218e+05 -9.17656589e+00 -6.54464358e+01  9.62799146e-03 -1.03891949e-06 
+
+MgSiO3[s]                ENSTATITE
+ 3.00     (estimated)
+3
+ 1 Mg
+ 1 Si
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.22 kJ/mol
+  5  3.45877464e+05 -7.25703213e+00 -4.34584073e+01  7.51660748e-03 -8.20032941e-07 
+
+Ca5Si2CO11[s]            SPURRITE
+ 3.00     (estimated)
+4
+ 5 Ca
+ 2 Si
+ 1 C
+11 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.83 kJ/mol
+  5  1.32942415e+06 -2.13275372e+01 -1.95076516e+02  2.42285094e-02 -2.73588754e-06 
+
+KAlSi3O8[s]              MICROCLINE
+ 2.56
+4
+ 1 K
+ 1 Al
+ 3 Si
+ 8 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.60 kJ/mol
+  5  9.25843793e+05 -2.00266605e+01 -1.04497009e+02  1.92808399e-02 -2.15818236e-06 
+
+Ca5P3O13H[s]             HYDROXYAPATITE
+ 3.00     (estimated)
+4
+ 5 Ca
+ 3 P
+13 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.61 kJ/mol
+  5  1.44006084e+06 -2.94813226e+01 -1.88210151e+02  3.10913344e-02 -3.21793021e-06 
+
+KAlSiO4[s]               KALSILITE
+ 2.64
+4
+ 1 K
+ 1 Al
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.35 kJ/mol
+  5  4.77436959e+05 -9.68887671e+00 -6.07059230e+01  1.03288565e-02 -1.16839453e-06 
+
+KAlSi2O6[s]              LEUCITE
+ 3.00     (estimated)
+4
+ 1 K
+ 1 Al
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.33 kJ/mol
+  5  6.99439924e+05 -1.40859712e+01 -8.44173653e+01  1.34216056e-02 -1.48917772e-06 
+
+NaAlSi3O8[s]             ALBITE
+ 2.62
+4
+ 1 Na
+ 1 Al
+ 3 Si
+ 8 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.63 kJ/mol
+  5  9.23228353e+05 -2.01250392e+01 -1.03948551e+02  1.95386438e-02 -2.21736082e-06 
+
+SiO2[s]                  QUARTZ
+ 2.65
+2
+ 1 Si
+ 2 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.18 kJ/mol
+  5  2.22250596e+05 -5.47896149e+00 -1.96917331e+01  4.90782125e-03 -5.61246326e-07 
+
+NaAlSi2O6[s]             JADEITE
+ 2.27
+4
+ 1 Na
+ 1 Al
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.45 kJ/mol
+  5  7.01135305e+05 -1.41374006e+01 -9.12022118e+01  1.39718696e-02 -1.51355594e-06 
+
+MgO[s]                   PERICLASE
+ 3.58
+2
+ 1 Mg
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.11 kJ/mol
+  5  1.19536580e+05 -2.10491027e+00 -2.12268057e+01  2.56443649e-03 -2.95775396e-07 
+
+NaAlSiO4[s]              NEPHELINE
+ 2.62
+4
+ 1 Na
+ 1 Al
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.32 kJ/mol
+  5  4.75918004e+05 -1.09851652e+01 -5.30633647e+01  1.10083068e-02 -1.24145088e-06 
+
+Ca2MnAl2Si3O13H[s]       PIEMONTITE(ORDERED)
+ 3.00     (estimated)
+6
+ 2 Ca
+ 1 Mn
+ 2 Al
+ 3 Si
+13 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.09 kJ/mol
+  5  1.51375405e+06 -3.07755980e+01 -1.90717395e+02  2.79370507e-02 -3.06357278e-06 
+
+CaAl4Si2O12H2[s]         MARGARITE
+ 3.08
+5
+ 1 Ca
+ 4 Al
+ 2 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.07 kJ/mol
+  5  1.44309893e+06 -3.37381608e+01 -1.57171800e+02  3.30301154e-02 -3.70499711e-06 
+
+Ca2Al2Si3O12H2[s]        PREHNITE
+ 2.94
+5
+ 2 Ca
+ 2 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.01 kJ/mol
+  5  1.43491432e+06 -3.19640179e+01 -1.64145801e+02  3.14538864e-02 -3.52833529e-06 
+
+Ca2FeAl2Si3O13H[s]       EPIDOTE(ORDERED)
+ 3.47
+6
+ 2 Ca
+ 1 Fe
+ 2 Al
+ 3 Si
+13 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.36 kJ/mol
+  5  1.52110644e+06 -3.24100513e+01 -1.85780230e+02  3.24572758e-02 -3.66835576e-06 
+
+Ca5Si2C2O13[s]           TILLEYITE
+ 3.00     (estimated)
+4
+ 5 Ca
+ 2 Si
+ 2 C
+13 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.87 kJ/mol
+  5  1.53705506e+06 -2.65203991e+01 -2.13583480e+02  2.87636543e-02 -3.17257566e-06 
+
+Ca3Fe2Si3O12[s]          ANDRADITE
+ 3.85
+4
+ 3 Ca
+ 2 Fe
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.16 kJ/mol
+  5  1.37354564e+06 -2.76674716e+01 -1.84043405e+02  3.01134215e-02 -3.45562474e-06 
+
+KMg2Al3Si2O12H2[s]       EASTONITE
+ 3.00     (estimated)
+6
+ 1 K
+ 2 Mg
+ 3 Al
+ 2 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.09 kJ/mol
+  5  1.43912412e+06 -3.23216734e+01 -1.76387587e+02  3.22176010e-02 -3.75603165e-06 
+
+Mn3Al2Si3O12[s]          SPESSARTINE
+ 4.20
+4
+ 3 Mn
+ 2 Al
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.15 kJ/mol
+  5  1.38161170e+06 -2.85779980e+01 -1.78706058e+02  3.04361348e-02 -3.45334356e-06 
+
+CaFeSi2O6[s]             HEDENBERGITE
+ 3.63
+4
+ 1 Ca
+ 1 Fe
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.45 kJ/mol
+  5  6.98134959e+05 -1.34839376e+01 -9.30211185e+01  1.45096403e-02 -1.58891663e-06 
+
+Mg3Cr2Si3O12[s]          KNORRINGITE
+ 3.00     (estimated)
+4
+ 3 Mg
+ 2 Cr
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.02 kJ/mol
+  5  1.34893382e+06 -2.49740884e+01 -1.96635146e+02  2.70118835e-02 -3.09049822e-06 
+
+K2Si4O9[s]               Si-WADEITE
+ 3.00     (estimated)
+3
+ 2 K
+ 4 Si
+ 9 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.50 kJ/mol
+  5  1.01667488e+06 -2.00977452e+01 -1.38516895e+02  1.94009394e-02 -2.05895351e-06 
+
+Mg2Al2Si3O12H2[s]        TSCHERMAK-TALC
+ 3.00     (estimated)
+5
+ 2 Mg
+ 2 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.51 kJ/mol
+  5  1.40097928e+06 -3.62596322e+01 -1.38677372e+02  3.41764973e-02 -3.82681704e-06 
+
+KAl3Si3O12H2[s]          MUSCOVITE
+ 2.83
+5
+ 1 K
+ 3 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.10 kJ/mol
+  5  1.41477640e+06 -3.44912013e+01 -1.50387246e+02  3.39459661e-02 -3.82848032e-06 
+
+KMg3AlSi3O12H2[s]        PHLOGOPITE
+ 2.79
+6
+ 1 K
+ 3 Mg
+ 1 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.07 kJ/mol
+  5  1.41793036e+06 -3.14479472e+01 -1.79288699e+02  3.13380452e-02 -3.67116229e-06 
+
+NaAl3Si3O12H2[s]         PARAGONITE
+ 2.88
+5
+ 1 Na
+ 3 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.90 kJ/mol
+  5  1.41336323e+06 -3.29587953e+01 -1.61093016e+02  3.23686562e-02 -3.60874154e-06 
+
+AlSi2O6H[s]              PYROPHYLLITE
+ 2.85
+4
+ 1 Al
+ 2 Si
+ 6 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.40 kJ/mol
+  5  6.89210810e+05 -1.65950488e+01 -7.26638760e+01  1.54233916e-02 -1.73523518e-06 
+
+NaMg3AlSi3O12H2[s]       SODAPHLOGOPITE
+ 3.00     (estimated)
+6
+ 1 Na
+ 3 Mg
+ 1 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.11 kJ/mol
+  5  1.41492952e+06 -3.15519283e+01 -1.78836456e+02  3.15986778e-02 -3.73066881e-06 
+
+FeAl2O4[s]               HERCYNITE
+ 3.00     (estimated)
+3
+ 1 Fe
+ 2 Al
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.48 kJ/mol
+  5  4.81628635e+05 -1.04821961e+01 -6.06175909e+01  1.15634138e-02 -1.30646361e-06 
+
+Mg3Si4O12H2[s]           TALC
+ 2.78
+4
+ 3 Mg
+ 4 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.35 kJ/mol
+  5  1.38260422e+06 -3.42070425e+01 -1.50202200e+02  3.25145989e-02 -3.77219174e-06 
+
+KMgAlSi4O12H2[s]         CELADONITE
+ 2.53
+6
+ 1 K
+ 1 Mg
+ 1 Al
+ 4 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.09 kJ/mol
+  5  1.39043686e+06 -3.36161652e+01 -1.54499622e+02  3.30660213e-02 -3.74357708e-06 
+
+NaCrSi2O6[s]             KOSMOCHLOR
+ 3.00     (estimated)
+4
+ 1 Na
+ 1 Cr
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.34 kJ/mol
+  5  6.76527893e+05 -1.12547160e+01 -1.08686057e+02  1.17947948e-02 -1.26746444e-06 
+
+Ca2FeAlSi3O12H2[s]       FERRI-PREHNITE
+ 3.00     (estimated)
+6
+ 2 Ca
+ 1 Fe
+ 1 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.00 kJ/mol
+  5  1.39316116e+06 -3.10484170e+01 -1.68957295e+02  3.13788778e-02 -3.53551352e-06 
+
+MnTiO3[s]                PYROPHANITE
+ 3.00     (estimated)
+3
+ 1 Mn
+ 1 Ti
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.32 kJ/mol
+  5  3.43501210e+05 -5.53688379e+00 -5.43678808e+01  7.17050306e-03 -8.51964657e-07 
+
+Ca2Fe2AlSi3O13H[s]       Fe-EPIDOTE
+ 3.00     (estimated)
+6
+ 2 Ca
+ 2 Fe
+ 1 Al
+ 3 Si
+13 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.35 kJ/mol
+  5  1.47808677e+06 -3.10394354e+01 -1.94663321e+02  3.13905692e-02 -3.52982775e-06 
+
+MgAl2SiO7H2[s]           Mg-CHLORITOID
+ 3.00     (estimated)
+5
+ 1 Mg
+ 2 Al
+ 1 Si
+ 7 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.80 kJ/mol
+  5  8.34609020e+05 -2.32086822e+01 -7.84966964e+01  2.12825093e-02 -2.42275442e-06 
+
+MnSiO3[s]                PYROXMANGITE
+ 3.00     (estimated)
+3
+ 1 Mn
+ 1 Si
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.34 kJ/mol
+  5  3.35583163e+05 -6.94540634e+00 -4.43376474e+01  7.42666865e-03 -8.61301667e-07 
+
+CaAl2Si4O14H4[s]         WAIRAKITE
+ 2.32
+5
+ 1 Ca
+ 2 Al
+ 4 Si
+14 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.15 kJ/mol
+  5  1.63374470e+06 -3.83412507e+01 -1.80988359e+02  3.57268714e-02 -4.03585955e-06 
+
+KAlSi3O9H2[s]            K-CYMRITE
+ 3.00     (estimated)
+5
+ 1 K
+ 1 Al
+ 3 Si
+ 9 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.68 kJ/mol
+  5  1.03822285e+06 -2.39997288e+01 -1.18388276e+02  2.23614413e-02 -2.48246015e-06 
+
+Fe3Al2Si3O12[s]          ALMANDINE
+ 4.32
+4
+ 3 Fe
+ 2 Al
+ 3 Si
+12 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.11 kJ/mol
+  5  1.37694373e+06 -3.01623922e+01 -1.70757916e+02  3.18755790e-02 -3.56354799e-06 
+
+Al2SiO6H2[s]             HYDROXY-TOPAZ
+ 3.00     (estimated)
+4
+ 2 Al
+ 1 Si
+ 6 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.55 kJ/mol
+  5  7.10046828e+05 -1.89246549e+01 -7.37228474e+01  1.75393938e-02 -1.94148597e-06 
+
+KFeAlSi4O12H2[s]         FERROCELADONITE
+ 3.00     (estimated)
+6
+ 1 K
+ 1 Fe
+ 1 Al
+ 4 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.02 kJ/mol
+  5  1.37881198e+06 -3.31576204e+01 -1.56600317e+02  3.27841356e-02 -3.67575607e-06 
+
+NaFeSi2O6[s]             ACMITE
+ 3.59
+4
+ 1 Na
+ 1 Fe
+ 2 Si
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.48 kJ/mol
+  5  6.58310465e+05 -1.44109577e+01 -8.72988445e+01  1.47647409e-02 -1.54201762e-06 
+
+MnAl2SiO7H2[s]           Mn-CHLORITOID
+ 3.00     (estimated)
+5
+ 1 Mn
+ 2 Al
+ 1 Si
+ 7 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.66 kJ/mol
+  5  8.25978745e+05 -2.11165443e+01 -9.28503508e+01  2.03832958e-02 -2.29328930e-06 
+
+NaAlSi2O7H2[s]           ANALCITE
+ 2.27
+5
+ 1 Na
+ 1 Al
+ 2 Si
+ 7 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.38 kJ/mol
+  5  8.17658955e+05 -1.51913312e+01 -1.21475842e+02  1.56285267e-02 -1.26943525e-06 
+
+CaAl2Si2O10H4[s]         LAWSONITE
+ 3.10
+5
+ 1 Ca
+ 2 Al
+ 2 Si
+10 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.77 kJ/mol
+  5  1.19159445e+06 -3.17656098e+01 -1.22689087e+02  2.96622822e-02 -3.10970733e-06 
+
+MgCr2O4[s]               PICROCHROMITE
+ 3.00     (estimated)
+3
+ 1 Mg
+ 2 Cr
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.52 kJ/mol
+  5  4.43100744e+05 -8.93868943e+00 -6.83596053e+01  1.06668240e-02 -1.29648969e-06 
+
+Mn2SiO4[s]               TEPHROITE
+ 3.00     (estimated)
+3
+ 2 Mn
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.33 kJ/mol
+  5  4.48945974e+05 -7.63388095e+00 -7.40229208e+01  8.91909591e-03 -1.01180073e-06 
+
+KMn3AlSi3O12H2[s]        Mn-BIOTITE
+ 3.00     (estimated)
+6
+ 1 K
+ 3 Mn
+ 1 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.01 kJ/mol
+  5  1.37910227e+06 -2.87364040e+01 -1.92965247e+02  3.00438208e-02 -3.63796231e-06 
+
+MgAl2Si2O10H4[s]         MAGNESIOCARPHOLITE
+ 3.00     (estimated)
+5
+ 1 Mg
+ 2 Al
+ 2 Si
+10 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.76 kJ/mol
+  5  1.17636990e+06 -3.07009397e+01 -1.29039324e+02  2.80521114e-02 -3.03772992e-06 
+
+FeTiO3[s]                ILMENITE
+ 3.00     (estimated)
+3
+ 1 Fe
+ 1 Ti
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.24 kJ/mol
+  5  3.43578827e+05 -5.48015841e+00 -5.47624436e+01  6.28552326e-03 -7.11964708e-07 
+
+AlO2H[s]                 DIASPORE
+ 3.07
+3
+ 1 Al
+ 2 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.12 kJ/mol
+  5  2.44362368e+05 -7.27977563e+00 -2.28928595e+01  6.44195003e-03 -5.93135069e-07 
+
+FeAl2SiO7H2[s]           Fe-CHLORITOID
+ 3.61
+5
+ 1 Fe
+ 2 Al
+ 1 Si
+ 7 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.79 kJ/mol
+  5  8.25866981e+05 -2.32716119e+01 -7.93864780e+01  2.11691000e-02 -2.40465931e-06 
+
+Mg7Si2O14H6[s]           PHASEA
+ 3.00     (estimated)
+4
+ 7 Mg
+ 2 Si
+14 O
+ 6 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.52 kJ/mol
+  5  1.65684702e+06 -4.23025411e+01 -2.15816865e+02  4.24759248e-02 -4.79772190e-06 
+
+CaCO3[s]                 CALCITE
+ 2.93
+3
+ 1 Ca
+ 1 C
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.23 kJ/mol
+  5  3.41192830e+05 -6.59162503e+00 -4.36861351e+01  6.35251450e-03 -6.93183861e-07 
+
+Mg3Si2O9H4[s]            LIZARDITE
+ 2.55
+4
+ 3 Mg
+ 2 Si
+ 9 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.88 kJ/mol
+  5  1.05441784e+06 -2.91059354e+01 -1.16617201e+02  2.65442772e-02 -3.02944884e-06 
+
+Al2Si2O9H4[s]            KAOLINITE
+ 2.60
+4
+ 2 Al
+ 2 Si
+ 9 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.88 kJ/mol
+  5  1.05060625e+06 -2.81900590e+01 -1.05658133e+02  1.96698983e-02 -2.50448574e-06 
+
+FeSiO3[s]                FERROSILITE
+ 3.00     (estimated)
+3
+ 1 Fe
+ 1 Si
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.14 kJ/mol
+  5  3.36156614e+05 -6.74969168e+00 -4.72839683e+01  7.27744133e-03 -7.57310326e-07 
+
+CaSO4[s]                 ANHYDRITE
+ 2.96
+3
+ 1 Ca
+ 1 S
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.24 kJ/mol
+  5  3.44960815e+05 -9.11377562e+00 -4.69081768e+01  8.60099968e-03 -6.56787877e-07 
+
+KFe3AlSi3O12H2[s]        ANNITE
+ 3.32
+6
+ 1 K
+ 3 Fe
+ 1 Al
+ 3 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.85 kJ/mol
+  5  1.38650194e+06 -3.00557808e+01 -1.89185198e+02  3.06865779e-02 -3.46736430e-06 
+
+CaMgC2O6[s]              DOLOMITE
+ 2.86
+4
+ 1 Ca
+ 1 Mg
+ 2 C
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.40 kJ/mol
+  5  6.67659246e+05 -1.44507496e+01 -8.26440551e+01  1.42942014e-02 -1.54692623e-06 
+
+CaAl2Si4O16H8[s]         LAUMONTITE
+ 2.27
+5
+ 1 Ca
+ 2 Al
+ 4 Si
+16 O
+ 8 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.32 kJ/mol
+  5  1.86880304e+06 -4.62861220e+01 -2.14722712e+02  4.18956003e-02 -4.68563978e-06 
+
+FeAl2Si2O10H4[s]         FERROCARPHOLITE
+ 3.00     (estimated)
+5
+ 1 Fe
+ 2 Al
+ 2 Si
+10 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.76 kJ/mol
+  5  1.16552225e+06 -3.03717398e+01 -1.31698513e+02  2.83126640e-02 -3.06062619e-06 
+
+Fe3Si4O12H2[s]           MINNESOTAITE
+ 3.20
+4
+ 3 Fe
+ 4 Si
+12 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.27 kJ/mol
+  5  1.34996043e+06 -3.39994144e+01 -1.51920576e+02  3.26509410e-02 -3.53887008e-06 
+
+Cr2O3[s]                 ESKOLAITE
+ 3.00     (estimated)
+2
+ 2 Cr
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.21 kJ/mol
+  5  3.21693394e+05 -2.88787061e+00 -7.28983459e+01  4.52053482e-03 -5.32024791e-07 
+
+MgCO3[s]                 MAGNESITE
+ 3.01
+3
+ 1 Mg
+ 1 C
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.22 kJ/mol
+  5  3.25597759e+05 -7.79860833e+00 -3.88809942e+01  7.66100455e-03 -8.33936084e-07 
+
+KCl[s]                   SYLVITE
+ 1.99
+2
+ 1 K
+ 1 Cl
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.00 kJ/mol
+  5  7.80197852e+04  4.14754686e-01 -3.26364035e+01  1.03705058e-03  6.93111000e-09 
+
+Fe2TiO4[s]               ULVOSPINEL
+ 3.00     (estimated)
+3
+ 2 Fe
+ 1 Ti
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.73 kJ/mol
+  5  4.53696344e+05 -9.82177480e+00 -5.98544309e+01  1.01762544e-02 -6.53303094e-07 
+
+Fe2SiO4[s]               FAYALITE
+ 4.39
+3
+ 2 Fe
+ 1 Si
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.38 kJ/mol
+  5  4.49573705e+05 -9.27140813e+00 -6.61500251e+01  1.04124987e-02 -1.09203057e-06 
+
+NaCl[s]                  HALITE
+ 2.16
+2
+ 1 Na
+ 1 Cl
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.00 kJ/mol
+  5  7.71702177e+04  3.60772291e-01 -3.26907377e+01  9.59492876e-04  1.83479700e-08 
+
+MgFe2O4[s]               MAGNESIOFERRITE
+ 3.00     (estimated)
+3
+ 1 Mg
+ 2 Fe
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.37 kJ/mol
+  5  4.09271585e+05 -8.15218028e+00 -7.52786962e+01  1.09503930e-02 -1.25544295e-06 
+
+CaFeC2O6[s]              ANKERITE
+ 3.00     (estimated)
+4
+ 1 Ca
+ 1 Fe
+ 2 C
+ 6 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.35 kJ/mol
+  5  6.57413719e+05 -1.36316218e+01 -8.75701218e+01  1.32221722e-02 -1.40934106e-06 
+
+MnO[s]                   MANGANOSITE
+ 5.37
+2
+ 1 Mn
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.04 kJ/mol
+  5  1.10312326e+05 -6.86675085e-01 -2.93013630e+01  1.56450936e-03 -1.44084381e-07 
+
+NaAlCO5H2[s]             DAWSONITE
+ 3.00     (estimated)
+5
+ 1 Na
+ 1 Al
+ 1 C
+ 5 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.00 kJ/mol
+  5  5.68771895e+05 -2.62193800e+01  1.01364789e+01  7.71363280e-04 -7.24231640e-08 
+
+Mn2O3[s]                 BIXBYITE
+ 3.00     (estimated)
+2
+ 2 Mn
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.03 kJ/mol
+  5  2.72856950e+05 -2.90317885e+00 -6.91451523e+01  4.21525829e-03 -2.56781776e-07 
+
+MgO2H2[s]                BRUCITE
+ 2.37
+3
+ 1 Mg
+ 2 O
+ 2 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.28 kJ/mol
+  5  2.39650553e+05 -7.31523849e+00 -3.11506687e+01  7.04888588e-03 -8.25690397e-07 
+
+Fe3Si2O9H4[s]            GREENALITE
+ 3.23
+4
+ 3 Fe
+ 2 Si
+ 9 O
+ 4 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-1.01 kJ/mol
+  5  1.02277133e+06 -2.80455047e+01 -1.24025908e+02  2.77210735e-02 -3.10912100e-06 
+
+AlO3H3[s]                GIBBSITE
+ 2.44
+3
+ 1 Al
+ 3 O
+ 3 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.10 kJ/mol
+  5  3.60237388e+05 -1.61100124e+01 -1.21722465e+01  1.56746164e-02 -4.41039417e-07 
+
+MnCO3[s]                 RHODOCHROSITE
+ 3.70
+3
+ 1 Mn
+ 1 C
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.18 kJ/mol
+  5  3.15940488e+05 -6.66194317e+00 -4.50095227e+01  6.51453361e-03 -6.89464226e-07 
+
+Fe2O3[s]                 HEMATITE
+ 5.27
+2
+ 2 Fe
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.40 kJ/mol
+  5  2.87652920e+05 -6.81002879e+00 -4.97629171e+01  8.72469545e-03 -1.03856955e-06 
+
+Fe3O4[s]                 MAGNETITE
+ 5.20
+2
+ 3 Fe
+ 4 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.46 kJ/mol
+  5  4.01932015e+05 -8.96063513e+00 -7.10178241e+01  1.19142438e-02 -1.40431270e-06 
+
+FeCO3[s]                 SIDERITE
+ 3.94
+3
+ 1 Fe
+ 1 C
+ 3 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.17 kJ/mol
+  5  3.16125000e+05 -6.98065148e+00 -4.43461463e+01  6.58590184e-03 -6.95844475e-07 
+
+FeO[s]                   FERROPERICLASE
+ 5.99
+2
+ 1 Fe
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.15 kJ/mol
+  5  1.12186047e+05 -2.15233123e+00 -2.08389252e+01  2.95668898e-03 -3.22330632e-07 
+
+FeO2H[s]                 GOETHITE
+ 4.26
+3
+ 1 Fe
+ 2 O
+ 1 H
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.15 kJ/mol
+  5  2.02674908e+05 -4.65511607e+00 -3.86173771e+01  5.31569703e-03 -5.71200266e-07 
+
+NiO[s]                   NICKEL
+ 6.81
+2
+ 1 Ni
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.06 kJ/mol
+  5  1.10334948e+05 -8.36321661e-01 -3.17827308e+01  1.34857857e-03 -1.05601208e-07 
+
+CuO[s]                   TENORITE
+ 6.51
+2
+ 1 Cu
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.14 kJ/mol
+  5  8.90042907e+04 -1.58721999e+00 -2.47753788e+01  2.42037658e-03 -2.39413999e-07 
+
+FeS2[s]                  PYRITE
+ 5.01
+2
+ 1 Fe
+ 2 S
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.19 kJ/mol
+  5  1.36460253e+05 -3.37011708e+00 -3.49525206e+01  3.62120579e-03 -2.91681482e-07 
+
+FeS[s]                   TROILITE
+ 4.83
+2
+ 1 Fe
+ 1 S
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.13 kJ/mol
+  5  9.45087110e+04 -2.49586428e+00 -1.82977338e+01  3.17438061e-03 -3.06960597e-07 
+
+Cu2O[s]                  CUPRITE
+ 6.11
+2
+ 2 Cu
+ 1 O
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.08 kJ/mol
+  5  1.31712542e+05 -6.26849555e-01 -4.56094196e+01  2.92061942e-03 -3.21396832e-07 
+
+Cu[s]                    COPPER
+ 8.93
+1
+ 1 Cu
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.03 kJ/mol
+  5  4.06509278e+04  3.27865952e-02 -1.65227389e+01  5.54989394e-04 -2.61836676e-08 
+
+S[s]                     SULPHUR
+ 2.05
+1
+ 1 S
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.02 kJ/mol
+  5  3.32724045e+04 -4.49453069e-01 -1.39358734e+01  1.04739131e-03 -9.90206866e-08 
+
+Ni[s]                    NICKEL
+ 8.91
+1
+ 1 Ni
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.03 kJ/mol
+  5  5.17843140e+04 -5.28491415e-02 -1.83743865e+01  6.29260261e-04 -3.00335045e-08 
+
+Fe[s]                    IRON
+ 7.87
+1
+ 1 Fe
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.04 kJ/mol
+  5  4.98986669e+04 -6.88938060e-01 -1.46174949e+01  1.16147394e-03 -5.25983134e-08 
+
+C[s]                     GRAPHITE
+ 2.27
+1
+ 1 C
+# Stock-fit to SUPCRTBL database (100-2500)K, +/-0.03 kJ/mol
+  5  8.56384560e+04 -2.34505668e+00 -3.63476530e+00  1.82853458e-03 -1.98666058e-07 

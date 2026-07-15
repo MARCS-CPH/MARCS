@@ -2,10 +2,11 @@
       PROGRAM EQ_CHEMISTRY
 ***********************************************************************
       use PARAMETERS,ONLY: model_dim,model_struc,model_eqcond,
-     >                     useDatabase,auto_atmos,adapt_cond
+     >                     useDatabase,auto_atmos,adapt_cond,
+     >                     disk_model
       use EXCHANGE,ONLY: chemcall,chemiter,ieqcond,ieqconditer,
      >                   itransform,preEst,preUse,preIter,
-     >                   DUALcorr,HCOcorr
+     >                   DUALcorr,HCOcorr,COScorr
       use DATABASE,ONLY: NLAST
       implicit none
 
@@ -13,7 +14,7 @@
       call INIT
       call INIT_CHEMISTRY
       call INIT_DUSTCHEM
-      
+
       if (model_dim==0) then
         if (adapt_cond) then
           call ADAPT_CONDENSATES
@@ -29,7 +30,12 @@
           call DEMO_STRUCTURE
         endif 
       else if (model_dim==2) then  
-        call DEMO_PHASEDIAGRAM
+        if (disk_model) then
+          call INIT_DISK
+          call COMPUTE_DISK
+        else
+          call DEMO_PHASEDIAGRAM
+        endif
       else
         print*,'*** model_dim=',model_dim,' ???'
         stop
@@ -47,6 +53,8 @@
      >                     REAL(DUALcorr)/REAL(chemcall)
       print'("  H-C-O corrections/call = ",0pF9.3)',
      >                      REAL(HCOcorr)/REAL(chemcall)
+      print'("  C-O-S corrections/call = ",0pF9.3)',
+     >                      REAL(COScorr)/REAL(chemcall)
       if (model_eqcond) then
         print'("   eq condensation calls = ",I8)',ieqcond
         print'("      eq iterations/call = ",0pF8.2)',
@@ -70,23 +78,26 @@
      >                    dust_nam,dust_mass,dust_Vol,
      >                    dust_nel,dust_el,dust_nu
       use EXCHANGE,ONLY: nel,nat,nion,nmol,mmol,H,C,N,O,Si
+      use OPACITY,ONLY: NLAMmax,NLAM,lam
       implicit none
       integer,parameter  :: qp = selected_real_kind ( 33, 4931 )
-      real(kind=qp) :: eps(NELEM),Sat(NDUST),eldust(NDUST)
-      real(kind=qp) :: nmax,threshold,deps
+      real(kind=qp) :: eps(NELEM),Sat(NDUST),eldust(NDUST),epsd(NELEM)
+      real(kind=qp) :: nmax,threshold
       real*8,parameter :: pi=3.14159265358979D+0
       real*8  :: Tg,nHges,p,mu,muold,pgas,fold,ff,dfdmu,dmu,mugas,Vol
       real*8  :: rhog,rhoc,rhod,d2g,mcond,mgas,Vcon,Vcond,Vgas,ngas
       real*8  :: nkey,nkeyt,tchem,tchemtot,AoverV,mic,atyp,alpha,vth
-      real*8  :: yr,Myr,molm,molmass,stoich,HH,OO,CC,NN
+      real*8  :: yr,Myr,molm,molmass,stoich,HH,OO,CC,NN,epstot1,epstot2
+      real*8,dimension(NLAMmax) :: kabs,ksca,kext
+      real    :: kapROSS,kRoss,dustgas
       integer :: i,imol,iraus,e,aIraus,aIIraus,j,verb,dk,it,stindex
-      integer :: k,keyel,imax,dustst
-      integer :: H2O,CO2,CH4,O2,H2,N2,NH3,CO,OCS,SO2,S2,H2S
+      integer :: k,keyel,dustst,count
+      integer :: H2O,CO2,CH4,O2,H2,N2,NH3,CO,OCS,SO2,S2,H2S,HCl,HF
       logical :: included,haeufig,raus(NMOLE)
       logical :: rausI(NELEM),rausII(NELEM)
-      character(len=10) :: sp
+      character(len=10) :: sp,also(30)
       character(len=20) :: limcond
-      integer :: iseq
+      integer :: iseq,Nalso
       
       nHges = nHmax
       Tseq(Nseq) = Tmax
@@ -141,8 +152,9 @@
       do e=1,NELM
         if (e==el) cycle
         i = elnum(e) 
-        write(*,'(" n<",A2,">=",1pE10.4,2x,1pE10.4)')
-     >      elnam(i),nHges*eps(i),eps(i)/eps0(i)
+        write(*,'(" n<",A2,">=",1pE10.4,2x,1pE10.4,0pF23.18)')
+     >       elnam(i),nHges*eps(i),eps(i)/eps0(i),
+     >       12.q0+LOG10(eps(i))
       enddo  
 
       ngas = nel      ! cm-3
@@ -208,6 +220,25 @@
      >                eldust(iraus)*dust_mass(iraus)*nHges/rhod,
      >                eldust(iraus)*dust_Vol(iraus)*nHges/Vcon
       enddo
+      write(*,*) '----- element fractions in condensates -----'
+      epsd(:) = 0.0
+      do i=1,NDUST
+        do k=1,dust_nel(i)
+          e = dust_el(i,k)
+          epsd(e) = epsd(e) + eldust(i)*dust_nu(i,k)
+        enddo
+      enddo  
+      epstot1 = SUM(epsd)
+      epstot2 = SUM(eps)
+      write(*,'(4x,A12,A12,A24)') 'efrac(dust)',
+     >     'efrac(gas)','efrac(dust)/efrac(gas)'
+      do i=1,NELM
+        if (i==el) cycle
+        e = elnum(i) 
+        write(*,'(A2,2x,99(1pE12.4))') trim(elnam(e)),
+     >       epsd(e)/epstot1,eps(e)/epstot2,
+     >       (epsd(e)/epstot1)/(eps(e)/epstot2)
+      enddo
       endif
       
       print*
@@ -267,41 +298,44 @@
      >  !                nion(aIIraus)/ngas,nion(aIIraus)/ngas
         endif  
       enddo
-      iraus = stindex(cmol,NMOLE,'H2')
-      if (.not.raus(iraus))
-     >   write(*,4010) cmol(iraus),nmol(iraus),
-     >                 nmol(iraus)/ngas,nmol(iraus)/ngas
-      iraus = stindex(cmol,NMOLE,'O2')
-      if (.not.raus(iraus))
-     >   write(*,4010) cmol(iraus),nmol(iraus),
-     >                 nmol(iraus)/ngas,nmol(iraus)/ngas
-      iraus = stindex(cmol,NMOLE,'CH4')
-      if (.not.raus(iraus))
-     >   write(*,4010) cmol(iraus),nmol(iraus),
-     >                 nmol(iraus)/ngas,nmol(iraus)/ngas
-      iraus = stindex(cmol,NMOLE,'CO2')
-      if (.not.raus(iraus))
-     >   write(*,4010) cmol(iraus),nmol(iraus),
-     >                 nmol(iraus)/ngas,nmol(iraus)/ngas
-      iraus = stindex(cmol,NMOLE,'NH3')
-      if (.not.raus(iraus))
-     >   write(*,4010) cmol(iraus),nmol(iraus),
-     >                 nmol(iraus)/ngas,nmol(iraus)/ngas
+      Nalso = 14
+      also(1)  = 'H2'
+      also(2)  = 'OH'
+      also(3)  = 'O2'
+      also(4)  = 'CH'
+      also(5)  = 'CH4'
+      also(6)  = 'C2H2'
+      also(7)  = 'CO2'
+      also(8)  = 'NH'
+      also(9)  = 'NH2'
+      also(10) = 'NH3'
+      also(11) = 'HCN'
+      also(12) = 'CN'
+      also(13) = 'CS'
+      also(14) = 'COS'
+      do i=1,Nalso
+        iraus = stindex(cmol,NMOLE,also(i))
+        if (.not.raus(iraus))
+     >    write(*,4010) cmol(iraus),nmol(iraus),
+     >                  nmol(iraus)/ngas,nmol(iraus)/ngas
+      enddo
           
       print*
-      write(*,*) '-----  where are the elements?  -----'
+      write(*,*) '-----  where are the elements? [cm-3], conc. -----'
       do e=1,NELM
         i = elnum(e)
         if (e==el) then
           write(*,'("    Element ",A2,1pE15.3)') 'el',0.Q0
           write(*,'(1x,A18,1pE10.3)') "nel",nel
-          threshold = 1.Q-3*nel
+          threshold = 1.Q-30*nel
         else   
           write(*,'("    Element ",A2,1pE15.3)') elnam(i),eps0(i)*nHges 
-          threshold = eps(i)*nHges*1.D-5
-          if (nat(i).gt.threshold) then
-            write(*,'(1x,A18,1pE10.3)') "n"//trim(elnam(i)), nat(i) 
-          endif  
+          !threshold = eps(i)*nHges*1.D-5
+          !threshold = eps(i)*nHges*1.D-15
+          !if (nat(i).gt.threshold) then
+          write(*,'(1x,A18,2(1pE10.3))') "n"//trim(elnam(i)),
+     >                                   nat(i), nat(i)/ngas 
+          !endif  
         endif  
 
         raus = .false.
@@ -326,12 +360,13 @@
           if (iraus==0) exit
           haeufig = (nmax.gt.eps0(i)*1.D-2)
           if (.not.haeufig) exit
-          write(*,'(1x,A18,1pE10.3)') 
-     >          "n"//trim(dust_nam(iraus)),eldust(iraus)*nHges 
+          write(*,'(1x,A18,2(1pE10.3))') "n"//trim(dust_nam(iraus)),
+     >         eldust(iraus)*nHges,eldust(iraus)*nHges/ngas 
           raus(iraus) = .true.
         enddo  
 
         raus = .false.
+        count = 0
         do 
           iraus = 0
           nmax  = 0.Q0
@@ -350,8 +385,11 @@
           enddo  
           haeufig = (nmax.gt.threshold)
           if (.not.haeufig) exit
-          write(*,'(1x,A18,1pE10.3)') "n"//trim(cmol(iraus)),nmol(iraus)
+          write(*,'(1x,A18,2(1pE10.3))') "n"//trim(cmol(iraus)),
+     >         nmol(iraus),nmol(iraus)/ngas
           raus(iraus) = .true.
+          count = count+1
+          if (count>15) exit
         enddo
       enddo  
 
@@ -393,6 +431,10 @@
         SO2 = stindex(cmol,NMOLE,'SO2')
         S2  = stindex(cmol,NMOLE,'S2')
         H2S = stindex(cmol,NMOLE,'H2S')
+        HCl = stindex(cmol,NMOLE,'HCL')
+        HF  = stindex(cmol,NMOLE,'HF')
+        !P4O6= stindex(cmol,NMOLE,'P4O6')
+        !POF3= stindex(cmol,NMOLE,'POF3')
         if (HH>2*OO+4*CC) then
           if (3*NN<HH-2*OO-4*CC) then
             print'("type A1")'
@@ -441,20 +483,26 @@
       endif
 
       !print'(99(A9))',"SO2[ppm]","H2O[ppm]","OCS[ppm]","CO[ppm]",
-     >!                "H2S[ppb]","S2[ppb]","H2[ppb]","O2[ppb]"
+     >!                "HF[ppb]","HCl[ppb]","S2[ppb]"
       !print'(99(0pF9.2))',nmol(SO2)/ngas/1.E-6,
      >!                    nmol(H2O)/ngas/1.E-6,
      >!                    nmol(OCS)/ngas/1.E-6,
      >!                    nmol(CO) /ngas/1.E-6,
-     >!                    nmol(H2S)/ngas/1.E-9,
-     >!                    nmol(S2) /ngas/1.E-9,
-     >!                    nmol(H2) /ngas/1.E-9,
-     >!                    nmol(O2) /ngas/1.E-9      
+     >!                    nmol(HF) /ngas/1.E-9,
+     >!                    nmol(HCl)/ngas/1.E-9,
+     >!                    nmol(S2)/ngas/1.E-9
       !print'(99(A9))',"H2O[%]","CO2[%]","N2[%]","O2[%]"
       !print'(99(0pF9.4))',nmol(H2O)/ngas/1.E-2,
      >!                    nmol(CO2)/ngas/1.E-2,
      >!                    nmol(N2) /ngas/1.E-2,
      >!                    nmol(O2) /ngas/1.E-2
+      !do i=1,NDUST
+      !  if (dust_nam(i).eq.'H2O[l]') then
+      !    print'("  S(H2O[l])=",1pE10.3)',Sat(i) 
+      !  else if (dust_nam(i).eq.'C[s]') then
+      !    print'("  S(  C[s])=",1pE10.3)',Sat(i)
+      !  endif  
+      !enddo
       
 *     -----------------------------------------------------
 *     ***  Calculation of the condenstation timescales  ***
@@ -534,6 +582,17 @@
       write(*,'("Limiting condensate ",A22,"  timescale/yr = ",
      >          1pE11.3)') limcond, tchemtot/yr
       endif
+
+      !-------------------------------------------------------
+      !call INIT_OPAC
+      !call CALC_OPAC(nHges,eldust,kabs,ksca,kext,dustgas,verb)
+      !-------------------------------------------------------
+      !do j=1,NLAM
+      !  print'(0pF8.2,3(1pE12.4))',lam(j),
+     >!       kabs(j)/rhod,ksca(j)/rhod,kext(j)/rhod
+      !enddo
+      !kRoss = kapROSS(Tg,kext)
+      !print*,"kapRoss=",kRoss
       
  1000 format(a6,1pE9.3)
  1010 format(a6,1pE9.3,a8,1pE9.3)
@@ -542,6 +601,6 @@
  4000 format(a7,1pE10.4,a5,1pE10.4)     
  4010 format(' n',a8,1pE12.4,0pF13.9,1pE12.4)
  4020 format(' n',a8,1pE12.4,1pE13.3)
- 5000 format(1x,a20,' S=',1pE11.3E4)
+ 5000 format(1x,a20,' S=',1pE12.3E4)
       RETURN
       end      
