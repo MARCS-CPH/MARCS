@@ -373,8 +373,17 @@
       write(*,*) '354 = SiF4'
       write(*,*) '355 = FeCl2_cr pvap'
       write(*,*) '356 = FeCl3_cr pvap'
+      write(*,*) '357 = P4O10_cr pvap'
+      write(*,*) '358 = AlN'
+      write(*,*) '359 = AlN_cr'
+      write(*,*) '360 = H2SO4-1(H2O)[s/l]'
+      write(*,*) '361 = H2SO4-2(H2O)[s/l]'
+      write(*,*) '362 = H2SO4-3(H2O)[s/l]'
+      write(*,*) '363 = H2SO4-4(H2O)[s/l]'
+      write(*,*) '364 = H2SO4-6.5(H2O)[s/l]'
       read(*,*) specie
 *
+      stoich(1) = 1.D0
       if (specie.eq.1) then
         call READ_DATEI('CO.txt',dG,T,Nmax,N,S,1) 
         call READ_DATEI('C.txt' ,dG,T,Nmax,N,S,2) 
@@ -2795,11 +2804,77 @@
         call READ_DATEI('FeCl3.txt'   ,dG,T,Nmax,N,S,2)
         Edzahl = 1
         stoich(2) = 1.D0
+      elseif (specie.eq.357) then
+        call READ_DATEI('P4O10_cr.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('P4O10.txt'   ,dG,T,Nmax,N,S,2)
+        Edzahl = 1
+        stoich(2) = 1.D0
+      elseif (specie.eq.358) then
+        call READ_DATEI('AlN.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('Al.txt' ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('N.txt'  ,dG,T,Nmax,N,S,3)
+        Edzahl = 2
+        stoich(2) = 1.D0
+        stoich(3) = 1.D0
+      elseif (specie.eq.359) then
+        call READ_DATEI('AlN_cr.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('Al.txt'    ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('N.txt'     ,dG,T,Nmax,N,S,3)
+        Edzahl = 2
+        stoich(2) = 1.D0
+        stoich(3) = 1.D0
+      elseif (specie.eq.360) then
+        call READ_DATEI('H2SO4_1H2O_cr_l.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('H.txt'     ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('S.txt'     ,dG,T,Nmax,N,S,3)
+        call READ_DATEI('O.txt'     ,dG,T,Nmax,N,S,4)
+        Edzahl = 3
+        stoich(2) = 4.D0
+        stoich(3) = 1.D0
+        stoich(4) = 5.D0
+      elseif (specie.eq.361) then
+        call READ_DATEI('H2SO4_2H2O_cr_l.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('H.txt'     ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('S.txt'     ,dG,T,Nmax,N,S,3)
+        call READ_DATEI('O.txt'     ,dG,T,Nmax,N,S,4)
+        Edzahl = 3
+        stoich(2) = 6.D0
+        stoich(3) = 1.D0
+        stoich(4) = 6.D0
+      elseif (specie.eq.362) then
+        call READ_DATEI('H2SO4_3H2O_cr_l.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('H.txt'     ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('S.txt'     ,dG,T,Nmax,N,S,3)
+        call READ_DATEI('O.txt'     ,dG,T,Nmax,N,S,4)
+        Edzahl = 3
+        stoich(2) = 8.D0
+        stoich(3) = 1.D0
+        stoich(4) = 7.D0
+      elseif (specie.eq.363) then
+        call READ_DATEI('H2SO4_4H2O_cr_l.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('H.txt'     ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('S.txt'     ,dG,T,Nmax,N,S,3)
+        call READ_DATEI('O.txt'     ,dG,T,Nmax,N,S,4)
+        Edzahl = 3
+        stoich(1) = 2.D0
+        stoich(2) = 10.D0
+        stoich(3) = 1.D0
+        stoich(4) = 8.D0
+      elseif (specie.eq.364) then
+        call READ_DATEI('H2SO4_6.5H2O_cr_l.txt',dG,T,Nmax,N,S,1)
+        call READ_DATEI('H.txt'     ,dG,T,Nmax,N,S,2)
+        call READ_DATEI('S.txt'     ,dG,T,Nmax,N,S,3)
+        call READ_DATEI('O.txt'     ,dG,T,Nmax,N,S,4)
+        Edzahl = 3
+        stoich(1) = 2.D0
+        stoich(2) = 30.D0
+        stoich(3) = 2.D0
+        stoich(4) = 21.D0
       else
         write(*,*) 'Specie=',specie,' ???'
         stop
       endif
-      write(*,'("stoichiometry:",99(I3))') 1,INT(stoich(2:Edzahl+1))
+      write(*,'("stoichiometry:",99(F5.1))') stoich(1:Edzahl+1)
       write(*,*)
 *
       write(*,*) 'T data from ... to ...'
@@ -2828,7 +2903,7 @@
       do i=1,Nmax(1)
         if ((T(1,i).ge.T1).and.(T(1,i).le.T2)) then
           xx = T(1,i)
-          yy = dG(1,i)
+          yy = stoich(1)*dG(1,i)
           ok = .true.
           do ed=2,Edzahl+1
             gef = .false.
@@ -2935,7 +3010,18 @@
         Ndat = Ndat+dN
       endif  
 
+ 90   continue
       write(*,*) Ndat,' data points'
+      do i=1,Ndat
+        print*,x(i),y(i)
+      enddo
+      print*,"add fake data point? (y/n)"
+      read(*,*) answer
+      if (answer=='y') then
+        Ndat = Ndat+1
+        read(*,*) x(Ndat),y(Ndat)
+        goto 90
+      endif
  100  write(*,*)
 
       if (mode.eq.3) then
@@ -3090,10 +3176,10 @@
       STOP
  1000 format(' a_',i1,' = ',1pE12.5)
  1010 format(2(0pF9.2),99(1pE14.5))
- 1020 format(99(0pF13.6))
+ 1020 format(99(0pF15.7))
  1031 format('Abweichung max/mean = ',1pE9.2,' kJ/mol',1pE9.2)
  1032 format('Abweichung max/mean = ',2(1pE9.2))
- 2000 format(99(1pE13.5))
+ 2000 format(99(1pE15.7))
       end
 *
 *

@@ -1,14 +1,16 @@
 ************************************************************************
       module PARAMETERS
 ************************************************************************
-      character(len=200) :: elements,abund_file,struc_file
-      integer :: abund_pick,model_dim,Npoints,model_struc,verbose
-      integer :: method_eqcond,Nseq
+      character(len=200) :: elements,abund_file,struc_file,adapt_file
+      integer :: abund_pick,model_dim,Npoints,model_struc
+      integer :: method_eqcond,model_smooth,Nseq,verbose
       logical :: model_eqcond,model_pconst,pick_mfrac,initchem_info
       logical :: useDataBase,remove_condensates,phyllosilicates
-      logical :: auto_atmos,adapt_cond,stop_after_init
+      logical :: metal_sulphates 
+      logical :: auto_atmos,adapt_cond,stop_after_init,use_SiO
+      logical :: disk_model,output_dispol,model_refine
       real*8  :: Tfast,Tmin,Tmax,pmin,pmax,nHmin,nHmax,Tseq(100)
-      real*8  :: Mpl,Rpl,gamma
+      real*8  :: Mpl,Rpl,gamma,Tmin_atmos
       end
 
 ************************************************************************
@@ -22,7 +24,7 @@
       integer :: NEPS                      ! number of affected elements
       
       character(len=2)  :: elnam(NELEM)       ! names of elements
-      character(len=20) :: dust_nam(NDUSTmax) ! names of dust species
+      character(len=20) :: dust_nam(0:NDUSTmax) ! names of dust species
       integer :: elnr(NELEM),elcode(NELEM)    ! element cross-indices
       real(kind=qp) :: eps0(NELEM)            ! element abundances
       real*8  :: mass(NELEM)                  ! element masses
@@ -31,6 +33,7 @@
       real*8  :: dust_vol(NDUSTmax)           ! dust monomer volume
       real*8  :: Tmelt(NDUSTmax)              ! melting points
       real*8  :: Tcorr(NDUSTmax)
+      real*8  :: fitTmax(NDUSTmax)            ! don't apply to T>Tmax
       logical :: is_liquid(NDUSTmax)
       integer :: dust_nel(NDUSTmax)           ! no of elements in dust
       integer :: dust_el(NDUSTmax,8)          ! indices of elements
@@ -116,5 +119,5 @@
       integer,parameter :: Br=35,Kr=36,Rb=37,Sr=38,Y=39,Zr=40,W=41
       integer*8 :: chemcall=0,chemiter=0,itransform=0,ieqcond=0
       integer*8 :: preIter=0,preEst=0,preUse=0,DUALcorr=0,HCOcorr=0
-      integer*8 :: ieqconditer=0
+      integer*8 :: COScorr=0,ieqconditer=0
       end

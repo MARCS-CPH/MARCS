@@ -44,26 +44,27 @@
       real(kind=qp),dimension(NDUST,NELEM) :: mat
       real(kind=qp),dimension(NELEM,NDUST) :: AA,base
       real(kind=qp) :: worst,xmin,Smax,Smin,qual,qold,SQUAL,del
-      real(kind=qp) :: abun,tmp1,amax
+      real(kind=qp) :: abun,tmp1,amax,maxq
       real(kind=qp) :: turnon,maxon,minoff,fac,fac2,amount,Nt,dscalemax
       real(kind=qp) :: deps,esum,emax,NRstep,dev,LastDev,val1,val2,test
       real(kind=qp) :: det(2),converge(5000,NELEM),crit,cbest,qualDF
-      real(kind=qp) :: deplete1,deplete2,small=1.Q-30
+      real(kind=qp) :: deplete1,deplete2
       real(kind=qp) :: dterm,dtmax,dlim,varfac,target,Qfinish,Sfinish
+      real(kind=qp),parameter :: small=1.Q-30
       integer,parameter :: itmax=5000
       integer,dimension(NELEM) :: elem,Nslot,eind
       integer,dimension(NDUST) :: dind,dlin,switchedON,switchedOFF
       integer,dimension(NELEM,NDUST) :: dustkind,stoich
       integer :: it,i,j,k,el,el2,Nact,Nact_read,Neq,slots,sl,dk,eq
-      integer :: itry,knowns,unknowns,unknown,ii,jj,lastit,laston=0
-      integer :: dtry,dtry_last=0,imaxon,iminoff,info,ipvt(NELEM)
+      integer :: itry,knowns,unknowns,unknown,ii,jj,lastit,laston
+      integer :: dtry,dtry_last,imaxon,iminoff,info,ipvt(NELEM)
       integer :: e_num(NELEM),e_num_save(NELEM)
       integer :: Nunsolved,unsolved(NELEM),Nvar1,Nvar2,var(NELEM)
       integer :: Nsolve,ebest,dbest,nonzero,itrivial,iread,ioff,method
       integer :: ifail,Nall,imax,swap,irow,erow,Eact,Nlin,iback,e1,e2
       integer :: act_to_elem(NELEM),act_to_dust(NELEM)
       integer :: Nzero,Ntrivial,etrivial(NELEM),dtrivial(NELEM)
-      integer :: no_action,itJac,last_tri,method_failed
+      integer :: no_action,itJac,last_tri,method_failed,iwillswitchoff
       logical,dimension(NELEM) :: e_resolved,e_act,e_taken,is_esolved
       logical,dimension(NELEM) :: e_eliminated,eblocked
       logical,dimension(0:NDUST) :: active,act_read,act_old
@@ -243,13 +244,16 @@
       ddust  = 0.Q0                 ! initial state dust-free
       eps    = eps0                 ! initial gas abundances 
       active = .false.              ! no solid condensing
-
+      laston = 0
+      dtry_last=0
+      
       !--------------------------------------------
       ! ***  load initial state from database?  ***
       !--------------------------------------------
       Nact = 0
       Nact_read = 0
       act_read = .false.
+      qread = 1.E+99
       if (useDatabase) then
         call GET_DATA(nHtot,T,epsread,ddustread,qread,iread,
      >                act_read,method)
@@ -344,6 +348,7 @@
       limited = .false.
       ifail = 0
       no_action = 0
+      iwillswitchoff = 0
       
 !---------------------------  start of main iteration loop  ----------------------------
 
@@ -355,17 +360,21 @@
         changed = .false.
         Smax = maxval(Sat0)
         ioff = 0
+        if (verbose>0) print*,"it,lastit=",it,lastit,
+     >                 "laston="//trim(dust_nam(laston)),
+     >                 " willswitchoff="//trim(dust_nam(iwillswitchoff))
         if ((qread<0.5).and.(it<=3).and.(Nact_read>0)
      >                             .and.(qual>0.Q0)) then
           active = act_read
           Nact = Nact_read
           pot = 0.0
         else if (it>lastit+3) then
-          maxon   = 0.Q0 
           minoff  = 0.Q0 
-          imaxon  = 0
           if (qual==0.Q0) limited=.false.
           do i=1,NDUST
+            Sat1(i) = 0.0
+            if (i==laston) cycle
+            if (i==iwillswitchoff) cycle
             xmin = 9.Q+99 
             esum = 0.Q0
             emax = 0.Q0
@@ -380,37 +389,45 @@
             esum = esum**1.65            ! simple condensates first
             abun = dscalemax/dscale(i)   ! potentially abundant condensates first
             abun = MIN(abun,1.Q+10)
-            pot(i)  = 1.Q0/(esum+0.05*abun+1.0*switchedOFF(i))
+            pot(i) = 1.Q0/(esum+0.01*abun)/(1.0+1000*switchedOFF(i)**4)
             Sat1(i) = Sat0(i)**pot(i)
-            if (verbose>1.and.(.not.active(i)).and.Sat0(i)>1.Q0) then
-              print'(A20," simplicity=",1pE10.3," abun=",1pE10.3,
-     >                   " pot=",3(1pE10.3))',
-     >           dust_nam(i),1.Q0/esum,1.Q0/abun,pot(i),Sat0(i),Sat1(i)
+            if (verbose>0.and.(.not.active(i)).and.Sat0(i)>1.Q0) then
+              print'(A20,I3," simplicity=",1pE10.3," abun=",1pE10.3,
+     >           " pot=",3(1pE10.3))',dust_nam(i),switchedOFF(i),
+     >           1.Q0/esum,1.Q0/(0.01*abun),pot(i),Sat0(i),Sat1(i)-1.Q0
             endif  
-          enddo 
-          Smax = 0.Q0
-          imax = 0
+          enddo
+          Smax   = 0.Q0
+          imax   = 0
+          maxq   = 0.Q0
+          maxon  = 0.Q0 
+          imaxon = 0          
           do i=1,NDUST
             if (Sat1(i)>Smax) then
               Smax = Sat1(i)
               imax = i
             endif  
+            if (i==laston) cycle
+            if (i==iwillswitchoff) cycle
+            maxq = MAX(maxq,Sat1(i)-1.Q0)
             if (Sat1(i)>1.Q0.and.(.not.active(i))) then
               turnon = Sat1(i)-1.Q0 
-              if (turnon>maxon.and.(.not.limited)) then
+              if (turnon>maxon.and.(.not.limited.or.no_action>15)) then
                 maxon  = turnon
                 imaxon = i
               endif  
             endif  
           enddo
-          if (qual>maxon.and.no_action<50) then  ! keep on iterating without switching on yet
-            maxon = 0.0
+          if (verbose>0) print*,"imaxon,maxon=",dust_nam(imaxon),
+     >                          real(maxq),real(maxon),no_action
+          if (maxq>maxon.and.no_action<50) then  ! keep on iterating without switching on yet
+            maxon = 0.Q0
             imaxon = 0
           endif  
           if (verbose>0) print'("limited=",L1,
      >                   "  Smax=",1pE10.3,2x,A18)',
      >                   limited,Smax,dust_nam(imax)
-          if (verbose>0.and.maxon>0.Q0) print'("  maxon =",
+          if (verbose>0.and.imaxon>0) print'("  maxon =",
      >                   1pE10.2,2x,A18)',maxon,dust_nam(imaxon)
 
           if (maxon>0.0*MAX(Smax-1.Q0,0.Q0)) then
@@ -432,7 +449,7 @@
               active(imaxon) = .true.
               if (verbose>=0) then
                 print*,"switch on ",trim(dust_nam(imaxon))
-              endif  
+              endif
             endif  
           endif  
           Nact = 0
@@ -551,7 +568,7 @@
                 dk = dlin(i)
                 if (dk==ioff) cycle
                 call TRANSFORM(ioff,dk,amount,-slin(dk)/slin(ioff)*Nt,
-     >                         ddust,eps,dscale,ok)
+     >                         ddust,eps,dscale,ok,verbose)
               enddo  
               ddust(ioff) = 0.Q0
               eps = eps_save
@@ -571,7 +588,8 @@
             switchedON(i) = switchedON(i)+1
             if (verbose>-1) then
               write(97,*) it,"on  ",dust_nam(i),switchedON(i)
-            endif  
+            endif
+            !if (dust_nam(i)=='S[s]') verbose=1
           else if (act_old(i).and.(.not.active(i))) then
             action = .true.
             switchedOFF(i) = switchedOFF(i)+1
@@ -1091,7 +1109,9 @@
               call QGEFA ( DF, NELEM, Nunsolved, ipvt, info )
               call QGEDI ( DF, NELEM, Nunsolved, ipvt, det, work, 1 )
               if (info.ne.0) then
-                print*,"*** singular matrix in QGEFA: info=",info
+                if (verbose>=0) then
+                  print*,"*** singular matrix in QGEFA: info=",info
+                endif
                 dtry = dtry+1
                 dtry_break = .true.
                 if (dtry<Nind) exit
@@ -1391,7 +1411,9 @@
         dx = FF
         if (verbose>1) print*,"QGESL info=",info
         if (info.ne.0) then
-          print*,"*** singular matrix in QGEFA NR-step: info=",info
+          if (verbose>=0) then
+            print*,"*** singular matrix in QGEFA NR-step: info=",info
+          endif
           if (method_failed==0) then
             method_failed = method_failed+1
             method = 2
@@ -1402,7 +1424,19 @@
             changed = .true.
             print*,"trying eqcond_method 2 ..."
             goto 50
-          endif  
+          endif
+          print*,"*** QGESL failed in equil_cond.f"
+          print*,"method=",method," info=",info
+          print*,"dx=",dx(1:Nsolve)
+          FF = Fsav
+          DF = DFsav
+          print*,"FF=",FF(1:Nsolve)
+          print*,"DF="
+          do i=1,Nsolve
+            print'(99(1pE16.7))',DF(i,1:Nsolve)
+          enddo
+          call GAUSS16( NELEM, Nsolve, DF, dx, FF)
+          print*,"dx=",dx(1:Nsolve)
           stop
         endif
   
@@ -1421,6 +1455,7 @@
         fac = 1.Q0
         iminoff = 0
         limdust = .false.
+        iwillswitchoff = 0
         do ii=1,Nsolve
           i  = act_to_elem(ii) 
           el = Iindex(i)
@@ -1467,7 +1502,7 @@
               fac2 = (-ddust(dk)-small*dscale(dk))/del  ! ddust+fac*del = -small*dscale
               if (fac2<1.0.and.verbose>0) print*,"*** limiting dust 3 "
      >                              //dust_nam(dk),REAL(fac2)
-              if (fac2<fac) then
+              if (fac2<fac.and.fac2>0.Q0) then
                 fac = fac2 
                 iminoff = dk
                 limdust = .true.
@@ -1499,11 +1534,12 @@
         enddo  
         dx = dx*fac
         limited = (fac<1.Q0)
-        !if (iminoff>0.and.(iminoff.ne.laston)) then
-        if (iminoff>0) then
-          if (verbose>=0) print*,"will switch off ",dust_nam(iminoff) 
+        if (iminoff>0.and.(iminoff.ne.laston)) then
+        !if (iminoff>0) then
+          if (verbose>=0) print*,"will switch off1 ",dust_nam(iminoff) 
           active(iminoff) = .false.
           lastit = -99
+          iwillswitchoff = iminoff
           !if (iminoff.eq.laston) then
           !  print*,"=> fall back"
           !  active = save_active
@@ -1636,7 +1672,8 @@
             base(imax,:) = tmp2(:) 
           endif
           if (DF(ii,ii)==0.Q0) then
-            print*,"*** WARNING: triangulation impossible in equil_cond"
+            if (verbose>0) print*,"*** WARNING:",
+     >         "triangulation impossible in equil_cond"
             cycle  
           endif  
           do k=ii+1,Nsolve
@@ -1728,7 +1765,7 @@
             el = elnum(i)
             if (base_el(jj,el)==0.Q0) cycle
             scale(jj) = MIN(scale(jj),eps(el))
-          enddo  
+          enddo
           del = varfac*scale(jj)             ! tiny amount of lin.comb.of.cond. to evaporate
           do itJac=1,99
             check(:) = eps(:) + del*base_el(jj,:)
@@ -1761,7 +1798,7 @@
             LastRow(1:Nsolve) = DF(1:Nsolve,jj)
             LastDev = dev
           enddo
-          !j = act_to_dust(jj)
+          j = act_to_dust(jj)
           !print'("JAC:",A18,99(1pE10.2))',
      >    !     trim(dust_nam(j)),DF(1:Nsolve,jj)
         enddo
@@ -1798,7 +1835,9 @@
         dx = FF
         if (verbose>1) print*,"QGESL info=",info
         if (info.ne.0) then
-          print*,"*** singular matrix in QGEFA NR-step: info=",info
+          if (verbose>=0) then
+            print*,"*** singular matrix in QGEFA NR-step: info=",info
+          endif
           if (method_failed==0) then
             method_failed = method_failed+1
             method = 1
@@ -1807,7 +1846,7 @@
               if (active(i)) Nact=Nact+1
             enddo
             changed = .true.
-            print*,"trying eqcond_method 1 ..."
+            if (verbose>=0) print*,"trying eqcond_method 1 ..."
             goto 50
           endif  
           stop
@@ -1846,11 +1885,24 @@
         fac = 1.Q0
         iminoff = 0
         limdust = .false.
+        iwillswitchoff = 0
         do ii=1,Nsolve
           i = act_to_dust(ii)
           del = -dstep(i)
-          if (del<0.Q0.and.ddust(i)>0.1*dscale(i)) then ! try small ddust before switching off
-            fac2 = (-ddust(i)+0.05*dscale(i))/del       ! ddust+fac*del = 0.05*dscale
+          if (verbose>0) print'(A20,2(I4),L2,9(1pE11.3))',dust_nam(i),
+     >         it,lastit,i==laston,ddust(i),del,dscale(i)
+          if (i==laston.and.ddust(i)<=0.Q0.and.del<0.Q0) then
+            fac2 = (-ddust(i)-small*dscale(i))/del      ! ddust+fac*del = -small*dscale
+            if (fac2<1.Q0.and.verbose>0) print*,"*** ddust=0 after "
+     >               //"switch on "//trim(dust_nam(i)),REAL(fac2)
+            if (fac2<fac) then
+              fac = fac2
+              iminoff = i
+              limdust = .true.
+            endif
+          else if (del<0.Q0.and.ddust(i)>0.1*dscale(i)) then ! try small ddust before switching off
+            fac2 = (-ddust(i)+0.05*dscale(i))/del            ! ddust+fac*del = 0.05*dscale
+            !print*,"... 1",fac2
             if (fac2<1.Q0.and.verbose>0) print*,"*** limiting dust 1 "
      >                                   //dust_nam(i),REAL(fac2)
             if (fac2<fac) then
@@ -1861,6 +1913,7 @@
           else if (ddust(i)+del<0.Q0.and.
      >             i==laston.and.it<lastit+5) then      ! just switched on: keep on trying
             fac2 = -0.9*ddust(i)/del                    ! ddust+fac*del = ddust/10
+            !print*,"... 2",fac2
             if (fac2<1.Q0.and.verbose>0) print*,"*** limiting dust 2 "
      >                                  //dust_nam(i),REAL(fac2)
             if (fac2<fac) then
@@ -1870,6 +1923,7 @@
             endif  
           else if (ddust(i)+del<0.Q0) then              ! preparation to switch off next
             fac2 = (-ddust(i)-small*dscale(i))/del      ! ddust+fac*del = -small*dscale
+            !print*,"... 3",fac2
             if (fac2<1.Q0.and.verbose>0) print*,"*** limiting dust 3 "
      >                                   //dust_nam(i),REAL(fac2)
             if (fac2<fac) then
@@ -1898,9 +1952,15 @@
         xstep = xstep*fac
         limited = (fac<1.Q0)
         if (iminoff>0) then
-          if (verbose>=0) print*,"will switch off ",dust_nam(iminoff) 
-          active(iminoff) = .false.
-          lastit = -99
+          if ((iminoff.ne.laston).or.(no_action>10)
+     >        .or.(ddust(iminoff)<=0.Q0)) then
+          !if (iminoff>0) then
+            if (verbose>=0) print*,"will switch off2 ",
+     >                      dust_nam(iminoff),iminoff,laston,no_action
+            active(iminoff) = .false.
+            lastit = -99
+            iwillswitchoff = iminoff
+          endif
         endif
 
         !if (verbose>0) then
@@ -1971,8 +2031,10 @@
         !call SUPER(nHtot,T,xstep,eps,Sat0,NewFastLevel<1)
         !qual = SQUAL(Sat0,active)
         Smax = maxval(Sat0)
-        print'("it =",I4,"  qual =",1pE11.4,"  Smax-1 =",1pE11.2E4)',
-     >          it,qual,Smax-1.Q0
+        if (verbose>=-1) then
+          print'("it =",I4,"  qual =",1pE11.4,"  Smax-1 =",1pE11.2E4)',
+     >         it,qual,Smax-1.Q0
+        endif
         if ((Smax<1.Q0+Sfinish).and.(qual<Qfinish)) exit
         if (verbose>0) read(*,'(a1)') char1
         if (verbose>0.and.char1=='1') method=1;changed=.true.
@@ -2144,7 +2206,7 @@
       end
 
 !-------------------------------------------------------------------------
-      subroutine TRANSFORM(i1,i2,del,fac,ddust,eps,dscale,ok)
+      subroutine TRANSFORM(i1,i2,del,fac,ddust,eps,dscale,ok,verbose)
 !-------------------------------------------------------------------------
       use DUST_DATA,ONLY: NELEM,NDUST,dust_nel,dust_nu,dust_el,dust_nam,
      >                    eps0
@@ -2155,10 +2217,13 @@
       real(kind=qp),intent(inout) :: ddust(NDUST),eps(NELEM)
       real(kind=qp),intent(in) :: del,fac,dscale(NDUST)
       logical,intent(inout) :: ok
+      integer,intent(in) :: verbose
       integer :: j,el
-      
-      print*," ==>  transform "//trim(dust_nam(i1))//" -> "
+
+      if (verbose>=-1) then
+        print*," ==>  transform "//trim(dust_nam(i1))//" -> "
      &       //trim(dust_nam(i2)),REAL(fac*del/dscale(i1))
+      endif
       ddust(i1) = ddust(i1)-del
       ddust(i2) = ddust(i2)+fac*del
       do j=1,dust_nel(i1)

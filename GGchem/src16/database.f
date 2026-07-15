@@ -17,6 +17,17 @@
       end MODULE DATABASE
 
 **********************************************************************
+      SUBROUTINE ERASE_DBASE
+**********************************************************************
+      use DATABASE,ONLY: NDAT,NLAST,NMODI
+      implicit none
+      NDAT=0
+      NLAST=0
+      NMODI=0
+      end
+
+
+**********************************************************************
       SUBROUTINE SAVE_DBASE
 **********************************************************************
       use dust_data,ONLY: NELEM,NDUST,dust_nam
@@ -53,6 +64,7 @@
 **********************************************************************
       SUBROUTINE LOAD_DBASE
 **********************************************************************
+      use PARAMETERS,ONLY: verbose
       use dust_data,ONLY: NELEM,NDUST,dust_nam
       use DATABASE,ONLY: qp,NDAT,NLAST,dbase
       implicit none
@@ -83,11 +95,11 @@
         !print*,i,EXP(dbase(i)%ln),EXP(dbase(i)%lT)
       enddo 
  100  close(11)
-      print*,"... having read ",NDAT," datasets." 
+      if (verbose>=0) print*,"... having read ",NDAT," datasets." 
       NLAST = NDAT
       return
  200  close(11)
-      print*,"... no / unsuitable database."
+      if (verbose>=0) print*,"... no / unsuitable database."
       end
 
 **********************************************************************
@@ -96,6 +108,7 @@
       use PARAMETERS,ONLY: verbose
       use dust_data,ONLY: NELEM,NDUST,NEPS,dust_nam,eps0,elnr
       use DATABASE,ONLY: qp,NDAT,NLAST,NMODI,DMAX,dbase
+      use CHEMISTRY,ONLY: NELM,elnum,iel=>el
       implicit none
       real*8,intent(in) :: nH,T,qbest
       integer,intent(in) :: ibest
@@ -106,7 +119,10 @@
       
       !if (qbest<1.d-8) then
       !  return 
-      !else 
+      !else
+      if (verbose>=0) then
+        print*,"==> qbest=",qbest
+      endif
       if (qbest<1.d-3) then
         i = ibest
         if (verbose>=0) then
@@ -126,8 +142,9 @@
         endif  
       endif  
       prod = 0.0
-      do e=1,NEPS
-        el = elnr(e) 
+      do j=1,NELM
+        if (j==iel) cycle
+        el = elnum(j)
         prod = prod + LOG(eps0(el))
       enddo  
       dbase(i)%ln    = LOG(nH)
@@ -142,7 +159,7 @@
       NMODI = i
       if (NDAT>NLAST+10) then
         call SAVE_DBASE
-        print*,"... saved ",NDAT," datasets."
+        if (verbose>=0) print*,"... saved ",NDAT," datasets."
       endif  
       end
 
@@ -162,7 +179,7 @@
       real(kind=qp),intent(inout) :: eps(NELEM),ddust(NDUST)
       logical,intent(out) :: active(0:NDUST)
       real*8 :: prod,lp,ln,lT,lpread,lnread,lTread
-      real*8 :: qual,qmodi,pot,pote,potn,rsort(NEPS)
+      real*8 :: qual,pot,pote,potn,rsort(NEPS)
       real(kind=qp) :: check(NELEM),error,errmax,sjk,sik
       real(kind=qp) :: stoich(NEPS,NEPS),xx(NEPS),rest(NEPS),tmp,val
       real(kind=qp) :: ecopy(NELEM),dcopy(NDUST),deps0(NELEM),echange
@@ -181,8 +198,9 @@
       endif  
 
       prod = 0.0
-      do e=1,NEPS
-        el = elnr(e) 
+      do i=1,NELM
+        if (i==iel) cycle
+        el = elnum(i)
         prod = prod + LOG(eps0(el))
       enddo
       if (verbose>=0) then
@@ -197,6 +215,8 @@
       pote   = 10.0
       potn   = 0.05
       !--- try last entry modified first ---
+      !if (verbose>=0) write(*,*) "check last one ...",
+     >!     NDAT,NMODI,NPICK1,NPICK2
       if (NMODI>0) then
         i=NMODI
         lnread = dbase(i)%ln 
@@ -204,12 +224,14 @@
         lpread = dbase(i)%eprod
         qual = potn*ABS(lnread-ln)+ABS((lTread-lT)+pot*(lnread-ln))
      >       + pote*ABS(lpread-lp)
-        qbest = qual
-        qmodi = qual
-        ibest = i
-        if (qbest<1.d-3) goto 100
+        if (qual<qbest) then
+          qbest = qual
+          ibest = i
+          if (qbest<1.d-3) goto 100
+        endif
       endif  
       !--- try around entry picked last time ---  
+      !if (verbose>=0) write(*,*) "check around last one ..."
       do i=MAX(1,NPICK1-1),MIN(NDAT,NPICK1+1)
         lnread = dbase(i)%ln 
         lTread = dbase(i)%lT
