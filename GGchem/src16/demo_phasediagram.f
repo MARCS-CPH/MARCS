@@ -16,10 +16,14 @@
       integer :: i,it,ix,iy,j,jj,NOUT,stindex,iC,iW,iH2O,iH2Ol
       character(len=20) :: name,short_name(NDUST)
       integer :: verbose=0
+      logical :: hasW,has_basecond
 
       !----------------------------
       ! ***  open output files  ***
       !----------------------------
+      iC = 0
+      iH2O = 0
+      iH2Ol = 0
       do i=1,NDUST
         name = dust_nam(i) 
         j=index(name,"[s]")
@@ -29,7 +33,9 @@
         if (name=='H2O[s]') iH2O=i
         if (name=='H2O[l]') iH2Ol=i
       enddo
+      has_basecond = (iC>0.and.iH2O>0.and.iH2Ol>0)
       iW = stindex(dust_nam,NDUST,'W[s]')
+      hasW = (iW>0)
       eps = eps0
       NOUT = NELM
       if (charge) NOUT=NOUT-1
@@ -138,9 +144,13 @@
           
           !--- compute supersat ratios and nucleation rates ---
           call SUPERSAT(Tg,nat,nmol,Sat)
-          call NUCLEATION('W',Tg,dust_vol(iW),nat(W),
-     &                    Sat(iW),Jstar,Nstar)
-
+          if (hasW) then
+            call NUCLEATION('W',Tg,dust_vol(iW),nat(W),
+     &                      Sat(iW),Jstar,Nstar)
+          else
+            Jstar = 0
+            Nstar = 9.e+99
+          endif
           !--- compute dust/gas density ratio ---
           rhog = nHges*muH
           rhod = 0.0
@@ -168,17 +178,19 @@
      &       LOG10(MAX(1.Q-300, rhod/rhog)),
      &       LOG10(MAX(1.Q-300, Jstar)), 
      &       MIN(999999.99999,Nstar)
-          
-          if (model_eqcond) then
-            write(60,'(2(i4),99(1pE13.6))') ix,iy,
+
+          if (has_basecond) then
+            if (model_eqcond) then
+              write(60,'(2(i4),99(1pE13.6))') ix,iy,
      &               eps(H),eps(C),eps(N),eps(O),
      &               eldust(iC),eldust(iH2O),eldust(iH2Ol)
-          else  
-            write(60,'(2(i4),99(1pE13.6))') ix,iy,
+            else  
+              write(60,'(2(i4),99(1pE13.6))') ix,iy,
      &               eps(H),eps(C),eps(N),eps(O),
      &               Sat(iC),Sat(iH2O),Sat(iH2Ol)
-          endif  
-
+            endif  
+          endif
+          
         enddo
       enddo  
       close(70)

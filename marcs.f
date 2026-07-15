@@ -10177,6 +10177,7 @@ C DT=(TT(2)/TT(1)-1.)/DLNTAU(2)
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       i =0
+      nrelax = 0
 100   CONTINUE
       KL=1
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -10200,9 +10201,16 @@ C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
        if (i>200) then
         eps = eps*2.0
         i = 0
+        nrelax = nrelax + 1
+        if (nrelax.gt.20) then
+          write(*,*) 'TRYCK: boundary condition did not converge',
+     >      ' after repeated tolerance relaxation. DLNPE=',DLNPE,
+     >      ' EPS=',EPS
+          STOP 'TRYCK: non-convergence in boundary condition'
+        end if
        end if
        GOTO 100
-      else 
+      else
         eps = 1.0e-3
       end if
 C
@@ -10222,6 +10230,7 @@ C
 C ITERATION LOOP
       DLNPE=0.
       i = 0 !counter for eps
+      nrelax = 0
 111   CONTINUE
       KL=K
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -10229,8 +10238,8 @@ C ITERATION LOOP
       NABSKO=NABSKO+1
       ERROR=(.5*DLNTAU(K)*GRAV*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
      & TAU(K)/(PP(K)*ROSS(K)))-log(PP(K)/PP(K-1)))
-      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations 
-      CALL ZEROF(ERROR,DLNPE,DEDLNP)   
+      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations
+      CALL ZEROF(ERROR,DLNPE,DEDLNP)
       PPE(K)=PPE(K)*EXP(DLNPE)
 
       IF(ABS(DLNPE).GT.EPS) then
@@ -10238,9 +10247,16 @@ C ITERATION LOOP
        if (i>200) then
         eps = eps*2.0
         i = 0
+        nrelax = nrelax + 1
+        if (nrelax.gt.20) then
+          write(*,*) 'TRYCK: layer K=',K,' did not converge after',
+     >      ' repeated tolerance relaxation. DLNPE=',DLNPE,
+     >      ' EPS=',EPS
+          STOP 'TRYCK: non-convergence at layer K'
+        end if
        end if
        GOTO 111
-      else 
+      else
         eps = 1.0e-3
       end if
 C
@@ -12037,6 +12053,7 @@ C
 C
 C START
       MSA=0
+      EPS = 1.0e-3
       DT=0.
       NABSKO=0
       KK=1
@@ -12045,7 +12062,9 @@ C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       GRVR=GRAV*(RADIUS/RR(1))**2
 C test for effect of constant gravity...
-      IF (KONSG.EQ.1) GRVR=GRAV   
+      IF (KONSG.EQ.1) GRVR=GRAV
+      i = 0
+      nrelax = 0
 100   CONTINUE
       KL=1
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -12064,7 +12083,23 @@ C test for effect of constant gravity...
       DP=MAX(DP,0.1D+0)
       DLNPE=log(GRVR*TAU(1)/(PG*ROSS(1)*DP))/(PGPE+ROSSPE)
       PPE(1)=PPE(1)*EXP(DLNPE)
-      IF(ABS(DLNPE).GT.EPS) GOTO 100
+      IF(ABS(DLNPE).GT.EPS) then
+      i = i+1
+       if (i>200) then
+        eps = eps*2.0
+        i = 0
+        nrelax = nrelax + 1
+        if (nrelax.gt.20) then
+          write(*,*) 'TRYCK_sph: boundary condition did not converge',
+     >      ' after repeated tolerance relaxation. DLNPE=',DLNPE,
+     >      ' EPS=',EPS
+          STOP 'TRYCK_sph: non-convergence in boundary condition'
+        end if
+       end if
+       GOTO 100
+      else
+        eps = 1.0e-3
+      end if
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -12084,6 +12119,8 @@ C test for effect of constant gravity....
 C
 C ITERATION LOOP
       DLNPE=0.
+      i = 0 !counter for eps
+      nrelax = 0
 111   CONTINUE
       KL=K
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12092,10 +12129,26 @@ C ITERATION LOOP
       ERROR=(.5*DLNTAU(K)*GRVR*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
      & TAU(K)/(PP(K)*ROSS(K)))-log(PP(K)/PP(K-1)))
 C       print*,'error,dedlnp ', error,dedlnp
-      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations 
+      !ERROR = ERROR - 1.D0 !fix attempt to avoid breaking of the code if error is the same between iterations
       CALL ZEROF(ERROR,DLNPE,DEDLNP)
       PPE(K)=PPE(K)*EXP(DLNPE)
-      IF(ABS(DLNPE).GT.EPS) GOTO 111
+      IF(ABS(DLNPE).GT.EPS) then
+       i = i+1
+       if (i>200) then
+        eps = eps*2.0
+        i = 0
+        nrelax = nrelax + 1
+        if (nrelax.gt.20) then
+          write(*,*) 'TRYCK_sph: layer K=',K,' did not converge after',
+     >      ' repeated tolerance relaxation. DLNPE=',DLNPE,
+     >      ' EPS=',EPS
+          STOP 'TRYCK_sph: non-convergence at layer K'
+        end if
+       end if
+       GOTO 111
+      else
+        eps = 1.0e-3
+      end if
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12431,15 +12484,26 @@ C FIND DX=-F/DFDX, TO MAKE F ZERO. IF DX=0 AT ENTRY, THEN DFDX IS A
 C START APPROXIMATION, AND IT IS THE FIRST CALL. OTHERWISE USE OLD
 C INFO.  780926/NORDLUND.
 C
-      !if (F.eq.FOLD) then
-      !write(*,*) "F equals F_OLD, which would make the derivative zero,
-      !>   currently no fix in place Sorry :( Try a different setup"
-      ! stop
-      !endif  
-      IF(DX.NE.0. .and. F.ne.FOLD) DFDX=(F-FOLD)/DXOLD
-      DX=-F/DFDX
+      IF (DX.NE.0. .and. F.eq.FOLD) THEN
+C RESIDUAL DID NOT CHANGE SINCE THE LAST CALL, SO THE SECANT DERIVATIVE
+C CANNOT BE UPDATED FROM THIS STEP. FLAG IT (SO A STALLED ITERATION IS
+C VISIBLE IN THE LOG) AND FALL THROUGH REUSING THE PREVIOUS DFDX.
+        WRITE(*,*) 'ZEROF: F equals FOLD (stalled derivative),',
+     >    ' reusing previous DFDX. F=',F
+      ELSE IF(DX.NE.0.) THEN
+        DFDX=(F-FOLD)/DXOLD
+      END IF
 C
-C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT 
+C GUARD AGAINST A ZERO/UNDEFINED DERIVATIVE (E.G. A ZERO START
+C APPROXIMATION ON THE FIRST CALL) TO AVOID DIVIDING BY ZERO.
+      IF (DFDX.EQ.0.) THEN
+        WRITE(*,*) 'ZEROF: DFDX is zero, using bounded fallback step.'
+        DX=SIGN(0.1D0,-F)
+      ELSE
+        DX=-F/DFDX
+      END IF
+C
+C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT
       IF (DX.GT.2.) DX=2.
 C
       FOLD=F
@@ -15442,6 +15506,8 @@ c and total molecular pressure.
       real*8, dimension(500) :: Al_x, He_x, Si_x, C_x, 
      > Mg_x, H_x 
       character*2000 pprdline
+      character(len=200) :: ggline
+      integer :: ggios
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
@@ -15509,25 +15575,13 @@ c and total molecular pressure.
       close(546)
       
       open(unit=70, file='marcs2ggchem.in', status='replace')
-      write(70, '(19a)') '# selected elements'
-      write(70, '(99a)') 'H He C N O Na Mg Si F Fe Al Ca Cr Ti S Cl K Li
-     & V Zr Be P el'
-      write(70, '(38a)') '# name of files with molecular kp-data'
-      write(70,'(a54)') 'dispol_BarklemCollet.dat             
-     &   ! dispol_file '
-      write(70,'(a54)')
-     & 'dispol_StockKitzmann_withoutTsuji.dat   ! dispol_file2'
-      write(70,'(a54)') 'dispol_WoitkeRefit.dat         
-     &         ! dispol_file3'
-      write(70,'(a64)') '# abundance options 1=EarthCrust, 2=Ocean,
-     & 3=Solar, 4=Meteorites'
-      write(70,'(a34)') '0                     ! abund_pick'
-      write(70,'(a34)') 'abund_drift.in                    '
-      write(70,'(a30)') '0                    ! verbose'
-      write(70,'(a27)') '# equilibrium condensation?'
-      write(70,'(a36)') '.false.               ! model_eqcond'   
-      write(70,'(a42)') '0                     ! model_dim  (0,1,2)'
-      write(70,'(a36)') '.true.                ! model_pconst'
+      open(unit=71, file='marcs2ggchem_template.in', status='old')
+      do
+        read(71,'(a)',iostat=ggios) ggline
+        if (ggios /= 0) exit
+        write(70,'(a)') trim(ggline)
+      end do
+      close(71)
       write(70,*) temp, '                ! Tmax [K]'
       write(70,*) pgas/bar,'                   ! pmax [bar]' 
       close(70)

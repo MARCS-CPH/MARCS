@@ -1,7 +1,7 @@
 ************************************************************************
       subroutine INIT_CHEMISTRY
 ************************************************************************
-      use PARAMETERS,ONLY: elements,initchem_info
+      use PARAMETERS,ONLY: elements,initchem_info,output_dispol
       use CHEMISTRY,ONLY: NMOLdim,NMOLE,NELM,catm,cmol,el,
      &    dispol_file,source,fit,natom,a,error,i_nasa,
      &    m_kind,m_anz,elnum,elion,charge,Natmax,Ncmax,STOImax,
@@ -10,9 +10,10 @@
       use DUST_DATA,ONLY: mass,mel,amu
       use EXCHANGE,ONLY: nmol,mmol
       implicit none
-      integer :: loop,i,ii,j,iel,e,smax,ret
+      integer :: loop,i,ii,j,iel,e,smax,ret,nout
       character(len=2) :: cel(40),elnam
-      character(len=20) :: molname,upper,leer='                    '
+      character(len=20) :: molname,uname,leer='                    '
+      character(len=40) :: frmt
       character(len=200) :: filename
       character(len=300) :: line
       character(len=1) :: char
@@ -133,10 +134,12 @@
           if (smax>Natmax) cycle   ! stoichiometric coefficient > Natmax
           if (m_kind(0,i)==1.and.natom(i)==1) cycle  ! pure atom
           j = index(molname,"_")
+          uname = molname
+          call upper(uname)
           if (j>1) then
-            cmol(i) = upper(molname(j+1:)//leer(1:j))
+            cmol(i) = uname(j+1:)//leer(1:j)
           else
-            cmol(i) = upper(molname)
+            cmol(i) = uname
           endif
           charged = .false.
           do j=1,m_kind(0,i)
@@ -241,6 +244,24 @@
         print'(1x,99(A4))',(trim(cmol(elion(j))),j=1,el-1),'  ',
      >                     (trim(cmol(elion(j))),j=el+1,NELM)
       endif  
+
+      if (output_dispol) then
+        filename = "dispol.out"
+        open(12,file=filename,status='replace')
+        write(12,*) NMOLE
+        do i=1,NMOLE
+          write(frmt,'("(A20,I2,1x,",I1,"(1x,A2),",I1,"(I2,1x))")')
+     >          m_kind(0,i),m_kind(0,i)
+          write(12,frmt) cmol(i),m_kind(0,i),
+     >         (catm(m_kind(j,i)),j=1,m_kind(0,i)),
+     >         (m_anz(j,i),j=1,m_kind(0,i))
+          nout = 4
+          if (fit(i)==6) nout=7
+          if (fit(i)==7.or.fit(i)==8) nout=13
+          write(12,'(I2,99(1pE16.8))') fit(i),(a(i,j),j=0,nout)
+        enddo
+        close(12)
+      endif
       
  3000 format(I4," & ",A12," & (",I1,") & ",I1," & ",
      &       5(1pE12.5," & "),"$\pm$",0pF4.2,"\\")

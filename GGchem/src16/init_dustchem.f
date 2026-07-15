@@ -1,22 +1,24 @@
 **********************************************************************
       SUBROUTINE INIT_DUSTCHEM
 **********************************************************************
-      use PARAMETERS,ONLY: model_eqcond,phyllosilicates
-      use CHEMISTRY,ONLY: NMOLE,NELM,catm
+      use PARAMETERS,ONLY: model_eqcond,phyllosilicates,use_SiO,
+     &                     metal_sulphates
+      use CHEMISTRY,ONLY: NMOLE,NELM,catm,cmol
       use DUST_DATA,ONLY: NDUSTmax,NEPS,NELEM,NDUST,eps0,amu,
      &                    dust_nam,dust_rho,dust_vol,dust_mass,
      &                    dust_nel,dust_nu,dust_el,fit,cfit,
-     &                    Nfit,Tfit,Bfit,
+     &                    Nfit,Tfit,Bfit,fitTmax,
      &                    elnr,elcode,elnam,mass,Tmelt,Tcorr,
      &                    DustChem_file
       use EXCHANGE,ONLY: H,Si,Al,Ca
       implicit none
-      integer :: i,imax,j,k,el,j1,j2
+      integer :: i,imax,j,k,l,el,j1,j2,imol,STINDEX
       real*8 :: dmass,prec(NDUSTmax)
       character(len=10000) :: allcond
       character(len=200):: zeile,lastzeile
-      character(len=100) :: trivial(NDUSTmax),tmp
+      character(len=100) :: trivial(NDUSTmax),tmp,search
       character(len=2)  :: name
+      character(len=20) :: leer='                    '
       logical :: found,allfound,hasH,hasSi,hasAl,hasCa
 
       write(*,*) 
@@ -38,12 +40,14 @@
         read(zeile,*) dust_nam(NDUST)
         j1 = index(zeile,' ')
         read(zeile(j1+1:),*) trivial(NDUST)
+        !print*,NDUST,trim(trivial(NDUST))
         if (index(zeile,'[l]')>0) then
           j2 = index(zeile,trim(trivial(NDUST)))
      &       + len(trim(trivial(NDUST)))
           read(zeile(j2+1:),*) Tmelt(NDUST)
-          trivial(NDUST)=' '
+          read(zeile(j1+1:j2),*) trivial(NDUST)
         endif
+        !print*,trim(dust_nam(NDUST)),trim(trivial(NDUST))
         read(12,*) dust_rho(NDUST)
         read(12,*) dust_nel(NDUST)
         dmass = 0.d0
@@ -105,6 +109,14 @@
               read(12,*) Bfit(NDUST,k,1:14)
             enddo  
           endif  
+          fitTmax(NDUST) = 6000.0
+          j1 = index(lastzeile,'Tmax=')
+          if (j1>0) then
+            tmp = lastzeile(j1+5:)
+            j1  = index(tmp,")")
+            if (j1>0) tmp = tmp(:j1-1)
+            read(tmp,*) fitTmax(NDUST)
+          endif  
           found = .true.
         enddo
         if (.not.found) then
@@ -119,7 +131,26 @@
           stop
         endif  
         if ((.not.phyllosilicates).and.hasH
-     &      .and.(hasSi.or.hasAl.or.hasCa)) allfound=.false.
+     &       .and.(hasSi.or.hasAl.or.hasCa)) allfound=.false.
+        !if ((.not.use_SiO).and.
+     &  !     trim(dust_nam(NDUST))=='SiO[s]') allfound=.false.
+        if ((.not.metal_sulphates).and.
+     &       index(trivial(NDUST),'SULFATE')>0) allfound=.false.
+        if ((fit(NDUST)==3.or.fit(NDUST)==4.or.fit(NDUST)==6
+     &       .or.fit(NDUST)==99)
+     &       .and.SUM(dust_nu(NDUST,1:dust_nel(NDUST)))>1) then          
+          search = dust_nam(NDUST)
+          j1 = index(search,"[")
+          search = search(1:j1-1)
+          call upper(search)
+          if (dust_nam(NDUST)=='NH4SH[s]') search='H2S'
+          found = .false.
+          do j=1,NMOLE
+            if (trim(cmol(j))==trim(search)) found=.true.
+          enddo
+          print*,fit(NDUST),trim(dust_nam(NDUST)),trim(search),found
+          if (.not.found) allfound=.false.
+        endif
         if (allfound) then
           dust_mass(NDUST) = dmass
           dust_vol(NDUST) = dmass/dust_rho(NDUST)
@@ -258,24 +289,27 @@
       do i=1,Ncheck
         il = iliq(i)
         is = isol(i)
+        !print*,dust_nam(il)
         do iT=101,10000
-          T = DBLE(iT) 
+          if (S(il,iT)==0.Q0) cycle
+          T = DBLE(iT)
+          !print*,iT,S(is,iT),S(il,iT)
           old = S(is,iT-1)/S(il,iT-1)
           new = S(is,iT)/S(il,iT)
           if (old>1.Q0.and.new<1.Q0) then
             !print'(A15,"-> ",A15,":",2(0pF8.1))',
      &      !     dust_nam(is),dust_nam(il),T,Tmelt(il)
           else if (old<1.Q0.and.new>1.Q0) then
-            !print'(A15,"<- ",A15,":",0pF8.1,
-     &      !     " false intersection point")',
-     &      !     dust_nam(is),dust_nam(il),T
+            print'(A15,"<- ",A15,":",0pF8.1,
+     &           " false intersection point")',
+     &           dust_nam(is),dust_nam(il),T
             if (T<Tmelt(il)) then
               Tcorr(il) = 0.5*(T+Tmelt(il))  
-              print'(" ... correct ",A15," T <",0pF7.1)',
+              print'(" ... correct liquid ",A15," T <",0pF7.1)',
      &             dust_nam(il),Tcorr(il) 
             else  
-              Tcorr(is) = 0.5*(T+Tmelt(il))  !correct solid
-              print'(" ... correct ",A15," T >",0pF7.1)',
+              Tcorr(is) = 0.5*(T+Tmelt(il))
+              print'(" ... correct solid ",A15," T >",0pF7.1)',
      &             dust_nam(is),Tcorr(is) 
             endif  
           endif  
@@ -291,6 +325,7 @@
         il = iliq(i)
         is = isol(i)
         do iT=101,10000
+          if (S(il,iT)==0.Q0) cycle          
           T = DBLE(iT) 
           old = S(is,iT-1)/S(il,iT-1)
           new = S(is,iT)/S(il,iT)

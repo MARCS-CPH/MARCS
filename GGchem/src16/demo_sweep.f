@@ -3,7 +3,7 @@
 ***********************************************************************
       use PARAMETERS,ONLY: Tmin,Tmax,pmin,pmax,nHmin,nHmax,useDatabase,
      >                     model_eqcond,model_pconst,Npoints,
-     >                     remove_condensates
+     >                     remove_condensates,verbose
       use CHEMISTRY,ONLY: NELM,NMOLE,elnum,cmol,catm,el,charge
       use DUST_DATA,ONLY: NELEM,NDUST,elnam,eps0,bk,bar,muH,amu,
      >                    dust_nel,dust_el,dust_nu,dust_nam,dust_mass,
@@ -25,9 +25,10 @@
       character(len=4) :: sup
       character(len=2) :: test3
       character(len=1) :: char
-      integer :: verbose=0
+      integer :: verb
       logical :: isOK,hasW,same,no_solution,TEAinterface=.false.
 
+      verb = verbose
       !----------------------------
       ! ***  open output files  ***
       !----------------------------
@@ -282,33 +283,16 @@
         else  
           nHges = EXP(LOG(nHmax)+fac*LOG(nHmin/nHmax))
           same = same.and.(nHmin==nHmax)
-        endif  
-        !if (same) then
-        !  deps = -0.5E-4 + 3.5E-4*fac       ! D(CO2)
-        !  eps0(C) = eps00(C) + deps
-        !  eps0(O) = eps00(O) + 2*deps
-        !endif   
-        if (same) then
-          x1 = 0.3q0
-          x2 = 0.3q0
-          y1 = 0.7q0
-          y2 = 0.999999q0
-          xx = x1+(x2-x1)*fac
-          yy = y1+(y2-y1)*fac
-          eps0(O) = (1+yy)/(1-yy)
-          eps0(C) = (1+eps0(O))*xx/(1-xx)
-          eps0(H) = 1.q0
-          NN = eps00(N)/(eps00(C)+eps00(H)+eps00(N)+eps00(O)+eps00(S))
-          SS = eps00(S)/(eps00(C)+eps00(H)+eps00(N)+eps00(O)+eps00(S))
-          epsNS   = (NN+SS)*(eps0(C)+eps0(H)+eps0(O))/(1-NN-SS)
-          eps0(N) = NN*(eps0(C)+eps0(H)+eps0(O)+epsNS) 
-          eps0(S) = SS*(eps0(C)+eps0(H)+eps0(O)+epsNS) 
-          !print*,xx,eps0(C)/(eps0(H)+eps0(O)+eps0(C))
-          !print*,yy,(eps0(O)-eps0(H))/(eps0(O)+eps0(H))
-          print*,NN,eps0(N)/(eps0(C)+eps0(H)+eps0(N)+eps0(O)+eps0(S))
-          print*,SS,eps0(S)/(eps0(C)+eps0(H)+eps0(N)+eps0(O)+eps0(S))
-          stop
         endif
+        if (same) then
+          !eps0(O) = 10**(LOG10(eps00(O))+0.00005*(1.0-2*fac))
+          eps0(S) = 10**(LOG10(eps00(S))+0.5*(2*fac-1.0))
+          !eps0(S) = 10**(LOG10(eps00(S))+1.5*(2*fac-1.0))
+          !eps0(O) = eps00(O) + 2.0*(eps0(S)-eps00(S))
+          !eps0(H) = 10**(LOG10(eps00(H))+1.5*(1.0-2*fac))
+          !eps0(O) = eps00(O) + 0.5*(eps0(H)-eps00(H))
+          print*,i,fac,eps0(S)
+        endif   
         eldust = 0.Q0
         no_solution = .false.
 
@@ -317,7 +301,7 @@
         do it=1,99
           if (model_pconst) nHges = p*mu/(bk*Tg)/muH
           if (model_eqcond) then
-            call EQUIL_COND(nHges,Tg,eps,Sat,eldust,verbose)
+            call EQUIL_COND(nHges,Tg,eps,Sat,eldust,verb)
           else
             eps = eps0
           endif  
@@ -351,7 +335,8 @@
             endif  
           endif
           fold = ff
-          print '("p-it=",i3,"  mu=",2(1pE20.12))',it,mu/amu,dmu/mu
+          if (verb>-2) print '("p-it=",i3,"  mu=",2(1pE20.12))',
+     >                       it,mu/amu,dmu/mu
           if (ABS(dmu/mu)<1.E-10) exit
           if (model_pconst.and.dmu>0.0) then
             Ncond = 0
@@ -413,10 +398,10 @@
         print'(i4," Tg[K] =",0pF8.2,"  n<H>[cm-3] =",1pE10.3)',
      >        i,Tg,nHges
 
-        write(*,1010) ' Tg=',Tg,' n<H>=',nHges,
+        if (verb>-2) write(*,1010) ' Tg=',Tg,' n<H>=',nHges,
      &                ' p=',pgas/bar,' mu=',mu/amu,
      &                ' dust/gas=',rhod/rhog
-        print*
+        if (verb>-2) print*
         write(70,2010) Tg,nHges,pgas,
      &       LOG10(MAX(1.Q-300, nel)),
      &      (LOG10(MAX(1.Q-300, nat(elnum(jj)))),jj=1,el-1),
@@ -447,7 +432,7 @@
      &        (eps(elnum(jj)),jj=el+1,NELM)
         endif
   
-        if (verbose>0) read(*,'(a1)') char
+        if (verb>0) read(*,'(a1)') char
         
       enddo  
 
