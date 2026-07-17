@@ -42,6 +42,7 @@ switchOPT = -O3 -ipo -ip -unroll -xHost -g -module krome/MARCS_build -fp-model p
 switchPRO = $(switchOPT) -pg -traceback
 switchOMP = $(switchOPT) -openmp
 #only use debug flags if you are working on MARCS alone, gives a lot of warnings and errors for krome
+switchFAST = -O2 -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise -mcmodel=medium -align commons
 switchDBG = -O0 -check all -warn all -fpe0 -u -traceback -warn nounused
 switchDBG += -fp-model precise
 
@@ -49,6 +50,8 @@ switchDBG += -fp-model precise
 switch = $(switchOPT)
 switchc = $(switchOPT)
 
+#switch = $(switchFAST)
+#switchc = $(switchFAST)
 #no warning switch (for DLSODES)
 nowarnIfort = -nowarn
 nowarnGNU = -w
