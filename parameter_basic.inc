@@ -7,7 +7,7 @@
 * Maximal number of rays for the solution of the transfer equation.
 * This should be at least NDP/2 +3.
       INTEGER   NRAYS
-      PARAMETER ( NRAYS=50) 
+      PARAMETER ( NRAYS=120)
 
 * Equation of state parameters   (for tabs and absko)
 * mkomp  = max # of absorption coefficient contributors
@@ -49,7 +49,7 @@
 * OPAMOD
 * Note: make sure to change in .github/build.
       integer NOPI, NOTI, NOSPEC
-      parameter (NOPI = 30, NOTI = 80, NOSPEC = 74)
+      parameter (NOPI = 30, NOTI = 80, NOSPEC = 75)
 
 * natms = number of atoms considered in Gibbs energy minimalization routines
 * nspec = total number of species (atoms, ions, molecules) considered in Gibbs 
