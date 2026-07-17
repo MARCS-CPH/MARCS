@@ -28,7 +28,7 @@ mkdir ${out_dir}
 mkdir $TMPDIR
 mkdir $TMPDIR/data/
 
-input_parameters=$CWD${input_folder}marcs_basic.input
+input_parameters=$CWD${input_folder}marcs.input
 input_elabund=$CWD${data_folder}elabund_solar.dat
 input_opac=$CWD${data_folder}mol_names_72_O2O3.dat
 input_spectrum=$CWD${data_folder}stellar_spectrum_solar_7949_1AU.dat
@@ -41,9 +41,10 @@ cp $input_opac $TMPDIR/data/mol_names.dat
 cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
 cp $input_jonabs $TMPDIR/data/jonabs.dat
 
-cp ${in_filename}.arciv arcivaaa.dat
-cp arcivaaa.dat $TMPDIR/
-rm arcivaaa.dat
+# stage the input archive directly into the job-private TMPDIR
+# (previously went through a shared file in $CWD, which raced when
+#  several jobs were submitted at once and could silently corrupt startup)
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
 
 cp -r data/abinit_abmarcs.dat $TMPDIR/data
 cp -r data/dispol_* $TMPDIR/data

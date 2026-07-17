@@ -9559,7 +9559,24 @@ C CHECK T CORR
       END IF
 C
       IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
-      PPK = TDIFF
+C DAMP PERIOD-2 LIMIT CYCLES: A SIGN FLIP OF THE SIGNED MAX WANTED
+C CORRECTION BETWEEN CONSECUTIVE ITERATIONS MEANS THE APPLIED STEP
+C OVERSHOOTS THE EQUILIBRIUM (CYCLE AMPLITUDE SCALES WITH STEP SIZE).
+C HALVE THE WORKING STEP (FLOOR TCONV); RECOVER X1.2 (CAP TDIFF)
+C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
+      TCMXNOW=T(1)
+      DO 4012 I=2,NTAU
+      IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
+4012  CONTINUE
+      IF (IT.EQ.1) TDWORK=TDIFF
+      IF (IT.EQ.1) TCMXPRV=0.
+      IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
+        TDWORK=MAX(0.5D0*TDWORK,TCONV)
+      ELSE
+        TDWORK=MIN(1.2D0*TDWORK,TDIFF)
+      END IF
+      TCMXPRV=TCMXNOW
+      PPK = TDWORK
       DO 4011 I=1,NTAU
       if (abs(T(I)).GT.abs(PPK))
      - T(I)=PPK*t(i)/abs(t(i))
@@ -9585,7 +9602,24 @@ C
       IF (KORT.EQ.6) THEN
       IF(IT.EQ.1) TCORPRV = 1.D3
       IF(IT.EQ.1) TCORMIN = 1.D3
-      PPK = TDIFF
+C DAMP PERIOD-2 LIMIT CYCLES (SAME SCHEME AS IN THE KORT=4/5 BLOCK):
+C ON A SIGN FLIP OF THE SIGNED MAX WANTED CORRECTION BETWEEN
+C CONSECUTIVE ITERATIONS, HALVE THE WORKING STEP CEILING (FLOOR
+C TCONV); RECOVER X1.2 (CAP TDIFF) WHILE THE SIGN PERSISTS. THE
+C CEILING FEEDS KORT=6'S OWN RATCHET (PPKK/TCORMIN) UNCHANGED.
+      TCMXNOW=T(1)
+      DO 4013 I=2,NTAU
+      IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
+4013  CONTINUE
+      IF (IT.EQ.1) TDWORK=TDIFF
+      IF (IT.EQ.1) TCMXPRV=0.
+      IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
+        TDWORK=MAX(0.5D0*TDWORK,TCONV)
+      ELSE
+        TDWORK=MIN(1.2D0*TDWORK,TDIFF)
+      END IF
+      TCMXPRV=TCMXNOW
+      PPK = TDWORK
       PPKK = 2.D0*TCORPRV
       PPK = MIN(PPKK,PPK)
       PPPK = MIN(TCORMIN,PPK)
@@ -10160,9 +10194,11 @@ C
       COMMON /ROSSC/ROSS(NDP),CROSS(NDP)
       COMMON /CROSSOS/ ROSSO(NDP),PTAUO(NDP)
       COMMON /CI8/PGC,RHOC,EC
-      COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE 
+      COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
+      DATA DLNPEMX/0.5D0/
 C
 C START
 C     CALL MSLEFT(MSA)
@@ -10174,6 +10210,11 @@ C DT=(TT(2)/TT(1)-1.)/DLNTAU(2)
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
+C SAVE ELECTRON PRESSURES AT ENTRY: ANCHORS FOR THE PER-CALL STEP CAP.
+C CAP IS A RATE LIMITER ONLY - RE-ANCHORED EVERY CALL, INACTIVE ONCE
+C THE MODEL IS NEAR CONVERGENCE, SO THE CONVERGED MODEL IS UNCHANGED.
+      DO 90 K=1,NTAU
+90    PPEIN(K)=MAX(PPE(K),1.D-30)
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       i =0
@@ -10213,6 +10254,10 @@ C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       else
         eps = 1.0e-3
       end if
+C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
+      DLNPP=LOG(PPE(1)/PPEIN(1))
+      IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -10259,6 +10304,10 @@ C ITERATION LOOP
       else
         eps = 1.0e-3
       end if
+C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
+      DLNPP=LOG(PPE(K)/PPEIN(K))
+      IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -11338,7 +11387,24 @@ C407   CONTINUE
 C
 
       IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
-      PPK = TDIFF
+C DAMP PERIOD-2 LIMIT CYCLES: A SIGN FLIP OF THE SIGNED MAX WANTED
+C CORRECTION BETWEEN CONSECUTIVE ITERATIONS MEANS THE APPLIED STEP
+C OVERSHOOTS THE EQUILIBRIUM (CYCLE AMPLITUDE SCALES WITH STEP SIZE).
+C HALVE THE WORKING STEP (FLOOR TCONV); RECOVER X1.2 (CAP TDIFF)
+C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
+      TCMXNOW=T(1)
+      DO 4012 I=2,NTAU
+      IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
+4012  CONTINUE
+      IF (IT.EQ.1) TDWORK=TDIFF
+      IF (IT.EQ.1) TCMXPRV=0.
+      IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
+        TDWORK=MAX(0.5D0*TDWORK,TCONV)
+      ELSE
+        TDWORK=MIN(1.2D0*TDWORK,TDIFF)
+      END IF
+      TCMXPRV=TCMXNOW
+      PPK = TDWORK
       DO 4011 I=1,NTAU
       if (abs(T(I)).GT.abs(PPK))
      - T(I)=PPK*t(i)/abs(t(i))
@@ -12049,7 +12115,9 @@ C
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE 
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
+      DATA DLNPEMX/0.5D0/
 C
 C START
       MSA=0
@@ -12058,6 +12126,11 @@ C START
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
+C SAVE ELECTRON PRESSURES AT ENTRY: ANCHORS FOR THE PER-CALL STEP CAP.
+C CAP IS A RATE LIMITER ONLY - RE-ANCHORED EVERY CALL, INACTIVE ONCE
+C THE MODEL IS NEAR CONVERGENCE, SO THE CONVERGED MODEL IS UNCHANGED.
+      DO 90 K=1,NTAU
+90    PPEIN(K)=MAX(PPE(K),1.D-30)
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       GRVR=GRAV*(RADIUS/RR(1))**2
@@ -12100,6 +12173,10 @@ C test for effect of constant gravity...
       else
         eps = 1.0e-3
       end if
+C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
+      DLNPP=LOG(PPE(1)/PPEIN(1))
+      IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -12149,6 +12226,10 @@ C       print*,'error,dedlnp ', error,dedlnp
       else
         eps = 1.0e-3
       end if
+C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
+      DLNPP=LOG(PPE(K)/PPEIN(K))
+      IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12702,7 +12783,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
           h1mbar = H_p(k)
         end if
       end do
-      do k=1,ntau !calc Kzz from Moses et al. 2021 Equation 1
+      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
        K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
      >       *h1mbar/(620e5)*(teff_real/1450)**4 
        vert_mix_time(k) = H_p(k)**2 / K_zz(k)
@@ -16180,7 +16261,6 @@ C      implicit none
       real*8 :: dz_k                ! vertical layer spacing [cm]
       real*8 :: flux_up             ! upward eddy flux [cm^-2 s^-1]
       real*8 :: delta_n_mix         ! abundance transferred upward [cm^-3]
-      logical :: mixing_on = .True. ! eddy mixing off by default
       real*8 :: dt_max_loc, dt_inc_loc ! per-layer working copies; dt_max/dt_inc
                                         ! (common block) are never written to,
                                         ! so a retry on one layer can't leak
@@ -16506,8 +16586,8 @@ C                avoids redoing the whole dt_start->dt_max ramp from scratch.
 C ------ UPWARD EDDY MIXING (Eq. 2 term 1, Bangera et al. 2025) ------
 C       Phi = -K_zz * (dn_i/dz + n_i/H_p), Bangera et al. 2025
 C       Applied per species when tau_chem > tau_mix. Disabled by default
-C       (mixing_on = .false.); set mixing_on = .true. to activate.
-      if (mixing_on .and. k .gt. 1 .and. time .ge. tmax) then
+
+      if (k .gt. 1 .and. time .ge. tmax) then
         dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
         do i = 1, nsp
 C         Chemical timescale: n_i / |dn_i/dt_net| from KROME integration
