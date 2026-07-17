@@ -3,9 +3,7 @@
 How to run a marcs model.  
 In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 ### Prepare input files
-Firstly all files with "_basic", in the main folder and the data folder, should be copied/moved to their respecitve names without "_basic".
-(This is just in place to avoid git tracking of the actual input files)  
-Afterwards one should check that all required files are existing and in the right directory for marcs to work.
+One should check that all required files are existing and in the right directory for marcs to work.
 Here is a little checklist:  
   - elabund.dat in the **data** directory (make sure it is the right elemental abundace, for example solar or earth like)
   - jonabs.dat in **data**
@@ -13,7 +11,7 @@ Here is a little checklist:
   - all dispol and DustChem files in **data** (should always be the case)
   - parameter.inc in the main directory
   - Makefile in the main directory
-  - marcs.input in the **input_files** directory (already provided, ready to use directly - no "_basic" copy step needed for this one; make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
+  - marcs.input in the **input_files** directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
   - runmarcs file in the **runmarcs_files** directory (make sure all the output you want is comment out/in)
   - make sure that you have a compiler installed and available to your shell. MARCS by default uses the ifort compilers, but gfortran is possible if needed.   

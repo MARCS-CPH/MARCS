@@ -25,6 +25,7 @@ input_folder=/input_files/
 data_folder=/data/
 
 mkdir ${out_dir}
+cp $CWD/$0    $CWD/${out_dir}   # copy the script itself into the output dir as early as possible
 mkdir $TMPDIR
 mkdir $TMPDIR/data/
 
@@ -70,7 +71,6 @@ cp $input_elabund $CWD/${out_dir}
 cp $input_jonabs $CWD/${out_dir}
 cp $input_opac $CWD/${out_dir}
 cp $input_spectrum $CWD/${out_dir}
-cp $CWD/$0    $CWD/${out_dir}
 #cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
 
 ./marcs
