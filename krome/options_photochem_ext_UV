@@ -1,0 +1,8 @@
+-ATOL 1d-12
+-checkConserv
+-noExample
+-noSinkCheck
+-RTOL 1D-8
+-skipODEthermo
+-photoBins=9248
+-useN

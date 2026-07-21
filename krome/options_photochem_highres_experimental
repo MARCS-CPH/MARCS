@@ -2,7 +2,7 @@
 -checkConserv 
 -noExample 
 -noSinkCheck 
--skipODEthermo 
--RTOL 1D-8
--photoBins=7949
+-RTOL 1D-4
+-photoBins=39740
 -useN 
+-skipODEthermo
