@@ -1,0 +1,10 @@
+-checkConserv 
+-noExample 
+-noSinkCheck 
+-checkReverse
+-reverse
+-photoBins=7949
+-useN
+-ATOL 1d-12
+-RTOL 1D-8
+-skipODEthermo
