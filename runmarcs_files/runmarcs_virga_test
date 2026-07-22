@@ -1,0 +1,159 @@
+#!/bin/bash
+# SLURM resource specifications
+# (use an extra ‘#’ in front of SBATCH to comment-out any unused options)
+#SBATCH --job-name=VirgaTest # shows up in the output of ‘squeue’
+#SBATCH --time=2:00:00       # specify the requested wall-time
+#SBATCH --partition=astro2_devel   # specify the partition to run on
+#SBATCH --nodes=1              # number of nodes allocated for this job
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1    # number of MPI ranks per node
+#SBATCH --cpus-per-task=1       # number of OpenMP threads per MPI rank
+#SBATCH --mail-type=ALL
+
+module load astro gdb python/mamba/2023
+
+# Usage: sbatch runmarcs_virga_test [input_deck_basename] [output_subdir_name]
+#   input_deck_basename : file under ./input_files/, default virga_test.input
+#   output_subdir_name  : subdir under ./models/virga_test/, default "test"
+# Parameterized so the exact same staging pipeline can drive a VIRGA=0
+# baseline run and a VIRGA=1 run into separate output dirs, e.g.:
+#   sbatch runmarcs_virga_test virga_test_novirga.input novirga
+#   sbatch runmarcs_virga_test virga_test.input          test
+INPUT_DECK=${1:-virga_test.input}
+OUT_SUBDIR=${2:-test}
+
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+in_dir=./models/virga_test/
+out_dir=./models/virga_test/${OUT_SUBDIR}/
+
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir -p ${out_dir}
+cp $CWD/$0    $CWD/${out_dir}   # copy the script itself into the output dir as early as possible
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+
+input_parameters=$CWD${input_folder}${INPUT_DECK}
+input_elabund=$CWD${data_folder}elabund_K2-18.dat
+input_opac=$CWD${data_folder}mol_names_72_O2O3_2026_old_CO.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_solar_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+#cp ./models/spectrum_test/72_O2O3/mxms7.input mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+
+#cp ${in_dir}/input.arciv arcivaaa.dat
+cp ${in_filename}.arciv arcivaaa.dat
+
+cp arcivaaa.dat $TMPDIR/
+rm arcivaaa.dat
+#cp *.txt $TMPDIR/
+cp marcs2gg_partpp.dat $TMPDIR
+# Needed by the GGchem-template read at marcs.f:15700 (open unit=71,
+# status='old'); added 2026-07-15 alongside the GGchem modernization work
+# but never wired into any runmarcs_* script's staging, so it was silently
+# missing here too -- not a virga-specific gap.
+cp $CWD/marcs2ggchem_template.in $TMPDIR
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+#cp -r ${in_dir} $TMPDIR/
+#cp mxms7.input $TMPDIR/
+cp marcs $TMPDIR/
+
+# Only stage virga-specific inputs when this deck actually turns virga on --
+# a VIRGA=0 baseline run has no business depending on virga_condensates.dat
+# existing at all.
+if grep -qE '^VIRGA[[:space:]]*=[[:space:]]*1' "$input_parameters"; then
+  # Explicit, named copy so a missing condensate list fails loudly here
+  # instead of at marcs.f's open(status='old') deep into the run. (The
+  # blanket "cp *.dat" above would already pick this up if present, but
+  # don't rely on that silently.)
+  if [ ! -f "$CWD/virga_condensates.dat" ] ; then
+    echo "ERROR: $CWD/virga_condensates.dat not found -- required for VIRGA=1"
+    exit 1
+  fi
+  cp $CWD/virga_condensates.dat $TMPDIR/
+  cp call_virga.py $TMPDIR/
+fi
+#cp ${in_dir}krome_flux_rad.dat $TMPDIR/
+
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+#pwd
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+#cp mxms7.input $CWD/${out_dir}
+#cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
+
+./marcs
+MARCS_EXIT=$?
+if [ $MARCS_EXIT -ne 0 ]; then
+  echo "MARCS_RUN_STATUS: FAILED (exit code $MARCS_EXIT)"
+else
+  echo "MARCS_RUN_STATUS: OK"
+fi
+
+### COPY FILES AFTER RUN ###
+
+### MAIN FILES
+if [ -f arcivaab.dat ]; then cp arcivaab.dat  $CWD/${out_filename}.arciv; fi
+if [ -f mxmodel.dat ]; then cp mxmodel.dat    $CWD/${out_filename}.dat; fi
+if [ -f $TMPDIR/marcs2ggchem.in ]; then cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in; fi
+if [ -f $TMPDIR/ggchem_out.txt ]; then cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt; fi
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
+if [ -f $TMPDIR/spectrum.dat ]; then cp $TMPDIR/spectrum.dat $CWD/${out_dir}; fi
+#cp $TMPDIR/FLUX.DAT $CWD/${out_dir}
+
+### NON_EQ RELATED FILES
+#cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
+#cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat
+#cp $TMPDIR/crosssec_write_out_* $CWD/${out_dir}
+#cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat
+#cp $TMPDIR/BPL_sun.dat $CWD/${out_dir}/BPL_sun.dat
+#cp $TMPDIR/BPL_upper.dat $CWD/${out_dir}/BPL_upper.dat
+#cp $TMPDIR/XJ_upper.dat $CWD/${out_dir}/XJ_upper.dat
+#cp $TMPDIR/XJ_lower.dat $CWD/${out_dir}/XJ_lower.dat
+#cp $TMPDIR/krome_bins_rates.dat $CWD/${out_dir}/krome_bins_rates.dat
+#cp $TMPDIR/crosssec_write_out_* $CWD/${out_dir}
+if [ -f "$TMPDIR/marcs2virga.dat" ] ; then
+cp $TMPDIR/marcs2virga.dat $CWD/${out_dir}/marcs2virga.dat
+fi
+if [ -f "$TMPDIR/virga2marcs.dat" ] ; then
+cp $TMPDIR/virga2marcs.dat $CWD/${out_dir}/virga2marcs.dat
+fi
+if [ -f "$TMPDIR/virga_particle_props.dat" ] ; then
+cp $TMPDIR/virga_particle_props.dat $CWD/${out_dir}/virga_particle_props.dat
+fi
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR
+
+exit $MARCS_EXIT
