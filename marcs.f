@@ -77,9 +77,11 @@ C      STEFF=5770
       common /clist/nlte
       common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *  dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
-      namelist /outlist/ masslinf
+      logical pecap
+      namelist /outlist/ masslinf, pecap
       common /coutlist/pplist(843)
       common /clevprint/ prj2(ndp),masslinf
+      common /cpecap/ pecap
       common/cabinit/abinit(natms),kelem(natms),nelem
       common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
      *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
@@ -165,9 +167,13 @@ C
         if (icloud_conv == 1) stop
       end if
 
-      molh = 0                           ! molh=1 => only h,h2,h2+ in molec. eq.      
+      molh = 0                           ! molh=1 => only h,h2,h2+ in molec. eq.
       metals = 0
-     
+      pecap = .false.  ! TRYCK/TRYCK_sph electron-pressure step cap: off unless
+                        ! the input file sets pecap=.true. in &outlist (helps
+                        ! oscillating/non-converging high-Z runs; can silently
+                        ! truncate an otherwise-converged PPE(K) on runs that
+                        ! don't need it, so it is opt-in, not default-on)
       read(5,outlist)
       pfd=itmax.lt.0
       if(pfd) itmax=-itmax
@@ -6984,6 +6990,7 @@ c
      *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON/COPsum/ SSUM(NDP),XSUM(NDP),CONSUM(NDP)
       common /virga/ ivirga_on
+      common /virgaopac/ x_virga(ndp,nwreal), s_virga(ndp,nwreal)
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
       common /conv_help/ abund_freq,icalc_abund
 c
@@ -7111,12 +7118,17 @@ C
       end do
 ! Addition of dust absorption & scattering
       if(idust == 1) then
-      do k=1,jtau   
+      do k=1,jtau
       x(k) = x(k)+(dust_abs(k,j)/xkapr(k))
       s(k) = s(k)+(dust_sca(k,j)/xkapr(k))
       end do
       end if
-C     READIN VIRGA FILE VIRGA_ARRAY(J,K,3) X_CLOUD VIRGA_ARRAY(J,K,4) S_CLOUD     
+C     x_virga(k,j)/s_virga(k,j) (common /virgaopac/) are filled in by
+C     OSTABLOOK from virga2marcs.dat but are NOT YET merged into X/S
+C     here. TODO: add the merge (mass opacity cm^2/g -> multiply by
+C     RO(K) to match the volume-coefficient convention used above for
+C     dust_abs/dust_sca, cm^-1) once the upstream grid/unit fixes are
+C     validated.
 
    25 CONTINUE
       DO  K=1,JTAU
@@ -10196,6 +10208,8 @@ C
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      LOGICAL PECAP
+      COMMON /CPECAP/ PECAP
       DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
       DATA DLNPEMX/0.5D0/
@@ -10255,9 +10269,13 @@ C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
         eps = 1.0e-3
       end if
 C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
-      DLNPP=LOG(PPE(1)/PPEIN(1))
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
+C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
+C PPE(1) ON RUNS THAT DON'T NEED IT.
+      IF (PECAP) THEN
+        DLNPP=LOG(PPE(1)/PPEIN(1))
       IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
+      END IF
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -10305,9 +10323,13 @@ C ITERATION LOOP
         eps = 1.0e-3
       end if
 C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
-      DLNPP=LOG(PPE(K)/PPEIN(K))
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
+C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
+C PPE(K) ON RUNS THAT DON'T NEED IT.
+      IF (PECAP) THEN
+        DLNPP=LOG(PPE(K)/PPEIN(K))
       IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
+      END IF
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12115,6 +12137,8 @@ C
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE 
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      LOGICAL PECAP
+      COMMON /CPECAP/ PECAP
       DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
       DATA DLNPEMX/0.5D0/
@@ -12174,9 +12198,13 @@ C test for effect of constant gravity...
         eps = 1.0e-3
       end if
 C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
-      DLNPP=LOG(PPE(1)/PPEIN(1))
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
+C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
+C PPE(1) ON RUNS THAT DON'T NEED IT.
+      IF (PECAP) THEN
+        DLNPP=LOG(PPE(1)/PPEIN(1))
       IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
+      END IF
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -12227,9 +12255,13 @@ C       print*,'error,dedlnp ', error,dedlnp
         eps = 1.0e-3
       end if
 C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW
-      DLNPP=LOG(PPE(K)/PPEIN(K))
+C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
+C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
+C PPE(K) ON RUNS THAT DON'T NEED IT.
+      IF (PECAP) THEN
+        DLNPP=LOG(PPE(K)/PPEIN(K))
       IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
+      END IF
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12702,21 +12734,22 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       character*20 file_id, file_name
       dimension nmid(20)
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
-      common /virga/ ivirga_on 
+      common /virga/ ivirga_on
+      common /virgaopac/ x_virga(ndp,nwreal), s_virga(ndp,nwreal)
       common /eddy_diff/K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
       COMMON /CG/GRAV,KONSG
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
       common /metal_Z/metal_z
-      common /conv_help/ abund_freq,icalc_abund 
+      common /conv_help/ abund_freq,icalc_abund
 
       character(len=50) condensates(nr_cond)
       real*8 :: cond_pp_init(nr_cond)
-      real*8 :: x_virga(nwreal,ndp),s_virga(nwreal,ndp)
-      real*8 :: cond_pp(nr_cond,ndp)
       character(len=100) dummy_header
       real*8 :: dummy_wn, dummy_P
       integer abund_freq,icalc_abund
+      integer virga_ios
+      character(len=200) virga_dummy_line
       if (first) then
       TOSREAD = 0.
       TPART = 0.
@@ -12790,6 +12823,13 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
       enddo
 
       if (ivirga_on.eq.1) then
+      if (nwtot.gt.nwreal) then
+       write(*,*) "Number of wavelengths after OS calc", nwtot,
+     >  "exceeds virga opacity array dimension nwreal", nwreal,
+     >  "please adjust nwreal in parameter.inc to match nwtot"
+       stop
+      endif
+
       open(unit=23961, file='virga_condensates.dat', status='old')!read in condensates to be considered in virga
       do i=1,nr_cond
        read(23961,'(A)') condensates(i)
@@ -12798,19 +12838,30 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
        do j=1,543 !number of molecues in molnames
        if (trim(molnames(j)).eq.trim(condensates(i))) then
             molnames_index=j
-            write(*,*) 'match found for ', trim(condensates(i)), 
+            write(*,*) 'match found for ', trim(condensates(i)),
      >        ' at index ', molnames_index
             cond_pp_init(i) = ppallmol(ntau,molnames_index)
-       exit    
+       exit
        endif
       enddo
       if (molnames_index.eq.777) then
-       write(*,*) 'condensate not found in molnames: ', 
+       write(*,*) 'condensate not found in molnames: ',
      >        trim(condensates(i))
        stop 'check virga_condensates.dat and molnames.dat'
       endif
 
       enddo
+C     Guard against more condensates in the file than nr_cond allows
+C     (parameter.inc) -- read one more line; if it succeeds, the file
+C     has extra entries that would otherwise be silently ignored.
+      read(23961,'(A)',iostat=virga_ios) virga_dummy_line
+      if (virga_ios.eq.0) then
+       write(*,*) 'virga_condensates.dat has more entries than',
+     >  ' nr_cond =',nr_cond,' allows; extra condensates would be',
+     >  ' silently ignored. Increase nr_cond in parameter.inc.'
+       stop 'check virga_condensates.dat against nr_cond'
+      endif
+      close(23961)
 
       open(unit=369, file='marcs2virga.dat', status='replace')!generate input file for virga
       write(369,*) '# mean molecular weight',ggmu(ntau)
@@ -12819,7 +12870,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
       write(369,*) '# Begin Condensates'
       do i=1,nr_cond
             write(369,'(A2,A20,A1,F12.4)') '# '
-     >       , adjustl(condensates(i)), ':', cond_pp_init(i)       
+     >       , adjustl(condensates(i)), ':', cond_pp_init(i)
       enddo
       write(369,*) '# End Condensates'
       write(369,*) '# T[K] ', 'Ptot[dyne/cm^2] ', 'K_zz[cm^2/s]'
@@ -12827,19 +12878,35 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
        write(369,*) t(k), ptot(k), K_zz(k)
       enddo
       close(369)
-      call_python=.False.
-      if (call_python .eq. .True.) then
-        call system('python3 call_virga.py') !with written out PT profile
-      endif
+
+C     Wavenumber grid (cm^-1) MARCS actually uses, so the python driver
+C     can interpolate virga's own Mie-table grid onto it instead of
+C     assuming the two grids already line up.
+      open(unit=370, file='marcs_wnos.dat', status='replace')
+      write(370,*) nwtot
+      do j=1,nwtot
+       write(370,*) wnos(j)
+      enddo
+      close(370)
+
+      call system('python3 call_virga.py') !runs virga on the written-out PT/condensate profile
+
       open(unit=248, file='virga2marcs.dat', status='old')!read out from virga
       read(248,*) dummy_header
       x_virga = 0.
       s_virga = 0.
       do j=1,nwtot
         do k=1,ntau
-          read(248,*) dummy_wn,dummy_P,
-     >     x_virga(j,k), s_virga(j,k)
-        end do    
+          read(248,*,iostat=virga_ios) dummy_wn,dummy_P,
+     >     x_virga(k,j), s_virga(k,j)
+          if (virga_ios.ne.0) then
+           write(*,*) 'error reading virga2marcs.dat at wavelength',
+     >      j,' of',nwtot,' depth',k,' of',ntau,' iostat=',virga_ios
+           stop 'virga2marcs.dat is malformed, truncated, or the'//
+     >      ' wrong shape (expected nwtot*ntau rows) -- check the'//
+     >      ' virga run that produced it'
+          endif
+        end do
       enddo
       close(248)
       endif
