@@ -441,6 +441,7 @@ def LEIDEN2KROME(build_folder,reactant,products,nPhotoBins):
 	#write data to file using a regular xenergy grid
 	for i in range(imax):
 		xenergy = i*(emax-emin)/(imax-1)+emin
+		xenergy = min(xenergy, emax) #clip floating-point roundoff at i==imax-1 back inside [emin,emax]
 		#if not line-based interpolates with numpy
 		xsec = finterp(xenergy)
 		foutx.write(str(xenergy)+" "+str(xsec)+"\n")
