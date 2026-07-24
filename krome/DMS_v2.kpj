@@ -1,0 +1,1 @@
+./krome -n networks/non_eq/full_network_DMS_v2.dat -project=DMS_v2 -options=options_photochem -ATOL=1d-12 -checkConserv -noExample -noSinkCheck -skipODEthermo -RTOL=1D-8 -photoBins=7949 -useN -ATOL=1d-12 -checkConserv -noExample -noSinkCheck -skipODEthermo -RTOL=1D-8 -photoBins=7949 -useN

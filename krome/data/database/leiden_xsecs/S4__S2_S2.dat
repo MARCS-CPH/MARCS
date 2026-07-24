@@ -1,0 +1,14 @@
+#pseudo-Leiden file converted from MPI-Mainz UV/VIS Spectral Atlas data
+#reaction: S4 -> S2 + S2
+#source: Billmers & Smith (1991), 723-843K (only S4 measurement in the MPI-Mainz database -- no room-temperature data exists)
+#https://www.uv-vis-spectral-atlas-mainz.org/uvvis/
+#total absorption cross section used for both photoabsorption and
+#photodissociation columns (single dissociation channel; no photoionization data)
+#wavelength(nm) photoabsorption(cm2) photodissociation(cm2) photoionization(cm2)
+425.000000 1.340000e-19 1.340000e-19 0.000000e+00
+450.000000 2.540000e-18 2.540000e-18 0.000000e+00
+475.000000 3.400000e-18 3.400000e-18 0.000000e+00
+500.000000 5.200000e-18 5.200000e-18 0.000000e+00
+525.000000 3.520000e-18 3.520000e-18 0.000000e+00
+550.000000 2.270000e-18 2.270000e-18 0.000000e+00
+575.000000 1.820000e-18 1.820000e-18 0.000000e+00
