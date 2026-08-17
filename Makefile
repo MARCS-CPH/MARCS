@@ -1,5 +1,9 @@
 #Paths
-VPATH = ./krome/MARCS_build
+#override to build a different KROME network, e.g.:
+#  make KROME_BUILD=krome/build_v6_DMS EXEC=marcs_v6_DMS
+KROME_BUILD ?= krome/MARCS_build
+EXEC ?= marcs
+VPATH = ./$(KROME_BUILD)
 
 #default compiler executables (can be overridden via environment variables)
 ifort_fc ?= ifort
@@ -13,7 +17,7 @@ cc = $(ifort_cc)
 clib = -nofor_main
 
 #executable name
-exec = marcs
+exec = $(EXEC)
 
 #default libraries
 lib = -llapack
@@ -32,17 +36,17 @@ else
 endif
 
 #if dgesv is not present non need for LAPACK
-GREP = $(shell grep -i 'dgesv' krome/MARCS_build/krome_subs.f90)
+GREP = $(shell grep -i 'dgesv' $(KROME_BUILD)/krome_subs.f90)
 ifeq ($(GREP),)
 	lib =
 endif
 
 #flags
-switchOPT = -O3 -ipo -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise -mcmodel=medium -align commons
+switchOPT = -O3 -ipo -ip -unroll -xHost -g -module $(KROME_BUILD) -fp-model precise -mcmodel=medium -align commons
 switchPRO = $(switchOPT) -pg -traceback
 switchOMP = $(switchOPT) -openmp
 #only use debug flags if you are working on MARCS alone, gives a lot of warnings and errors for krome
-switchFAST = -O2 -ip -unroll -xHost -g -module krome/MARCS_build -fp-model precise -mcmodel=medium -align commons
+switchFAST = -O2 -ip -unroll -xHost -g -module $(KROME_BUILD) -fp-model precise -mcmodel=medium -align commons
 switchDBG = -O0 -check all -warn all -fpe0 -u -traceback -warn nounused
 switchDBG += -fp-model precise
 
@@ -64,31 +68,31 @@ endif
 
 
 #objects
-objs = krome/MARCS_build/opkda2.o
-objs += krome/MARCS_build/opkda1.o
-objs += krome/MARCS_build/opkdmain.o
-objs += krome/MARCS_build/krome_commons.o
-objs += krome/MARCS_build/krome_constants.o
-objs += krome/MARCS_build/krome_user_commons.o
-objs += krome/MARCS_build/krome_fit.o
-objs += krome/MARCS_build/krome_getphys.o
-objs += krome/MARCS_build/krome_gadiab.o
-objs += krome/MARCS_build/krome_grfuncs.o
-objs += krome/MARCS_build/krome_phfuncs.o
-objs += krome/MARCS_build/krome_subs.o
-objs += krome/MARCS_build/krome_stars.o
-objs += krome/MARCS_build/krome_dust.o
-objs += krome/MARCS_build/krome_photo.o
-objs += krome/MARCS_build/krome_tabs.o
-objs += krome/MARCS_build/krome_coolingGH.o
-objs += krome/MARCS_build/krome_cooling.o
-objs += krome/MARCS_build/krome_heating.o
-objs += krome/MARCS_build/krome_ode.o
-objs += krome/MARCS_build/krome_user.o
-objs += krome/MARCS_build/krome_reduction.o
-objs += krome/MARCS_build/krome.o
+objs = $(KROME_BUILD)/opkda2.o
+objs += $(KROME_BUILD)/opkda1.o
+objs += $(KROME_BUILD)/opkdmain.o
+objs += $(KROME_BUILD)/krome_commons.o
+objs += $(KROME_BUILD)/krome_constants.o
+objs += $(KROME_BUILD)/krome_user_commons.o
+objs += $(KROME_BUILD)/krome_fit.o
+objs += $(KROME_BUILD)/krome_getphys.o
+objs += $(KROME_BUILD)/krome_gadiab.o
+objs += $(KROME_BUILD)/krome_grfuncs.o
+objs += $(KROME_BUILD)/krome_phfuncs.o
+objs += $(KROME_BUILD)/krome_subs.o
+objs += $(KROME_BUILD)/krome_stars.o
+objs += $(KROME_BUILD)/krome_dust.o
+objs += $(KROME_BUILD)/krome_photo.o
+objs += $(KROME_BUILD)/krome_tabs.o
+objs += $(KROME_BUILD)/krome_coolingGH.o
+objs += $(KROME_BUILD)/krome_cooling.o
+objs += $(KROME_BUILD)/krome_heating.o
+objs += $(KROME_BUILD)/krome_ode.o
+objs += $(KROME_BUILD)/krome_user.o
+objs += $(KROME_BUILD)/krome_reduction.o
+objs += $(KROME_BUILD)/krome.o
 
-cobjs = krome/MARCS_build/krome_header.o
+cobjs = $(KROME_BUILD)/krome_header.o
 
 #default target
 all: 	$(objs) marcs.o
@@ -176,7 +180,7 @@ csharedlib_test: csharedlib
 
 #clean target
 clean:
-	rm -f krome/MARCS_build/*.f90 krome/MARCS_build/*.log krome/MARCS_build/*.o krome/MARCS_build/*.mod krome/MARCS_build/*__genmod.f90 *~ $(exec) *.o *.mod *__genmod.f90
+	rm -f $(KROME_BUILD)/*.f90 $(KROME_BUILD)/*.log $(KROME_BUILD)/*.o $(KROME_BUILD)/*.mod $(KROME_BUILD)/*__genmod.f90 *~ $(exec) *.o *.mod *__genmod.f90
 
 #rule for f90
 %.o:%.f90
