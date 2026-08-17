@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --job-name=marcs_v2_build
+#SBATCH --time=1:00:00
+#SBATCH --partition=astro2_short
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+make -f Makefile_v2

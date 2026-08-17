@@ -1,0 +1,23 @@
+#sbatch runmarcs_K2_18b_Irr_BB_eq
+#sbatch runmarcs_K2_18b_Irr_BB_nonEq
+#sbatch runmarcs_K2_18b_Irr_BB_nonEq_photo
+#sbatch runmarcs_K2_18b_Irr_BB_ocean_eq
+#sbatch runmarcs_K2_18b_Irr_BB_ocean_nonEq
+
+sbatch runmarcs_K2_18b_Irr_BB_ocean_nonEq_photo
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_eq
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_nonEq
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_nonEq_photo
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_ocean_eq
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_ocean_nonEq
+sleep 30s
+sbatch runmarcs_K2_18b_Irr_spec_ocean_nonEq_photo
+sleep 30s
+sbatch runmarcs_K2_18b_noIrr_eq
+sleep 30s
+sbatch runmarcs_K2_18b_noIrr_nonEq
