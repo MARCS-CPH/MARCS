@@ -1,0 +1,9 @@
+This folder will contain the built files.
+
+It must exist as a directory even when empty -- KROME's own prerequisite
+check (get_file_list() in kromelib.py) requires "build" to be present and
+will block with an interactive prompt (which fails non-interactively,
+e.g. in a SLURM job) if it's missing. Since git doesn't track empty
+directories, this file exists to keep the directory itself present in a
+fresh checkout. Do not delete it without replacing it with something else
+that keeps this directory tracked.
