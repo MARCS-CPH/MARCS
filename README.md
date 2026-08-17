@@ -20,7 +20,10 @@ Here is a little checklist:
     numerous to track in git). They point at /groups/astro/tbalduin/krome_leiden_xsecs/ and
     /groups/astro/tbalduin/krome_swri_xsecs/ respectively, so a fresh checkout on a machine
     without access to those paths will need the symlink targets updated to wherever that data
-    has been copied to
+    has been copied to.
+    (For now this assumes running on the Copenhagen HPC, where every current user has access to
+    those paths -- this repository is not yet set up for use outside that environment. Making
+    this data publicly downloadable is a planned future improvement.)
   - marcs.input in the **input_files** directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
   - runmarcs file in the **runmarcs_files** directory (make sure all the output you want is comment out/in)
