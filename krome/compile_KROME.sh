@@ -1,5 +1,5 @@
-network=networks/non_eq/react_Chapman_photo_krome
-project=react_Chapman_photo_krome
+network=networks/non_eq/full_DMS_network_full_photo.dat
+project=DMS_full_photo
 options=options_photochem
 
 if [ -d build_$project ] ; then #delete old build folder
