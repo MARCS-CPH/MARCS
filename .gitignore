@@ -1,0 +1,38 @@
+# --- Build artifacts ---
+*.o
+*.mod
+*.pyc
+__pycache__/
+*.log
+
+# --- Compiled MARCS binaries (top level) ---
+# Every build variant is a bare extensionless executable (marcs, marcs_v2,
+# marcs_stand, marcs_v6_DMS, ...). Ignore anything matching that shape
+# instead of hand-listing each variant, but keep source (*.f, *.bak, *.dat,
+# *.in, ...) and the marcs_versions/ directory visible.
+/marcs*
+!/marcs*/
+!/marcs*.*
+
+# --- KROME build output ---
+krome/build_*/
+krome/builds/
+krome/MARCS_build*/
+
+# --- Run output ---
+/models/
+
+# --- SLURM job logs ---
+slurm-*.out
+
+# --- Runtime staging droppings (left in-tree instead of $TMPDIR) ---
+/GGchem_ppel
+/KROME_ERROR_REPORT
+/ggchem_out.txt
+/mxmodel.dat
+/pp.dat
+/ndensity*.dat
+/mol_names.dat
+/elabund.dat
+/mxms7.input
+/queue.txt
