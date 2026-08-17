@@ -37,14 +37,14 @@ contains
 #KROME_krates
 
     coe(:) = k(:) !set coefficients to return variable
-
     !!uncomment below to check coefficient values
     !kmax = 1d0
     !if(maxval(k)>kmax.or.minval(k)<0d0) then
-    !   print *,"***************"
-    !   do i=1,size(k)
-    !      if(k(i)<0d0.or.k(i)>kmax) print *,i,k(i)
-    !   end do
+       !print *,"***************"
+       !do i=1,size(k)
+          !if(k(i)<0d0.or.k(i)>kmax) 
+        !  print *,i,k(i)
+       !end do
     !end if
   end function coe
 
@@ -888,7 +888,7 @@ end function general_cluster_growth_rate
 
     ! return zero is no data exists
     else
-      print *, "No thermochemical data of species index", idx
+      !print *, "No thermochemical data of species index", idx
       revHS = 0.d0
 
     end if
@@ -1104,6 +1104,7 @@ end function general_cluster_growth_rate
     real*8::get_flux(nrea),n(nspec),k(nrea),rrmax,Tgas
 
     k(:) = coe(n(:))
+    !write(*,*) coe(n(:))
     rrmax = 0.d0
     n(idx_dummy) = 1.d0
     n(idx_g) = 1.d0

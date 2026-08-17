@@ -319,14 +319,14 @@ C      PARAMETER (KFADIM=4000,IFADIM=1000)
       DIMENSION FAKTP(ifadim)
       DIMENSION SUMW(NDP)
       COMMON/UTPUT/IREAD,IWRIT
-      COMMON/CA2/ABKOF(4000),KOMPLA(600),KOMPR,KOMPS,NKOMP
+      COMMON/CA2/ABKOF(40000),KOMPLA(2000),KOMPR,KOMPS,NKOMP
       COMMON/CA3/ILOGTA(30),NULL
       COMMON/CA4/AFAK(KFADIM),NOFAK(IFADIM),NPLATS(IFADIM)
       COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),XLA(20),XLA3(20),RO,
      &           SUMABS,SUMSCA,VIKTR,ISET,NLB
       COMMON/CFIL/IRESET(10),ISLASK,IREAT
       COMMON/COUTR/NTO,NTPO(10)
-      COMMON/CROS/ROSW(20)
+      COMMON/CROS/ROSW(200)
       COMMON /CARC3/ F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /CARC4/ PROV(30),NPROVA,NPROVS,NPROV
       COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
@@ -549,8 +549,21 @@ C use only central wavelengthinterval for Rosseland to avoid too
 C large "abitrariness" on the value due to very small kap_nu in the
 C wings of the planck function.
       if (xla(jp).le.5000. .or. xla(jp).ge.1.e5) go to 26
-      IF(J.EQ.0) ABSK(NTP)=ABSK(NTP)+ROSW(JP)*VIKTR/(SUMABS+SUMSCA)
-      IF(J.LT.0) ABSK(NTP)=ABSK(NTP)+ROSW(JP)*VIKTR/SUMABS
+C DIVIDE-BY-ZERO GUARD (2026-08-12): with the Rosseland grid now
+C reaching into the far-IR, some points inside this 5000-1e5 A window
+C (e.g. ~96000A, past both O2-O2's and O2-N2's CIA tabulated ranges,
+C 86956A and 76920A respectively) can have SUMABS+SUMSCA underflow to
+C exactly 0.0 if every continuum contributor (atomic bound-free beyond
+C its jonabs.dat table, CIA beyond its own wavenumber range, Rayleigh
+C numerically negligible) vanishes at that specific wavelength -- traced
+C as the source of a NaN Rosseland mean (test66, layer 1, iteration 2).
+C A 1e-40 floor is far below any physically meaningful opacity here
+C (real contributions in this window are >>1e-40 whenever anything
+C actually absorbs/scatters) so this only guards the genuine
+C all-zero case, not a real physical contribution.
+      SUMABSSCA=MAX(SUMABS+SUMSCA,1.D-40)
+      IF(J.EQ.0) ABSK(NTP)=ABSK(NTP)+ROSW(JP)*VIKTR/SUMABSSCA
+      IF(J.LT.0) ABSK(NTP)=ABSK(NTP)+ROSW(JP)*VIKTR/MAX(SUMABS,1.D-40)
       SUMW(NTP)=SUMW(NTP)+ROSW(JP)*VIKTR
    26 CONTINUE
 C
@@ -559,7 +572,19 @@ C
       IF(J.GT.0)GO TO 29
       DO28 NTP=1,NT
       SPRID(NTP)=0.
-   28 ABSK(NTP)=SUMW(NTP)/ABSK(NTP)
+C DIVIDE-BY-ZERO GUARD, PART 2 (2026-08-12): the real culprit behind
+C the test66 NaN. This is the FINAL Rosseland-mean normalization --
+C ABSK(NTP) here is the accumulated SUM from the JP loop above, not a
+C per-wavelength value, so the earlier per-term floor (SUMABSSCA) does
+C NOT protect this division: every individual term can legitimately
+C underflow to exactly 0.0 (VIKTR itself underflows at long
+C wavelength/low T well before SUMABSSCA's floor is even relevant),
+C making the ACCUMULATED ABSK(NTP) exactly 0.0 after the whole loop
+C for a cold, low-density layer with the Rosseland grid's far-IR
+C extension. Confirmed via instrumentation: SUMABS/SUMSCA/VIKTR/ABSK
+C were never individually NaN anywhere in the JP loop, yet ROSSOP's
+C returned value was -- this line was the only remaining division.
+   28 ABSK(NTP)=SUMW(NTP)/MAX(ABSK(NTP),1.D-40)
 C
    29 CONTINUE
       RETURN
@@ -847,7 +872,7 @@ C        THESE SHOULD BE MODIFIED BY NORDLUND FOR HIS PURPOSES.
      &             IARCH
       COMMON/CFIL/IRESET(10),IDUM3,IDUM4
       COMMON /CVAAGL/XLB(500),W(500),NLB
-      COMMON/CXLSET/XL(20,10),IDUM6,NL(10)
+      COMMON/CXLSET/XL(200,10),IDUM6,NL(10)
       COMMON /CSPHER/DIFLOG,RADIUS,RR(NDP),NCORE  
       COMMON /CTAUM/TAUM
 C
@@ -1535,7 +1560,7 @@ C
       COMMON /CLIN/lin_cia
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
-      COMMON/CA2/RCA2DUM(4000),ICA2DUM(602),NKOMP
+      COMMON/CA2/RCA2DUM(40000),ICA2DUM(2002),NKOMP
       COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),XLA(20),XLA3(20),RO,
      *SUMABS,SUMSCA,VIKTR,ISET,NLB
       COMMON/UTPUT/IREAD,IWRIT
@@ -1543,13 +1568,31 @@ C
       CHARACTER*8 SOURCE,ABNAME
       COMMON /CHAR/ ABNAME(30),SOURCE(30)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
+     *STEFAN
       common /ggchembool/ iggcall
-      common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
-     >                       rC(ndp), rMg(ndp), rAl(ndp), 
+      common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp),
+     >                       rC(ndp), rMg(ndp), rAl(ndp),
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
-      LOGICAL FIRST
+      character atnames*2, molnames*8, molnames2*4
+      common /ggchempp/ppallat(ndp,22),ppallmol(ndp,543)
+     >                ,rhonallat(ndp,22),rhonallmol(ndp,543)
+     >                ,gg_partpp(ndp,400)
+     >                ,ppat(22),ppmol(543)
+     >                ,idmarcspres(32),idggchempres(32)
+     >                ,idmarcspart(75),idggchempart(75)
+     >                ,atnames(22),molnames(543),molnames2(75)
+      character(len=4) cia_spec1(maxcia), cia_spec2(maxcia)
+      common /ciaspecs/ cia_spec1, cia_spec2
+      integer cia_index1(maxcia), cia_index2(maxcia), ncia
+      common /ciapairs/ cia_index1, cia_index2, ncia
+      integer n2ray_index, o2ray_index
+      common /rayn2o2idx/ n2ray_index, o2ray_index
+      LOGICAL FIRST, CIA_MATCHED, RAYN2O2_MATCHED
       CHARACTER*8 NHMIN,NH2PR,NHEPR,NELS,NHRAY,NH2RAY
       DATA FIRST/.TRUE./
+      DATA CIA_MATCHED/.FALSE./
+      DATA RAYN2O2_MATCHED/.FALSE./
       DATA NH2PR/'H2PR'/,NHEPR/'HEPR'/,NELS/'ELSC'/,NHRAY/'H-SC'/
      & ,NH2RAY/'H2SC'/,NHMIN/'H-'/
 
@@ -1740,6 +1783,67 @@ C        RAYLEIGH SCATTERING
       FAKRAY(NTP)=HNH*2./PART(1,1)
       h2ray(ntp) = f5_dt(nlayer)*hn
 
+C        CIA (COLLISION-INDUCED ABSORPTION), REPURPOSING LIN_CIA.
+C        One-time match of each active pair's species names (read from
+C        cia_pairs_earth.dat by INITAB) against GGchem's molnames list.
+C        Done here (ggchem branch only) because molnames/ppallmol are
+C        only meaningfully populated when GGchem is running; this mirrors
+C        how the rest of DETABS's ggchem branch already depends on
+C        GGchem-derived quantities not available in the classical branch.
+C        GENERIC BY NAME: any species pair listed in the active-pair file
+C        gets matched here, not just N2/O2/CO2 (widened 2026-08-10 to
+C        cover all HITRAN-converted pairs, e.g. HE/CH4/H2/H2O/H).
+C        FALLS BACK TO ppallat/atnames (GGchem's 22-element free-atom
+C        table, same /ggchempp/ common) for species with no molecule of
+C        their own in molnames (543-entry, molecule/ion table) -- e.g.
+C        He, whose only compound in this network is the ion HE+, and
+C        bare atomic H, needed for pairs like H2-H/He-H. Sign encodes
+C        which table to read at JP>0: positive index -> molnames/
+C        ppallmol, negative (-index) -> atnames/ppallat.
+      if (lin_cia.eq.1 .and. .not.cia_matched) then
+        do icia=1,ncia
+          cia_index1(icia) = 0
+          cia_index2(icia) = 0
+          do imol=1,543
+            if (trim(molnames(imol)).eq.trim(cia_spec1(icia)))
+     &        cia_index1(icia)=imol
+            if (trim(molnames(imol)).eq.trim(cia_spec2(icia)))
+     &        cia_index2(icia)=imol
+          end do
+          if (cia_index1(icia).eq.0) then
+            do iat=1,22
+              if (trim(atnames(iat)).eq.trim(cia_spec1(icia)))
+     &          cia_index1(icia)=-iat
+            end do
+          endif
+          if (cia_index2(icia).eq.0) then
+            do iat=1,22
+              if (trim(atnames(iat)).eq.trim(cia_spec2(icia)))
+     &          cia_index2(icia)=-iat
+            end do
+          endif
+          if (cia_index1(icia).eq.0 .or. cia_index2(icia).eq.0) then
+            write(*,*) 'CIA pair',icia,' species not recognized: ',
+     &        cia_spec1(icia),cia_spec2(icia)
+            STOP 'cia_pairs_earth.dat has an unrecognized species'
+          endif
+        end do
+        cia_matched = .true.
+      endif
+
+C        N2/O2 RAYLEIGH SCATTERING (2026-08-12), same one-time
+C        name-match idiom as the CIA block above, but independent of
+C        LIN_CIA/ncia -- N2/O2 Rayleigh should work even if CIA is off.
+      if (.not.rayn2o2_matched) then
+        n2ray_index = 0
+        o2ray_index = 0
+        do imol=1,543
+          if (trim(molnames(imol)).eq.'N2') n2ray_index=imol
+          if (trim(molnames(imol)).eq.'O2') o2ray_index=imol
+        end do
+        rayn2o2_matched = .true.
+      endif
+
       RETURN
       end if
 C        N O T E . APART FROM VECTORS HREST AND ELS, NONE OF THE
@@ -1773,20 +1877,131 @@ C        H-
       SUMABS=SUMABS+HMIN
       PROV(1)=HMIN
 C        H+H, H2+, HE I, C I, MG I, AL I, SI I
+C        Classical Saha-equation atomic ionization (JON) has no concept
+C        of molecule/condensate formation, so it treats a share of the
+C        FULL elemental abundance of C, Mg, Al, Si, He as free neutral
+C        atomic gas available for photoionization -- correct for cool
+C        (GGchem-molecular-equilibrium-dominated) atmospheres, where
+C        most of that inventory is actually locked in molecules/
+C        condensates (e.g. SiO/SiO2/silicates for Si), not free atoms.
+C        rC/rMg/rAl/rSi/rHe (common /ggchemdetabs/) are GGchem's actual
+C        atomic-fraction-of-total ratios for each element, already
+C        computed elsewhere but never applied here until now -- 2026-08-05.
       DO13 KOMP=19,NKOMP
+      IF (ABNAME(KOMP).EQ.'C I') THEN
+        AB(KOMP)=AB(KOMP)*rC(nlayer)
+      ELSE IF (ABNAME(KOMP).EQ.'MG I') THEN
+        AB(KOMP)=AB(KOMP)*rMg(nlayer)
+      ELSE IF (ABNAME(KOMP).EQ.'AL I') THEN
+        AB(KOMP)=AB(KOMP)*rAl(nlayer)
+      ELSE IF (ABNAME(KOMP).EQ.'SI I') THEN
+        AB(KOMP)=AB(KOMP)*rSi(nlayer)
+      ELSE IF (ABNAME(KOMP).EQ.'HE I'.OR.ABNAME(KOMP).EQ.'HE-') THEN
+        AB(KOMP)=AB(KOMP)*rHe(nlayer)
+      END IF
       SUMABS=SUMABS+AB(KOMP)
       PROV(KOMP-16)=AB(KOMP)
    13 CONTINUE
 
       SUMABS=SUMABS*STIM
-    
+
+C        CIA (COLLISION-INDUCED ABSORPTION), REPURPOSING LIN_CIA.
+C        HITRAN's k(nu)=k^(A-B)(nu)*rho_A*rho_B gives a linear absorption
+C        coefficient in cm^-1 (k in cm^5/molecule^2, rho in molecule/cm^3);
+C        dividing by mass density RO gives cm^2/g, matching SUMABS's
+C        documented convention (see ABSKO's header comment). ppallmol is
+C        GGchem's partial pressure in dyn/cm^2 (cgs; confirmed from the
+C        "cond_pp_init is a partial pressure (dyn/cm^2)" comment on its
+C        virga use elsewhere in this file), so ppallmol/(BOLTZK*T) is a
+C        number density in molecules/cm^3 directly -- cross-checked
+C        against the Pcon=0.1*Na/(R*T)*1E-6 conversion the KROME coupling
+C        code uses for the same ppallmol->number-density step: identical
+C        once BOLTZK's cgs (erg/K) units are carried through algebraically.
+C        XLA(JP) is wavelength in Angstroms (confirmed via the -28556.*
+C        TETA/XLA(JP) stimulated-emission exponent just above, and via
+C        the existing RAYH/RAYH2 Rayleigh formulas' coefficients), so it
+C        must be converted to HITRAN's wavenumber (cm^-1) convention
+C        before the table lookup.
+C        Gated on CIA_MATCHED, not just LIN_CIA==1: the very first
+C        DETABS(J=0,JP>0) Rosseland-weight call in a run can happen
+C        before the one-time GGchem species-match (JP=0 branch above)
+C        has ever executed, and/or before ppallmol/ro_dt hold real data
+C        for this nlayer -- confirmed via a diagnostic run 2026-08-08,
+C        which caught cia_index1/2==0 (unset, would otherwise index
+C        ppallmol out of bounds) and ro_dt(nlayer)==0 (0/0 -> NaN) at
+C        nlayer=1 on the very first such call. Also require
+C        ro_dt(nlayer)>0 defensively for any later layer that is
+C        transiently zero/unconverged.
+      IF (LIN_CIA.EQ.1 .AND. CIA_MATCHED .AND.
+     &    ro_dt(nlayer).GT.0.0) THEN
+        CIA_WN = 1.0D8/XLA(JP)
+        DO 1601 ICIA=1,NCIA
+          CALL cia_wrapper_interp(ICIA, T(NTP), CIA_WN, CIA_COEFF)
+          IF (cia_index1(icia).GT.0) THEN
+            CIA_N1 = ppallmol(nlayer,cia_index1(icia))/(BOLTZK*T(NTP))
+          ELSE
+            CIA_N1 = ppallat(nlayer,-cia_index1(icia))/(BOLTZK*T(NTP))
+          ENDIF
+          IF (cia_index2(icia).GT.0) THEN
+            CIA_N2 = ppallmol(nlayer,cia_index2(icia))/(BOLTZK*T(NTP))
+          ELSE
+            CIA_N2 = ppallat(nlayer,-cia_index2(icia))/(BOLTZK*T(NTP))
+          ENDIF
+          CIA_TERM = CIA_COEFF*CIA_N1*CIA_N2/ro_dt(nlayer)
+          SUMABS = SUMABS + CIA_TERM
+ 1601   CONTINUE
+      ENDIF
+
 C        SCATTERING
       XRAY=MAX(XLA(JP),1026.0D+0)
       XRAY2=1./(XRAY*XRAY)
       RAYH=XRAY2*XRAY2*(5.799E-13+XRAY2*(1.422E-6+XRAY2*2.784))*
      *FAKRAY(NTP)
       RAYH2=XRAY2*XRAY2*(8.14E-13+XRAY2*(1.28E-6+XRAY2*1.61))*H2RAY(NTP)
-      SUMSCA=ELS(NTP)+RAYH+RAYH2
+
+C        N2/O2 RAYLEIGH SCATTERING (2026-08-12). Same 3-term
+C        A0/lam^4+A1/lam^6+A2/lam^8 form as RAYH/RAYH2 above, coefficients
+C        fit (weighted for uniform relative accuracy, not raw least
+C        squares -- the cross section spans ~5 decades over the fit
+C        range) to n-based cross sections computed from the Bates (1984)
+C        refractive-index + King-correction-factor formulas tabulated in
+C        He et al. 2021 (Atmos. Chem. Phys. 21, 14927), Table 1 --
+C        verified against that paper's own measured cross sections
+C        (Table 2, e.g. sigma_O2(532nm)=4.642e-27 cm^2, matched to 4
+C        sig. figs.) and against the standard ~4.4e-27 cm^2 air-Rayleigh
+C        benchmark at 550nm (air-weighted N2+O2 gives 4.51e-27, ~2.5%).
+C        O2's dispersion formula has a real pole near 1563.6 Angstrom
+C        (4.09e9-nu^2 denominator term) that no 3-term polynomial can
+C        follow, so O2 uses a higher wavelength floor (2200A) than N2/H/H2
+C        (1026A) -- fit residuals stay under ~12% at that floor and under
+C        2% from 5500A on; N2 (no nearby resonance) uses the same 1026A
+C        floor as H/H2 and stays under ~1% from 5500A on.
+C        Density convention matches H2RAY (particles per gram of stellar
+C        matter, i.e. n_i/RO), NOT the raw n1*n2 convention CIA uses --
+C        traced from HN=1/(XMH*XMY(NTP)) above, confirmed against
+C        H2RAY(NTP)=F5*HN. n2ray_index/o2ray_index matched once (JP=0
+C        branch above) against GGchem's molnames; index=0 (not found,
+C        e.g. non-Earth targets) safely skips the term.
+      RAYN2=0.
+      RAYO2=0.
+      IF (n2ray_index.GT.0) THEN
+        XRAYN2=MAX(XLA(JP),1026.0D+0)
+        XRAYN2_2=1./(XRAYN2*XRAYN2)
+        PN2_NTP=ppallmol(nlayer,n2ray_index)/(BOLTZK*T(NTP))/
+     &          ro_dt(nlayer)
+        RAYN2=XRAYN2_2*XRAYN2_2*(3.980191E-12+XRAYN2_2*
+     &        (9.005432E-06+XRAYN2_2*4.120791E-12))*PN2_NTP
+      ENDIF
+      IF (o2ray_index.GT.0) THEN
+        XRAYO2=MAX(XLA(JP),2200.0D+0)
+        XRAYO2_2=1./(XRAYO2*XRAYO2)
+        PO2_NTP=ppallmol(nlayer,o2ray_index)/(BOLTZK*T(NTP))/
+     &          ro_dt(nlayer)
+        RAYO2=XRAYO2_2*XRAYO2_2*(3.512327E-12+XRAYO2_2*
+     &        (7.866966E-06+XRAYO2_2*1.073760E-12))*PO2_NTP
+      ENDIF
+
+      SUMSCA=ELS(NTP)+RAYH+RAYH2+RAYN2+RAYO2
 
       
 
@@ -2084,17 +2299,17 @@ C
       COMMON/UTPUT/IREAD,IWRIT
       COMMON/CA1/DELT(30,2),TBOT(30,2),IDEL(30),ISVIT(30),ITETA(30),
      *KVADT(30),MAXET(30),MINET(30),NTM(30,2),NEXTT,NUTZT
-      COMMON/CA2/ABKOF(4000),KOMPLA(600),KOMPR,KOMPS,NKOMP
+      COMMON/CA2/ABKOF(40000),KOMPLA(2000),KOMPR,KOMPS,NKOMP
       COMMON/CA3/ILOGTA(30),NULL
       COMMON/CFIL/IRESET(10),ISLASK,IREAT
-      COMMON/CXLSET/XL(20,10),NSET,NL(10)
+      COMMON/CXLSET/XL(200,10),NSET,NL(10)
       CHARACTER*8 ABNAME,SOURCE
 C
 C        IELMAX IS THE MAXIMUM NUMBER OF DIFFERENT T INTERVALS IN THE XKAP-
 C        TABLE. THE DIMENSIONS OF TBOT, DELT AND NTM ARE AFFECTED BY THIS NUMBER
       IELMAX=2
 C        THE DIMENSION OF THE ABKOF ARRAY
-      NABDIM=4000
+      NABDIM=40000
       DO705 L=1,30
   705 XTETP(L)=0.
       
@@ -2111,6 +2326,26 @@ C        LOOP OVER COMPONENTS STARTS (THE 'FIRST KOMP-LOOP')
       READ(IREAT,105)ABNAME(KOMP),SOURCE(KOMP)
       READ(IREAT,102)ILOGL,KVADL,MINEX,MAXEX,NLATB
       READ(IREAT,103)(XLATB(J),J=1,NLATB)
+C EXTRAPOLATION GUARD (2026-08-12): jonabs.dat sets MAXEX=1 (extrapolate
+C beyond the tabulated range, rather than the safe MAXEX=0 zero-beyond-
+C range default every other component uses) for 4 free-free/negative-
+C -ion components: H FF G (KOMP=17), H- FF (KOMP=18), H2- (KOMP=21),
+C HE- (KOMP=27, which also has MINEX=1). These tables only reach
+C 58,353/91,127/151,878/151,878 Angstrom respectively -- pushing the
+C classical continuum wavelength grid out to 25 micron (250,000 A) for
+C CIA coverage forces a 1.4-4x linear extrapolation past those edges,
+C which produced nonphysical (garbage) coefficients and cascaded into
+C a full Teff collapse (confirmed: test66/test63 crashes, istate=1,
+C traced back through ROSSOP's Rosseland-mean summation). Forcing
+C MAXEX=0 (and MINEX=0 for HE-) here -- rather than hand-editing
+C jonabs.dat's fragile fixed-column data -- makes these 4 behave like
+C the other 23 components (zero beyond their table) with zero effect
+C on any calculation within their existing tabulated range.
+      IF (KOMP.EQ.17 .OR. KOMP.EQ.18 .OR. KOMP.EQ.21
+     >    .OR. KOMP.EQ.27) THEN
+        MAXEX=0
+        MINEX=0
+      END IF
 
 C
 C        WE FIND THE DISCONTINUITIES IN WAVELENGTH
@@ -2885,14 +3120,269 @@ C-      Readin temperature to flat array
      
       end subroutine opac_wrapper_interp    
       ! end ADS
-C     End of Aaron's routines (module OPAMOD and a few more subroutines) to read 
+C     End of Aaron's routines (module OPAMOD and a few more subroutines) to read
 C     two dimensional OS files of molecular cross sections (absorption coefficients)
 C     and interpolate linearly to the temperatures and gas pressures
 C     of a full MSG model structure. The interpolation in done for the
 C     nearest input wavenumbers from the OS files to those in the input
 C     wavenumber set for solution of the radiative transfer (because OS
-C     is a statistical pick). 
-      
+C     is a statistical pick).
+
+      MODULE CIAMOD
+C     Reads and interpolates HITRAN collision-induced absorption (CIA)
+C     pair tables converted by marcs_opac_converter's MarcsCIAWriter
+C     (INPUTCIA namelist + crossec.dat/wn.dat, cm^5/molecule^2).
+C     Deliberately NOT modeled on OPAMOD: OPAMOD pre-maps each species
+C     onto the OS's fixed 80000-point wavenumber grid at read time,
+C     because get_opac is called ~NWL times per layer. DETABS's
+C     classical continuum wavelength grid (XLA, built via VAAGL/SETDIS)
+C     has only ~100-200 points per run, so get_cia instead keeps each
+C     pair's native (T,wn) table and does a genuine bilinear lookup on
+C     every call -- simpler and more accurate than forcing CIA's bands
+C     (which can be far finer than XLA) onto a coarse pre-sampled grid.
+C     No pressure axis: CIA has no real pressure dependence of its own
+C     (that comes from the number-density product applied by the
+C     caller in DETABS, not from this table) -- MarcsCIAWriter's dummy
+C     p-grid is discarded here, only the first p-slot is kept.
+         implicit real*8 (a-h,o-z)
+         private
+         public :: get_cia, read_cia
+         include 'parameter.inc'
+
+         double precision cia_data(maxcia,cia_maxwn,cia_maxt)
+         double precision cia_tgrid(maxcia,cia_maxt)
+         double precision cia_wngrid(maxcia,cia_maxwn)
+         integer cia_ktemp(maxcia)
+         integer cia_kwn(maxcia)
+
+         contains
+
+         subroutine read_cia(file_b, pair_i)
+           integer, intent(in) :: pair_i
+           character(len=*), intent(in) :: file_b
+
+           character(len=:), allocatable :: file_nml
+           character(len=:), allocatable :: file_data
+           character(len=:), allocatable :: file_wnos
+           character(len=4) :: spec1, spec2
+           integer :: kpres, ktemp, nwnos
+           double precision :: pmol_read(2)
+           double precision :: tmol_read(cia_maxt)
+           double precision, allocatable :: cread(:,:,:)
+           double precision, allocatable :: wnmol(:)
+
+           file_nml = trim(file_b) // "input.nml"
+           file_data = trim(file_b) // "crossec.dat"
+           file_wnos = trim(file_b) // "wn.dat"
+
+           call read_cia_namelist(file_nml, kpres, ktemp, spec1,
+     &        spec2, nwnos, pmol_read, tmol_read)
+
+           if (ktemp .gt. cia_maxt) then
+             write(*,*) 'ERROR: increase cia_maxt in parameter.inc,'
+             write(*,*) 'need at least ',ktemp,' for ',trim(file_b)
+             STOP
+           endif
+           if (nwnos .gt. cia_maxwn) then
+             write(*,*) 'ERROR: increase cia_maxwn in parameter.inc,'
+             write(*,*) 'need at least ',nwnos,' for ',trim(file_b)
+             STOP
+           endif
+
+           cia_ktemp(pair_i) = ktemp
+           cia_kwn(pair_i) = nwnos
+           cia_tgrid(pair_i,1:ktemp) = tmol_read(1:ktemp)
+
+           if (allocated(cread)) deallocate(cread)
+           if (allocated(wnmol)) deallocate(wnmol)
+           allocate(cread(nwnos,kpres,ktemp))
+           allocate(wnmol(nwnos))
+
+           call read_cia_data(file_data, file_wnos, nwnos, kpres,
+     &        ktemp, cread, wnmol)
+
+           cia_wngrid(pair_i,1:nwnos) = wnmol(1:nwnos)
+C          Both dummy-pressure slots hold identical data (CIA has no
+C          real pressure dependence -- see MarcsCIAWriter); keep slot 1.
+           cia_data(pair_i,1:nwnos,1:ktemp) = cread(1:nwnos,1,1:ktemp)
+
+           deallocate(cread)
+           deallocate(wnmol)
+         end subroutine read_cia
+
+         subroutine get_cia(pair_i, temp, wn, coeff)
+C          Bilinear interpolation in (T, wn). Wavenumber axis: zero
+C          outside the tabulated range -- physically correct, CIA bands
+C          are narrow and genuinely vanish far from them (this is also
+C          how gaps between a file's own disjoint bands were already
+C          zero-filled by HitranCIAOpacReader at conversion time).
+C          Temperature axis: clamp/hold the nearest edge's spectrum
+C          instead of zeroing -- CIA is a continuous function of T that
+C          is just sparsely sampled, so an artificial opacity cliff at
+C          the grid edge would be worse than flat extrapolation.
+           integer, intent(in) :: pair_i
+           double precision, intent(in) :: temp, wn
+           double precision, intent(out) :: coeff
+
+           integer :: ktemp, nwnos, iw1, iw2, it1, it2
+           double precision :: w1, w2, t1, t2, fw, ft, tclamp
+           double precision :: c11, c21, c12, c22
+
+           ktemp = cia_ktemp(pair_i)
+           nwnos = cia_kwn(pair_i)
+
+           if (wn .lt. cia_wngrid(pair_i,1) .or.
+     &         wn .gt. cia_wngrid(pair_i,nwnos)) then
+             coeff = 0.
+             return
+           endif
+
+           call cia_bracket(cia_wngrid(pair_i,1:nwnos), nwnos, wn, iw1)
+           iw2 = min(iw1+1, nwnos)
+           w1 = cia_wngrid(pair_i,iw1)
+           w2 = cia_wngrid(pair_i,iw2)
+           if (w2 .gt. w1) then
+             fw = (wn-w1)/(w2-w1)
+           else
+             fw = 0.
+           endif
+
+           tclamp = max(cia_tgrid(pair_i,1),
+     &                  min(temp, cia_tgrid(pair_i,ktemp)))
+           call cia_bracket(cia_tgrid(pair_i,1:ktemp), ktemp, tclamp,
+     &        it1)
+           it2 = min(it1+1, ktemp)
+           t1 = cia_tgrid(pair_i,it1)
+           t2 = cia_tgrid(pair_i,it2)
+           if (t2 .gt. t1) then
+             ft = (tclamp-t1)/(t2-t1)
+           else
+             ft = 0.
+           endif
+
+           c11 = cia_data(pair_i,iw1,it1)
+           c21 = cia_data(pair_i,iw2,it1)
+           c12 = cia_data(pair_i,iw1,it2)
+           c22 = cia_data(pair_i,iw2,it2)
+
+           coeff = c11*(1.-fw)*(1.-ft) + c21*fw*(1.-ft)
+     &           + c12*(1.-fw)*ft     + c22*fw*ft
+         end subroutine get_cia
+
+         subroutine cia_bracket(grid, n, val, ilo)
+C          Bisection: finds ilo such that grid(ilo) <= val <= grid(ilo+1)
+C          for a sorted-ascending grid. Caller is responsible for
+C          clamping val into [grid(1),grid(n)] first.
+           integer, intent(in) :: n
+           double precision, intent(in) :: grid(n), val
+           integer, intent(out) :: ilo
+           integer :: ihi, imid
+
+           ilo = 1
+           ihi = n
+           do while (ihi-ilo .gt. 1)
+             imid = (ilo+ihi)/2
+             if (grid(imid) .le. val) then
+               ilo = imid
+             else
+               ihi = imid
+             endif
+           end do
+         end subroutine cia_bracket
+
+         subroutine read_cia_namelist(file_path, kpres, ktemp,
+     &        spec1, spec2, nwnos, pmol, tmol)
+           implicit none
+           character(len=*), intent(in) :: file_path
+           integer, intent(out) :: kpres, ktemp, nwnos
+           character(len=4), intent(out) :: spec1, spec2
+           double precision, intent(out) :: pmol(2)
+           double precision, intent(out) :: tmol(cia_maxt)
+           integer :: fu
+
+           namelist /inputcia/ kpres, ktemp, spec1, spec2, nwnos,
+     &        pmol, tmol
+
+           tmol(:) = 0.0
+           pmol(:) = 0.0
+
+           open (action='read', file=file_path, newunit=fu)
+           read (nml=inputcia, unit=fu)
+           close (fu)
+         end subroutine read_cia_namelist
+
+         subroutine read_cia_data(file_data, file_wnos, nwnos, kpres,
+     &        ktemp, crossec, wnmol)
+           implicit none
+           character(len=*), intent(in) :: file_data, file_wnos
+           integer, intent(in) :: kpres, ktemp, nwnos
+           double precision, intent(out) :: crossec(nwnos,kpres,ktemp)
+           double precision, intent(out) :: wnmol(nwnos)
+
+           integer :: fu, readin_size, freq_i, p_i, t_i, readin_index
+           double precision, allocatable :: crossec_readin(:)
+
+           readin_size = kpres*ktemp*nwnos
+           if (allocated(crossec_readin)) deallocate(crossec_readin)
+           allocate(crossec_readin(readin_size))
+
+           open (action='read', file=file_data, newunit=fu,
+     &        FORM='unformatted')
+           read (unit=fu) crossec_readin
+           close (fu)
+
+           readin_index=1
+           DO freq_i=1,nwnos
+             DO p_i=1,kpres
+               DO t_i=1,ktemp
+                 readin_index = freq_i + nwnos * (p_i-1) +
+     &                             nwnos * kpres * (t_i-1)
+                 crossec(freq_i,p_i,t_i) =
+     &                crossec_readin(readin_index)
+               END DO
+             END DO
+           END DO
+
+           open (action='read', file=file_wnos, newunit=fu,
+     &        FORM='unformatted')
+           read (unit=fu) wnmol
+           close (fu)
+
+           do freq_i=2,nwnos
+             if ((wnmol(freq_i)-wnmol(freq_i-1)) .lt. 0) then
+               write(*,*) 'ERROR: CIA wavenumbers need to be in'
+               write(*,*) '  increasing sorted order: ',file_wnos
+               STOP
+             end if
+           end do
+         end subroutine read_cia_data
+
+      END MODULE CIAMOD
+
+      subroutine cia_wrapper_read(file_b, pair_i)
+          use CIAMOD
+          implicit real*8 (a-h,o-z)
+          integer, intent(in) :: pair_i
+          character(len=*), intent(in) :: file_b
+
+          call read_cia(file_b, pair_i)
+
+      end subroutine cia_wrapper_read
+
+      subroutine cia_wrapper_interp(pair_i, temp, wn, coeff)
+          use CIAMOD
+          implicit real*8 (a-h,o-z)
+          integer, intent(in) :: pair_i
+          double precision, intent(in) :: temp, wn
+          double precision, intent(out) :: coeff
+
+          call get_cia(pair_i, temp, wn, coeff)
+
+      end subroutine cia_wrapper_interp
+C     End of CIA (collision-induced absorption) routines: module CIAMOD
+C     and its two wrapper subroutines, mirroring OPAMOD's read/interp
+C     split above but for HITRAN pair tables instead of OS molecular
+C     cross sections -- added 2026-08-08, repurposing LIN_CIA.
 
       SUBROUTINE INITAB (IOUTS)
       implicit real*8 (a-h,o-z)
@@ -2906,14 +3396,16 @@ C
      *         ,LISTWN,INWNFIL,NEWC3
      *         ,newosatom,newosatomlist
       
-      character(len=200) :: filebdir(maxosmol)     
-      character atnames*2, molnames*8, mol_file*20      
+      character(len=200) :: filebdir(maxosmol)
+      character atnames*2, molnames*8, mol_file*20
       logical ggchem_mol(maxosmol), ggchem_index_read
       integer ggchem_index(maxosmol), molno
-      character(len=5) molnames_new(maxosmol)
-      common /molupdate/ molnames_new, 
+      character(len=20) molnames_new(maxosmol)
+      character(len=250) molline
+      integer mol_isp
+      common /molupdate/ molnames_new,
      * ggchem_index,
-     * molno, ggchem_mol, ggchem_index_read     
+     * molno, ggchem_mol, ggchem_index_read
       COMMON/COSWR/osresl,losresl,listwn
       COMMON/CNEWC3 /NEWC3
       COMMON /COSLIST/ WNB(25),WNSTEP(25),WNEND,INTVOS
@@ -2922,14 +3414,23 @@ C
      *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       COMMON/CA1/DUMA(120),IDUM(240),NEXTT,NUTZT
       COMMON/CFIL/IRESET(10),ISLASK,IREAT
-      COMMON/CXLSET/XL(20,10),NSET,NL(10)
-      COMMON /CROS/WROS(20)
+      COMMON/CXLSET/XL(200,10),NSET,NL(10)
+      COMMON /CROS/WROS(200)
       COMMON/UTPUT/IREAD,IWRIT
       COMMON/COUTR/NTO,NTPO(10)
       COMMON/CVAAGL/XLA(500),W(500),NLB
       COMMON/CLINE4/ILINE
       common /cmasabs/ masabs(3)
       common /cinos/resl,wnos_first,wnos_last,kstep
+      COMMON /CLIN/lin_cia
+      character(len=4) cia_spec1(maxcia), cia_spec2(maxcia)
+      common /ciaspecs/ cia_spec1, cia_spec2
+      integer cia_index1(maxcia), cia_index2(maxcia), ncia
+      common /ciapairs/ cia_index1, cia_index2, ncia
+      character(len=200) :: cia_dir(maxcia)
+      character(len=20) :: cia_file
+      character(len=250) :: cialine
+      integer cia_isp1, cia_isp2
 C
       resl = OSRESL
       kstep = kos_step
@@ -2944,7 +3445,7 @@ C
 C ZEROSET WEIGHTS
       DO 4 I=1,500
  4    W(I)=0.
-      DO 5 I=1,20
+      DO 5 I=1,200
  5    WROS(I)=0.
 C
 C WAVELENGTH SETS
@@ -2980,9 +3481,13 @@ C     ADS: Note: mol_names.dat can be molecules or atoms
 
 
       open(unit=7397, file=mol_file)
-         read(7397, '(i2)') molno
+         read(7397, '(i3)') molno
          do n=1,molno
-            read(7397, '(A,A)') molnames_new(n), filebdir(n)
+            read(7397, '(A)') molline
+            molline = adjustl(molline)
+            mol_isp = index(molline, ' ')
+            molnames_new(n) = molline(1:mol_isp-1)
+            filebdir(n) = adjustl(molline(mol_isp+1:))
             molname(n) = trim(molnames_new(n))
          end do
       close(7397)
@@ -3046,8 +3551,42 @@ C we come here only if dimension for the OS is too small:
       endif
 
       do nm=1,molno
-         call opac_wrapper_read(trim(filebdir(nm)), nm, wnos) 
+         call opac_wrapper_read(trim(filebdir(nm)), nm, wnos)
       end do
+
+C     CIA (collision-induced absorption), repurposing LIN_CIA. File is
+C     only opened/read when LIN_CIA=1 -- zero I/O and zero impact on
+C     any of the existing .input files, which all default LINCIA=0.
+      ncia = 0
+      if (lin_cia.eq.1) then
+        cia_file = "./data/cia_list.dat"
+        open(unit=7398, file=cia_file)
+          read(7398, '(i3)') ncia
+          if (ncia.gt.maxcia) then
+            write(*,*) 'ERROR: ncia=',ncia,' exceeds maxcia in'
+            write(*,*) 'parameter.inc -- increase maxcia'
+            STOP
+          endif
+          do n=1,ncia
+            read(7398, '(A)') cialine
+            cialine = adjustl(cialine)
+            cia_isp1 = index(cialine, ' ')
+            cia_spec1(n) = cialine(1:cia_isp1-1)
+            cialine = adjustl(cialine(cia_isp1+1:))
+            cia_isp2 = index(cialine, ' ')
+            cia_spec2(n) = cialine(1:cia_isp2-1)
+            cia_dir(n) = adjustl(cialine(cia_isp2+1:))
+          end do
+        close(7398)
+        print*, "CIA pairs included are: "
+        do n=1,ncia
+          print*, trim(cia_spec1(n)), '-', trim(cia_spec2(n))
+        end do
+        do n=1,ncia
+          call cia_wrapper_read(trim(cia_dir(n)), n)
+        end do
+      end if
+
       oskres = osresl/dfloat(kos_step)
       write(7,245) nwtot,wnos_first,wnos_last,1.e4/wnos_last,
      & 1.e4/wnos_first,kos_step,oskres
@@ -3465,7 +4004,6 @@ C and other routines from gem_init by common CI5.
       !if Z= solar, then sunz=y and nothing changes
       !else add to the abundances of all elements but H and He log(zscale).
       print*, "Metallicity is ", zscale, " time(s) solar."
-      !REWRITE HEAD OF ELABUND AND SCREEN OUTPUT WITH GENERALIZED INPUT FORMAT AND OUTPUT FORMAT
       metal_z=zscale !write out metallicity for use in other routines, e.g. VIRGA
       write(7,*) 'This model has the elemental abundances ',
      >  'of the general type ', trim(head_elabund)
@@ -4279,7 +4817,7 @@ C
       SUBROUTINE KAP5(T,PE,ABSK,nlayer)
       implicit real*8 (a-h,o-z)
 C
-      COMMON /CXLSET/XL(20,10),NSET,NL(10)
+      COMMON /CXLSET/XL(200,10),NSET,NL(10)
 C
 C COMPUTE KAPPA(5000.). 73.10.17 *NORD*.
       CALL ABSKO(1,1,T,PE,1,NL(1)+1,ABSK,SPRID,nlayer)
@@ -5696,7 +6234,14 @@ C
 C
       RETURN
 50    FORMAT(5(7X,F8.0))
-51    FORMAT(3(7X,I3,5X),7X,F8.0,7X,F8.0)
+C MIHAL's value is typed one column further right than KONSG/KORT's
+C (one space after '=' instead of two, e.g. "MIHAL = 101" vs
+C "KONSG =  0"), so its field is unrolled here as 8X,I3,4X instead of
+C the 7X,I3,5X used for KONSG/KORT. Previously all three shared 7X,I3,5X
+C via the 3(...) repeat, which silently dropped MIHAL's last digit for
+C any 3-digit value (101 read as 10, 124 read as 12, etc.) since the
+C I3 window started one column before the digits actually began.
+51    FORMAT(8X,I3,4X,7X,I3,5X,7X,I3,5X,7X,F8.0,7X,F8.0)
 512   FORMAT(3(7X,I3,5X))
 1233  FORMAT(7X,I3)
 1234  format(1(7X,I4,4X), 4(7X, F8.0), 1(7X,I4,4X), 1(7X,E8.1))
@@ -6923,7 +7468,7 @@ C
      &      VV(NDP),FFC(NDP),PE(NDP),T(NDP),TAULN(NDP),RO(NDP),
      & NTAU,ITER
       COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
-      COMMON/CXLSET/XL(20,10),NSET,NL(10)
+      COMMON/CXLSET/XL(200,10),NSET,NL(10)
       COMMON /CVAAGL/XLB(500),W(500),NLB
       COMMON/CLINE1/XLINLO,XLINUP,TSKAL(30),
      &             PESKAL(30),IPEBEG(30),IPEEND(30),LINUN,NTSKAL,NPSKAL
@@ -7091,7 +7636,7 @@ C        INTERPOLATION
       S(K)=(SPRID(K)+(SPRID1(K)-SPRID(K))*DIFXL)/XKAPR(K)
       s_cont(k,j) = s(k)*XKAPR(k)
       PRSC(K)=S(K)
-   12 CONTINUE          
+   12 CONTINUE
 C
 C        COMPUTATION OF LINE-ABSORPTION COEFFICIENTS
 C
@@ -7523,7 +8068,7 @@ C        SET NUMBER IS IFIRST, THE LAST ILAST. IF MORE SETS ARE NECESSAR
 C        EXECUTION IS STOPPED WITH A PRINT-OUT.
 C
       DIMENSION XLB(500)
-      COMMON/CXLSET/XL(20,10),NSET,NL(10)
+      COMMON/CXLSET/XL(200,10),NSET,NL(10)
       COMMON/CLINE1/XLINLO,XLINUP,TSKAL(30),
      &             PESKAL(30),IPEBEG(30),IPEEND(30),LINUN,NTSKAL,NPSKAL
       COMMON/CLINE3/GLAMD(100),JLBDS
@@ -7811,7 +8356,7 @@ C      PARAMETER (IFADIM=1000,KFADIM=4000)
       COMMON/UTPUT/IREAD,IWRIT
       COMMON/CA1/DELT(30,2),TBOT(30,2),IDEL(30),ISVIT(30),ITETA(30),
      *KVADT(30),MAXET(30),MINET(30),NTM(30,2),NEXTT,NUTZT
-      COMMON/CA2/ABKOF(4000),KOMPLA(600),KOMPR,KOMPS,NKOMP
+      COMMON/CA2/ABKOF(40000),KOMPLA(2000),KOMPR,KOMPS,NKOMP
       COMMON/CA4/AFAK(KFADIM),NOFAK(IFADIM),NPLATS(IFADIM)
 C
       IFAK=1
@@ -8465,6 +9010,7 @@ C DIMENSIONS
       character*24 idmodl
       logical:: first_call_rad = .True.
       logical:: file_exists
+      integer:: ios_fluxrad
       integer abund_freq,icalc_abund
       integer onemor
 C
@@ -8572,16 +9118,39 @@ C SPACE ALLOCATION
         write(*,*) "Found krome_flux_rad.dat, write data into FLUX_RAD"
         open(unit=7373,file="krome_flux_rad.dat",status='old',readonly)
         read(7373,*) !read first line before actually writing the data into FLUX_RAD
-        do k=1,ntau 
+        ios_fluxrad=0
+        fluxrad_layers: do k=1,ntau
          do j=1,nwreal
-          read(7373,*) dummy_k,dummy_wl,FLUX_RAD(k,j) !first two entries dont matter just dummies
+          read(7373,*,iostat=ios_fluxrad) dummy_k,dummy_wl,FLUX_RAD(k,j) !first two entries dont matter just dummies
+          if (ios_fluxrad.ne.0) exit fluxrad_layers
          enddo
-        enddo
+        enddo fluxrad_layers
         close(7373)
+C krome_flux_rad.dat is a per-(layer,wavelength) cache carried over from
+C a previous run to speed up convergence -- if the LOGTAU grid (ntau) or
+C wavelength grid (nwreal) changed since it was written, the file is too
+C short for the current run and the plain read above used to crash with
+C an opaque "forrtl: severe (24): end-of-file during read, unit 7373"
+C runtime error. Detect that here (iostat non-zero means EOF hit before
+C all ntau*nwreal records were read) and fall back to the same
+C zero-initialized FLUX_RAD used when the file is missing entirely,
+C with a message that says exactly what to do about it.
+        if (ios_fluxrad.ne.0) then
+          write(*,*) "ERROR: krome_flux_rad.dat ended before supplying"
+          write(*,*) "all ntau*nwreal records needed for this run's"
+          write(*,*) "grid (ntau=",ntau,", nwreal=",nwreal,")."
+          write(*,*) "This file was carried over from a previous run"
+          write(*,*) "with a different LOGTAU/wavelength grid and no"
+          write(*,*) "longer matches -- comment out the line copying"
+          write(*,*) "krome_flux_rad.dat into TMPDIR in your runmarcs"
+          write(*,*) "script so this run regenerates its own instead"
+          write(*,*) "of reusing the stale, mismatched cache."
+          FLUX_RAD(:,:)=0
+        endif
         else
         write(*,*) "Did not find krome_flux_rad.dat, consider using
-     > such a file for better convergence" 
-        endif 
+     > such a file for better convergence"
+        endif
          if (krome_debug.eq.1) then
             open(unit=7676,file='BPL_sun.dat')
             open(unit=7777,file='BPL_upper.dat')
@@ -8601,7 +9170,9 @@ C
        teff_real=teffp
       endif
 
-      if (mod(it,abund_freq).ne.0) then !freeze abundance updates every abund_freq iterations to speed up convergence
+      if (mod(it,abund_freq).eq.0) then !recalculate abundances every abund_freq iterations
+       icalc_abund=1
+      else !freeze abundance updates in between, to speed up convergence
        icalc_abund=0
       endif
       if (onemor.eq.1) then !calc abundances for one more iteration after convergence to ensure correct abundances are used in final iteration
@@ -8913,6 +9484,17 @@ C LOWER BOUNDARY
 144   CONTINUE
 C     
 C TEMPERATURE EQUATION
+C SURFACE ANCHOR (2026-08-12, reverted to the pre-2026-08 nested form
+C per marcs.f.save/April 2025 -- confirmed with the user that the
+C historically-successful run used MIHAL~NTAU, not MIHAL=1, so the
+C anchor only needs to be reachable when K<=MIHAL as it was here
+C originally; the "regardless of MIHAL" version tried earlier this
+C session was a different, untested design). The SURFACE ANCHOR
+C RE-ASSERT block below (before MATINV) is UNCHANGED/kept -- it's a
+C separate, independently-motivated numerical fix (Gauss-Jordan
+C elimination of column NTAU so every other row stays consistent with
+C the anchor) that applies regardless of how/where the anchor is set
+C here, and fixes a real dilution bug documented in its own comment.
       IF (K.GT.MIHAL) GO TO 145
 C
 C RADIATIVE EQUILIBRIUM
@@ -8932,7 +9514,7 @@ C RADIATIVE EQUILIBRIUM
             if (x(k)==0.) then
                   print*, "X is zero at k ", k
             end if
-            TPE(K,K)=TPE(K,K)+Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)  
+            TPE(K,K)=TPE(K,K)+Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)
       end if
       GO TO 146
 145   CONTINUE
@@ -8992,12 +9574,47 @@ C END OF WAVELENGTH LOOP
 
       if (krome_on.eq.1) then
        if (krome_photo_on.eq.1) then
-            do K=1, ntau
             !calculate the radiative flux in eV cm-2 s-1 Hz-1 sr-1 from XJ with units erg s-1 cm-2 Å-1 for krome
             aa_to_cm_conv=1E-8 !converts Angstrom to centimeter
-            ergs_to_eV_conv=6.242E11 !converts ergs to eV 
-            FLUX_RAD(K,J)=max(0.0,XJ(K)*WLOS(J)*
-     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv/(4*pi))            
+            ergs_to_eV_conv=6.242E11 !converts ergs to eV
+C DIRECT-BEAM ACTINIC FLUX (added on top of the diffuse XJ, for
+C photochemistry only -- does not modify XJ itself, so the
+C radiative-equilibrium/temperature solve is unaffected). Computed via
+C a plain Beer's-law attenuation of the incident stellar beam through a
+C monotonic cumulative optical-depth sum, using the same DTAUB
+C definition and single Eddington angle (0.5773503) SCATTR/TRANSC
+C already use for Pstar, so it is geometrically consistent with the
+C rest of the irradiation treatment. This sidesteps the boundary
+C pathology in SCATTR's Pstar recursion (marcs.f ~10246-10344), where
+C C=2/DTAUB and T=TAU(1)*(X(1)+S(1))/XMU both blow up when a single
+C top layer is optically very thick at a given wavelength (e.g. the
+C Schumann-Runge continuum), driving Pstar(1) toward numerical
+C underflow even though the true incident flux at the boundary should
+C be essentially unattenuated. A plain cumulative EXP(-tau) here is
+C monotonic and bounded by construction -- it can only correctly decay
+C toward (and, if genuinely negligible, underflow to) zero, never
+C amplify or flip sign the way the recursive elimination can.
+            xmu_dir=0.5773503D0
+            tau_cum_dir=0.0D0
+            delta_omega_dir=0.0D0
+            if (irrin.gt.0) then
+              Rsun_au=0.00465047
+              Rstar_au= rstar*Rsun_au
+              delta_omega_dir = (Rstar_au/(semimajor))**2.0 /
+     &          (4.0*(f_irrad))
+            endif
+            do K=1, ntau
+            if (K.gt.1) then
+              dtaub_dir=.5*(X(K-1)+S(K-1)+X(K)+S(K))*
+     >          (TAU(K)-TAU(K-1))/xmu_dir
+              tau_cum_dir=tau_cum_dir+dtaub_dir
+            endif
+            xjdirect=0.0D0
+            if (irrin.gt.0) then
+              xjdirect=(delta_omega_dir/h_irrad)*bstar*EXP(-tau_cum_dir)
+            endif
+            FLUX_RAD(K,J)=max(0.0,(XJ(K)+xjdirect)*WLOS(J)*
+     >       (WLOS(j)*aa_to_cm_conv/CLIGHT)*ergs_to_eV_conv/(4*pi))
             enddo
        end if
       end if
@@ -9206,6 +9823,22 @@ C GRADIENT DIFFERENCE
       Y=1.+GG(K)
       YY=-GG(K)/Y
       GRAD=log(TT(K)/TT(K-1))/log(PP(K)/PP(K-1))
+C RE-CHECK CONVECTIVE STABILITY EVERY ITERATION: THE NEWV BOOTSTRAP
+C BELOW ONLY RE-EVALUATES WHETHER A LAYER SHOULD START CONVECTING
+C WHEN VV(K) IS ALREADY EXACTLY ZERO -- ONCE A LAYER HAS EVER
+C TRIGGERED (VV(K).NE.0.), THERE WAS PREVIOUSLY NO CORRESPONDING
+C CHECK TO TURN IT BACK OFF IF GRAD SUBSEQUENTLY DROPS BELOW ADIA
+C AGAIN, SO IT KEPT EVOLVING VV/DD THROUGH THE CONTINUOUS BRANCH
+C INDEFINITELY (CONFIRMED: VV GREW FROM 102 TO 1462 AT ONE LAYER
+C EVEN AS GRAD DROPPED WELL BELOW ADIA). RESETTING VV/DD HERE MAKES
+C THE SWITCH SYMMETRIC (ON AND OFF) SO THE BOOTSTRAP CAN CLEANLY
+C RE-TRIGGER NEXT TIME THE LAYER GOES SUPERADIABATIC AGAIN. THE 1.00
+C MULTIPLIER ON ADIA IS A HYSTERESIS MARGIN AND CAN BE TUNED (E.G.
+C 0.98) IF THIS PROVES TOO CHATTERY.
+      IF(VV(K).GT.0. .AND. GRAD.LT.ADIA*1.00) THEN
+        VV(K)=0.
+        DD(K)=0.
+      ENDIF
       NEWV=DD(K).GT.0..AND.VV(K).EQ.0..AND.PALFA.GT.0..AND.K.GT.2
       IF(.NOT.NEWV) GO TO 263
       VV(K)=SQRT(GRAV*HSCALE*Q*PALFA**2*DD(K)/PNY)
@@ -9475,10 +10108,46 @@ C ELECTRON PRESSURE
 C
 C TIME
       !CALL CLOCK
-C      
+C
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 C
 C BACKSUBSTITUTION IN GAUSS ELIMINATION SCHEME.
+C
+C SURFACE ANCHOR RE-ASSERT: the CONVECTIVE FLUX and ELECTRON PRESSURE
+C coupling blocks above run unconditionally over ALL rows I=1,NTAU and
+C subtract FCT/FCPE/TPE-PET terms into TTT(NTAU,*) and RT(NTAU),
+C silently overwriting the clean RT(NTAU)=-(TT(NTAU)-tbottom),
+C TTT(NTAU,NTAU)=1.0 constraint set earlier in the TEMPERATURE EQUATION
+C section (inside the wavelength loop). That let the anchor's wanted
+C correction be diluted to ~0 before it ever reached MATINV, so the
+C solver never actually pulled T(NTAU) toward tbottom and falsely
+C declared convergence with the bottom layer floating far from the
+C intended surface temperature.
+C
+C Re-zeroing just the row is not enough: those same coupling blocks
+C also left every OTHER row I with a nonzero TTT(I,NTAU), i.e. every
+C row's equation still assumes it can freely trade correction with
+C layer NTAU. Reasserting row NTAU alone made that column stale
+C (computed against the contaminated, now-discarded row NTAU),
+C producing a wildly inconsistent inversion elsewhere (observed:
+C -14651 K "wanted" correction on iteration 1 with this fix half
+C -applied). Pivot on the anchor row properly: fold each row's stale
+C TTT(I,NTAU) coupling into its own RT (Gauss-Jordan elimination of
+C column NTAU using row NTAU as pivot) before zeroing that column, so
+C every other row's equation is self-consistent with the reasserted
+C anchor rather than referencing a value that no longer exists.
+      if (irrinp>0) then
+            banchor=-(TT(NTAU) - tbottom)
+            DO 9505 I=1,NTAU
+            IF (I.EQ.NTAU) GO TO 9505
+            RT(I)=RT(I)-TTT(I,NTAU)*banchor
+            TTT(I,NTAU)=0.0
+9505        CONTINUE
+            DO 9506 J=1,NTAU
+9506        TTT(NTAU,J)=0.0
+            TTT(NTAU,NTAU)=1.0
+            RT(NTAU)=banchor
+      end if
 C
 C INITIATE
       CALL MATINV(TTT,NTAU)
@@ -9522,9 +10191,20 @@ C hence 1D absorption coefficients, dependent on temperature only) and the
 C atomic (T,Pg dependent Vogit profiles) absorption coefficient.
 
       TCORMX=ABS(T(1))
+      KTCORMX=1
       DO 405 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+C SIGN(1.0D0,T(I)) instead of T(I)/ABS(T(I)): the division form is 0/0
+C (NaN) whenever a layer's correction is exactly zero -- now a normal
+C occurrence at the surface-anchor row once it has converged exactly
+C to tbottom, which corrupted this signed diagnostic on every later
+C iteration since I=NTAU is the loop's last pass.
+      PM = SIGN(1.0D0,T(I))
       TCORMXM=PM*MAX(ABS(TCORMX),ABS(T(I)))
+C KTCORMX: which depth layer (K=1 top .. NTAU bottom) owns the wanted
+C correction below, so oscillation/instability can be traced to a
+C layer instead of only a magnitude -- added to answer whether repeat
+C large corrections keep landing on the same layer or move around.
+      IF(ABS(T(I)).GT.TCORMX) KTCORMX=I
  405  TCORMX=MAX(TCORMX,ABS(T(I)))
          if(newosatom.eq.2) then 
                      tcormxend = tcormxend + tcormx
@@ -9542,18 +10222,19 @@ C atomic (T,Pg dependent Vogit profiles) absorption coefficient.
          ITSTOP=.FALSE.
       ENDIF
 
-      PRINT406, TCORMXM,IT
+      PRINT406, TCORMXM,IT,KTCORMX,LOG10(TAU(KTCORMX))
       inquire(file="tcormx.dat", exist=exist)
       if (exist) then
       open(unit=987,file= 'tcormx.dat',status='replace')
       write(987, *) TCORMXM
       close(987)
-      else 
+      else
       open(unit=987,file= 'tcormx.dat',status='new')
       write(987, *) TCORMXM
       close(987)
       end if
-406   FORMAT(' Max corr. to T wanted was ',F8.1,' K for iteration ',I3)
+406   FORMAT(' Max corr. to T wanted was ',F8.1,' K for iteration ',I3,
+     &  ' (layer',I3,', logtau',F6.2,')')
 C
 C---
 C
@@ -9564,7 +10245,7 @@ C CHECK T CORR
 401   CONTINUE
       TCORMX=ABS(T(1))
       DO 407 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+      PM = SIGN(1.0D0,T(I))
  407  TCORMX=MAX(TCORMX,ABS(T(I)))
       PRINT4061, TCORMX
 4061  FORMAT(' Max corr. to T wanted for kort=1 was',F6.1)
@@ -9577,8 +10258,12 @@ C OVERSHOOTS THE EQUILIBRIUM (CYCLE AMPLITUDE SCALES WITH STEP SIZE).
 C HALVE THE WORKING STEP (FLOOR TCONV); RECOVER X1.2 (CAP TDIFF)
 C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
       TCMXNOW=T(1)
+      KCMX=1
       DO 4012 I=2,NTAU
-      IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
+      IF (ABS(T(I)).GT.ABS(TCMXNOW)) then
+        TCMXNOW=T(I)
+        KCMX=I
+      end if
 4012  CONTINUE
       IF (IT.EQ.1) TDWORK=TDIFF
       IF (IT.EQ.1) TCMXPRV=0.
@@ -9596,7 +10281,7 @@ C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
 C
       TCORMX=ABS(T(1))
       DO 4071 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+      PM = SIGN(1.0D0,T(I))
       TCORMX=MAX(TCORMX,ABS(T(I)))
 4071  TCORMXM=PM*TCORMX
       write(file_id,'(i3)') iter
@@ -9607,9 +10292,10 @@ C
      * TT(i), ",", PP(i), ",", PPE(i), "," ,ROSS(i)
       end do
       close(73972)
-      PRINT408, TCORMX,KORT
+      PRINT408, TCORMX,KORT,KCMX
 408   FORMAT(' Maximum correction applied was',F6.1,
-     *     ' for applied kort =',I2)
+     *     ' for applied kort =',I2,' (largest wanted was layer',I3,
+     *     ')')
       END IF
       IF (KORT.EQ.6) THEN
       IF(IT.EQ.1) TCORPRV = 1.D3
@@ -9637,7 +10323,7 @@ C CEILING FEEDS KORT=6'S OWN RATCHET (PPKK/TCORMIN) UNCHANGED.
       PPPK = MIN(TCORMIN,PPK)
       TCORMX=ABS(T(1))
       DO 4081 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+      PM = SIGN(1.0D0,T(I))
       TCORMX=MAX(TCORMX,ABS(T(I)))
 4081  TCORMXM=PM*TCORMX
         TCORPRV=TCORMX
@@ -9828,7 +10514,7 @@ C
       COMMON /CSURF/HSURF,Y1(NRAYS)
       common /cirinp/steff,reflect,f_irrad,h_irrad,
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
-      common /irradcs/Pstar(ndp),rstar, semimajor,tbottom  
+      common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
 C
 C INITIATE
@@ -9943,7 +10629,7 @@ C MU LOOP
       IF (mmu_pp.GT.6) STOP ' tranfr: increase dimensions incl mmu_pp'
       
       DO 110 I=1,MMU_PP
-      
+
       DTAUB=.5*(X(1)+S(1)+X(2)+S(2))*(TAU(2)-TAU(1))/XMU(I)
       A=1./DTAUB
       B=A**2
@@ -10150,6 +10836,7 @@ C PRELIM
      & (4.0*(f_irrad))
       Pstar(1) = (C*(1-EX))*
      & (delta_omega/h_irrad) *bstar
+      PSTARBND = ABS(Pstar(1))
       P(1)=P(1)*(1.+C*EX)*(1.-delta_omega) + Pstar(1)
       end if
 C
@@ -10159,20 +10846,36 @@ C ACCUMULATE INHOMOGENOUS TERMS
       if (irrin>0) then
       do k=1, JTAU1
        Pstar(k+1) = SP1(k)*Pstar(k)
+C PSTAR STABILITY CLAMP: Pstar represents the boundary-injected stellar
+C beam attenuating as it penetrates the atmosphere. Unlike P (which
+C gets a fresh local emission source added at every layer, regularizing
+C it), Pstar is a bare recursive propagation with nothing anchoring it,
+C so when the K=1 boundary's C=2/DTAUB term spikes (happens routinely
+C for a molecule-opacity-rich, cold/temperate atmosphere -- verified via
+C DIAGSCAT/DIAGXJ diagnostics: raw Pstar1 ~1e7-1e8 at some wavelengths,
+C reaching *trillions* and flipping sign after this elimination, purely
+C from numerical blowup, not real physics) it can catastrophically
+C amplify through this chain. A beam can only attenuate on the way in,
+C never exceed its own source strength or go negative, so clamp to
+C [0, boundary magnitude] at every stage this array is touched.
+       Pstar(k+1) = MAX(0.0D0, MIN(Pstar(k+1), PSTARBND))
       end do
       if (irrinp >0) then
        Pstar(JTAU) = Pstar(jtau) + reflect*Pstar(jtau)
-      end if 
+       Pstar(JTAU) = MAX(0.0D0, MIN(Pstar(JTAU), PSTARBND))
+      end if
       end if
 C BACKSUBSTITUTE
       P(JTAU)=P(JTAU)/SP2(JTAU)
       if (irrin>0) then
       Pstar(jtau)=Pstar(jtau)/SP2(JTAU)
+      Pstar(jtau)=MAX(0.0D0, MIN(Pstar(jtau), PSTARBND))
       DO 140 K=1,JTAU1
       Pstar(JTAU-K)=(Pstar(JTAU-K)
      & -SP3(JTAU-K)*Pstar(JTAU-K+1))/MAX(SP2(JTAU-K),1.0D-10)
+      Pstar(JTAU-K)=MAX(0.0D0, MIN(Pstar(JTAU-K), PSTARBND))
 140   P(JTAU-K)=(P(JTAU-K)-SP3(JTAU-K)*P(JTAU-K+1))
-     >/MAX(SP2(JTAU-K),1.0D-10)     
+     >/MAX(SP2(JTAU-K),1.0D-10)
       end if
 C BACKSUBSTITUTE PSTAR
 C
@@ -10183,7 +10886,7 @@ C*NEW PDS MEMBER FOLLOWS
 C*
       SUBROUTINE TRYCK
       implicit real*8 (a-h,o-z)
-C
+C UNIQUEMARKERTRYCK
 C TRYCK IS A FAST PRESSURE INTEGRATION ROUITINE. IT IS FAST BECAUSE OF
 C TWO REASONS: 1) IT INTEGRATES THE DIFFFERENTIAL EQUATION FOR LN(P)
 C AS A FUNCTION OF LN(TAU). 2) IT ITERATES DIRECTLY ON THE ELECTRON
@@ -10208,11 +10911,7 @@ C
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      LOGICAL PECAP
-      COMMON /CPECAP/ PECAP
-      DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
-      DATA DLNPEMX/0.5D0/
 C
 C START
 C     CALL MSLEFT(MSA)
@@ -10224,11 +10923,6 @@ C DT=(TT(2)/TT(1)-1.)/DLNTAU(2)
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
-C SAVE ELECTRON PRESSURES AT ENTRY: ANCHORS FOR THE PER-CALL STEP CAP.
-C CAP IS A RATE LIMITER ONLY - RE-ANCHORED EVERY CALL, INACTIVE ONCE
-C THE MODEL IS NEAR CONVERGENCE, SO THE CONVERGED MODEL IS UNCHANGED.
-      DO 90 K=1,NTAU
-90    PPEIN(K)=MAX(PPE(K),1.D-30)
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       i =0
@@ -10268,14 +10962,6 @@ C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       else
         eps = 1.0e-3
       end if
-C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
-C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
-C PPE(1) ON RUNS THAT DON'T NEED IT.
-      IF (PECAP) THEN
-        DLNPP=LOG(PPE(1)/PPEIN(1))
-      IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
-      END IF
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -10322,14 +11008,6 @@ C ITERATION LOOP
       else
         eps = 1.0e-3
       end if
-C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
-C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
-C PPE(K) ON RUNS THAT DON'T NEED IT.
-      IF (PECAP) THEN
-        DLNPP=LOG(PPE(K)/PPEIN(K))
-      IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
-      END IF
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -11350,7 +12028,7 @@ C
 401   CONTINUE
       TCORMX=ABS(T(1))
       DO 407 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+      PM = SIGN(1.0D0,T(I))
  407  TCORMX=MAX(TCORMX,ABS(T(I)))
       PRINT4061, TCORMX
 4061  FORMAT(' Max corr. to T wanted for kort=1 was',F6.1)
@@ -11434,7 +12112,7 @@ C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
 C
       TCORMX=ABS(T(1))
       DO 4071 I=2,NTAU
-      PM = T(I)/ABS(T(I))
+      PM = SIGN(1.0D0,T(I))
       TCORMX=MAX(TCORMX,ABS(T(I)))
 4071  TCORMXM=PM*TCORMX
       PRINT408, TCORMX,KORT
@@ -12137,11 +12815,7 @@ C
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE 
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      LOGICAL PECAP
-      COMMON /CPECAP/ PECAP
-      DIMENSION PPEIN(NDP)
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
-      DATA DLNPEMX/0.5D0/
 C
 C START
       MSA=0
@@ -12150,11 +12824,6 @@ C START
       NABSKO=0
       KK=1
       IF(PPE(1).LE.0.) PPE(1)=PEDEF
-C SAVE ELECTRON PRESSURES AT ENTRY: ANCHORS FOR THE PER-CALL STEP CAP.
-C CAP IS A RATE LIMITER ONLY - RE-ANCHORED EVERY CALL, INACTIVE ONCE
-C THE MODEL IS NEAR CONVERGENCE, SO THE CONVERGED MODEL IS UNCHANGED.
-      DO 90 K=1,NTAU
-90    PPEIN(K)=MAX(PPE(K),1.D-30)
 C
 C ITERATE ON BOUNDARY CONDITION, USING PARTIAL DERIVATIVES
       GRVR=GRAV*(RADIUS/RR(1))**2
@@ -12197,14 +12866,6 @@ C test for effect of constant gravity...
       else
         eps = 1.0e-3
       end if
-C CAP THE PER-CALL CHANGE OF PPE(1); ROSS(1)/PP(1) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
-C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
-C PPE(1) ON RUNS THAT DON'T NEED IT.
-      IF (PECAP) THEN
-        DLNPP=LOG(PPE(1)/PPEIN(1))
-      IF(ABS(DLNPP).GT.DLNPEMX) PPE(1)=PPEIN(1)*EXP(SIGN(DLNPEMX,DLNPP))
-      END IF
 C
 C END BOUNDARY CONDITION
       ROSS(1)=CROSS(1)*ROSSOP(TT(1),PPE(1),1)
@@ -12254,14 +12915,6 @@ C       print*,'error,dedlnp ', error,dedlnp
       else
         eps = 1.0e-3
       end if
-C CAP THE PER-CALL CHANGE OF PPE(K); ROSS(K)/PP(K) ARE REBUILT FROM
-C THE CAPPED VALUE BY THE EXISTING RECOMPUTE JUST BELOW. OFF BY
-C DEFAULT (SEE PECAP IN &OUTLIST) - CAN TRUNCATE AN ALREADY-CONVERGED
-C PPE(K) ON RUNS THAT DON'T NEED IT.
-      IF (PECAP) THEN
-        DLNPP=LOG(PPE(K)/PPEIN(K))
-      IF(ABS(DLNPP).GT.DLNPEMX) PPE(K)=PPEIN(K)*EXP(SIGN(DLNPEMX,DLNPP))
-      END IF
 C
 C END TAU LOOP
       ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
@@ -12629,7 +13282,7 @@ C
       implicit real*8 (a-h,o-z)
        !use omp_lib
        include 'parameter.inc'
-       character atnames*2, molnames*8, molnames2*4, shn*8
+       character atnames*2, molnames*8, molnames2*4, shn*20
        character(len=100) :: mol_file
        !BCE November 2022 - routine is being revamped for correct consideration
        !of molecular opacities.
@@ -12657,7 +13310,7 @@ C
      & NTAU,ITER
       COMMON /CMETPE/ PPEL(NDP), METPE
       !COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
-      !COMMON/CXLSET/XL(20,10),NSET,NL(10)
+      !COMMON/CXLSET/XL(200,10),NSET,NL(10)
       !COMMON /CVAAGL/XLB(500),W(500),NLB
       COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
@@ -12716,7 +13369,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
       logical ggchem_mol(maxosmol), ggchem_index_read, species_found
       integer ggchem_index(maxosmol), molno
-      character(len=5) molnames_new(maxosmol)
+      character(len=20) molnames_new(maxosmol)
       common /molupdate/ molnames_new,
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
@@ -12843,6 +13496,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             cond_pp_init(i) = ppallmol(ntau,molnames_index)
        exit
        endif
+       !double check to also check for krome species that are not in molnames.dat but are in virga_condensates.dat
       enddo
       if (molnames_index.eq.777) then
        write(*,*) 'condensate not found in molnames: ',
@@ -12868,8 +13522,15 @@ C     has extra entries that would otherwise be silently ignored.
       write(369,*) '# metallicity',metal_z
       write(369,*) '# surface gravity',grav
       write(369,*) '# Begin Condensates'
+C cond_pp_init is a partial pressure (dyn/cm^2) at the bottom/reference
+C layer -- for a dominant condensable (e.g. H2O in a deep, high-metallicity
+C atmosphere) this can exceed F12.4's ~1E7 capacity, printing asterisks
+C instead of a value and crashing call_virga.py's float() parse
+C (ValueError: could not convert string to float: '************').
+C ES scientific notation has no such ceiling and also preserves precision
+C for trace condensates F12.4 would otherwise round to 0.0000.
       do i=1,nr_cond
-            write(369,'(A2,A20,A1,F12.4)') '# '
+            write(369,'(A2,A20,A1,ES16.6)') '# '
      >       , adjustl(condensates(i)), ':', cond_pp_init(i)
       enddo
       write(369,*) '# End Condensates'
@@ -13111,9 +13772,9 @@ C ....the plot
                         wnmax = wnos(jvn)
                   end if
                   sumop(nm,it) = sumop(nm,it) + akapmol(it)*dw
-                  conos(it,jvl) = 
+                  conos(it,jvl) =
      &            px_os*akapmol(it) + conos(it,jvl)
-                  sumkap(nm,it) = 
+                  sumkap(nm,it) =
      &            sumkap(nm,it) + akapmol(it)*px_os*dw
             end do
           end do 
@@ -15656,6 +16317,10 @@ c and total molecular pressure.
       character*2000 pprdline
       character(len=200) :: ggline
       integer :: ggios
+      integer :: dbg_ggchem_count
+      character(len=40) :: dbg_ggchem_fname, dbg_ggchem_abfname
+      save dbg_ggchem_count
+      data dbg_ggchem_count /0/
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
      > ppat1sumk,ppat2sumk,ppmolsumk,ppgsk,rhon_total, f1gg, f5gg,
@@ -15679,7 +16344,7 @@ c and total molecular pressure.
       common/cabnames/abcname(natms)
       logical ggchem_mol(maxosmol), ggchem_index_read
       integer ggchem_index(maxosmol), molno
-      character(len=5) molnames_new(maxosmol)
+      character(len=20) molnames_new(maxosmol)
       common /molupdate/ molnames_new, 
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
@@ -15731,8 +16396,25 @@ c and total molecular pressure.
       end do
       close(71)
       write(70,*) temp, '                ! Tmax [K]'
-      write(70,*) pgas/bar,'                   ! pmax [bar]' 
+      write(70,*) pgas/bar,'                   ! pmax [bar]'
       close(70)
+
+C DBG-GGCHEMCOLD: capture the exact marcs2ggchem.in/abund_drift.in
+C GGchem receives at suspiciously cold/tenuous conditions (matching the
+C extrapolated top-layer regime where pp.dat later comes back with
+C impossible exponents, e.g. E-460/E-931), so an isolated standalone
+C GGchem run can be reproduced offline against the identical input.
+      if (temp.lt.300.0d0) then
+        dbg_ggchem_count = dbg_ggchem_count + 1
+        if (dbg_ggchem_count.le.30) then
+          write(dbg_ggchem_fname,'(A,I0,A)') 'ggchem_debug_',
+     >      dbg_ggchem_count,'.in'
+          call system('cp marcs2ggchem.in '//trim(dbg_ggchem_fname))
+          write(dbg_ggchem_abfname,'(A,I0,A)') 'ggchem_debug_abund_',
+     >      dbg_ggchem_count,'.in'
+          call system('cp abund_drift.in '//trim(dbg_ggchem_abfname))
+        endif
+      endif
 
       call system('./GGchem/ggchem marcs2ggchem.in > ggchem_out.txt')
 
@@ -15833,7 +16515,20 @@ c and total molecular pressure.
       end do
                 read(707,708) ((km,atnames(m)),m=1,22)
                 read(707,*)
-                read(707,709) (molnames(m),m=1,543)
+c               ifort mishandles format reversion across many records
+c               when a single READ's final group is a partial multiple
+c               of the repeat count (543 = 54*10 + 3) -- split into
+c               full groups of 10 plus one trailing partial read.
+                nfull=543/10
+                nrem=543-nfull*10
+                do jgrp=1,nfull
+                  read(707,709,iostat=iosrd)
+     >              (molnames((jgrp-1)*10+jj),jj=1,10)
+                end do
+                if (nrem.gt.0) then
+                  read(707,709,iostat=iosrd)
+     >              (molnames(nfull*10+jj),jj=1,nrem)
+                end if
 
 708             format(i4,18x,a2)
 709             format(10a8)
@@ -16268,12 +16963,25 @@ C       enddo
 !--------------------------------------------
       subroutine krome_solve(ntau,T,ptot)
 !--------------------------------------------
+!DIR$ OPTIMIZE:0
+C -ipo (interprocedural optimization across the whole marcs.f) was found
+C 2026-08-17 to silently defeat the REWIND(3535) call below -- confirmed
+C by a matched ITEMAX=3 test: identical source, -ipo build accumulates
+C all iterations' krome_bins_rates.dat writes (75MB for 3 iterations),
+C no-ipo build correctly keeps only the final iteration's sweep (10.7MB).
+C Confirmed fix: this directive disables optimization for this routine
+C only (re-tested under a full -ipo build: back to 10.7MB/one iteration,
+C no crash), so -ipo stays enabled for the rest of the program.
       !TODO/TO CONSIDER
       !what if some speciesnames have capitals in them
       !what if speciesnames are ordered differently
 
       use krome_main !use krome (mandatory)
       use krome_user !use utility (for krome_idx_* constants and others)
+      use krome_commons, only: nspec_krome=>nspec !renamed: parameter.inc
+                         !already declares its own (unrelated, GGchem) nspec
+      use krome_getphys !for get_names(): species names/order compiled
+                         !directly from whichever krome build is linked
 
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
@@ -16309,11 +17017,13 @@ C      implicit none
       real*8::conv_crit
       logical::use_conv = .True.
       logical::is_conv
+      logical::unlimited_evolve
       real*8,dimension(nwreal)::FLUX_RAD_eV
       real*8::photo_bins_high,photo_bins_low,photo_bins_nominator
       real*8::aa_to_m_conv,J_to_eV_conv,HC_to_SI_conv
       character(len=100)::spec_name
       character(len=12),dimension(nsp)::chem_spec
+      character(len=16)::names_tmp(nspec_krome) !sized to match get_names()
       character atnames*2, molnames*8, molnames2*4
       integer krome_not_count
       real*8 krome_not_pp(ndp,1000)
@@ -16367,26 +17077,56 @@ C      implicit none
       if (conv_crit.ge.0) then !quick trick to turn off convergence check if conv_crit is zero or positive
         use_conv=.False.
       endif
-      !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3 
+C conv_crit=0 EXACTLY is a further sentinel on top of the trick above:
+C it not only disables the convergence check (already true for any
+C conv_crit>=0) but also switches the per-layer tmax below from
+C MIN(vert_mix_time,krome_tmax) to just krome_tmax (input tMAX) alone,
+C ignoring vert_mix_time entirely, so integration length is set
+C directly and predictably via the input file instead of being
+C dictated by whichever of the two timescales happens to be shorter
+C (or, in an earlier version of this feature, longer -- vert_mix_time
+C was found to reach millions of seconds for some layers, which made
+C MAX(vert_mix_time,krome_tmax) impractically expensive). Added
+C 2026-08-11 to explore longer integration windows as a lever on O3
+C abundance. Any conv_crit~=0 (including the small positive values,
+C e.g. 1e-8, used by every existing input file) is unaffected and
+C keeps the original MIN(vert_mix_time,krome_tmax) behaviour.
+      unlimited_evolve = (conv_crit.eq.0)
+      !Convert pressures in dyne/cm^2 to number densities in molecules/cm^3
       !write relevant species out from info.log
       if (first_call.eq..True.) then !initialization of krome. Checking for molecules in MARCS and finding their indices, setting Photobins if photochem is needed
-      header_size=5 !info.log header size
-      open(unit=12,file='./krome/MARCS_build/info.log',status = 'old')     
-      do i=1,nsp+header_size
-        read(unit=12,fmt='(A100)') spec_name
-        if (i-header_size.lt.10) buffer=3
-        if ((i-header_size.ge.10).and.(i-header_size.lt.100)) buffer=4
-        if ((i-header_size.ge.100)) buffer=5
-        if (i.gt.header_size) then      
-         do j=buffer,len(chem_spec)+buffer                                      
-          if (spec_name(j:j)=='k') exit !k starts the id part of the species in info.log                        
-          write(chem_spec(i-header_size)(j-(buffer-1):j-(buffer-1)),
-     >       '(A1)') spec_name(j:j)
-         enddo       
-         chem_spec(i-header_size)=chem_spec(i-header_size)(1:j-buffer-1)!cut down empty ends of the string 
-        endif 
-      enddo
-      close(12)
+C     --- OLD MECHANISM (kept for reference, superseded below): parsed
+C     --- species names by opening a hardcoded './krome/MARCS_build/info.log'
+C     --- and text-scanning it, regardless of which krome build was actually
+C     --- linked in (Makefile_v2/_stand/_vulcan link a different build/*.dat
+C     --- and info.log). If that path's info.log has a different species
+C     --- count/order than the linked build (e.g. an older or differently
+C     --- configured network), this silently mislabels species -- including
+C     --- the third-body species 'M', which corrupts termolecular rates.
+C     header_size=5 !info.log header size
+C     open(unit=12,file='./krome/MARCS_build/info.log',status = 'old')
+C     do i=1,nsp+header_size
+C       read(unit=12,fmt='(A100)') spec_name
+C       if (i-header_size.lt.10) buffer=3
+C       if ((i-header_size.ge.10).and.(i-header_size.lt.100)) buffer=4
+C       if ((i-header_size.ge.100)) buffer=5
+C       if (i.gt.header_size) then
+C        do j=buffer,len(chem_spec)+buffer
+C         if (spec_name(j:j)=='k') exit !k starts the id part of the species in info.log
+C         write(chem_spec(i-header_size)(j-(buffer-1):j-(buffer-1)),
+C    >       '(A1)') spec_name(j:j)
+C        enddo
+C        chem_spec(i-header_size)=chem_spec(i-header_size)(1:j-buffer-1)!cut down empty ends of the string
+C       endif
+C     enddo
+C     close(12)
+C     --- NEW MECHANISM: get_names() (in krome_getphys.f90) is generated by
+C     --- KROME straight from the same network file that defines nspec and
+C     --- the krome_idx_* constants, so it is always in sync with whichever
+C     --- build is actually linked -- no file path, no text parsing, no risk
+C     --- of reading a different build's species list/order.
+      names_tmp = get_names()
+      chem_spec(1:nsp) = names_tmp(1:nsp)
         write(*,*) 'The following',nsp,
      >   'species are found in your krome build'
         write(*,*) chem_spec(1:nsp)
@@ -16546,9 +17286,30 @@ C      implicit none
          write(13,'(A,/)') ' '
       endif 
 
+C REWIND krome_bins_rates.dat (unit 3535) at the start of every outer
+C iteration's layer sweep, so each iteration's writes overwrite the
+C previous iteration's in place instead of appending forever -- the file
+C stays open for the whole run (see the close(3535) comment below for why),
+C so without this it grows by one full iteration's worth of per-layer,
+C per-reaction rate dumps every single iteration (496MB for a 100-iteration
+C run). Only the final iteration's sweep is ever useful for inspection, so
+C rewinding keeps just that. Guarded the same way the write/open are
+C (krome_photo_on/krome_debug) to stay consistent with the existing gating.
+      if (krome_photo_on.eq.1 .and. krome_debug.eq.1) REWIND(3535)
       !main loop (bottom-to-top so mixed abundances feed upward into next layer)
       do k=ntau,1,-1
-        tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
+        if (unlimited_evolve) then
+C conv_crit=0: ignore vert_mix_time entirely and use krome_tmax (input
+C tMAX) directly as the target time. vert_mix_time was found
+C (2026-08-11) to run into the millions of seconds for some layers,
+C which with a fixed DTMAX step ceiling drove step counts into the
+C hundreds of thousands per layer and made a single outer iteration
+C impractically slow. Using krome_tmax alone gives direct, predictable
+C control over integration length via the input file.
+          tmax= krome_tmax
+        else
+          tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
+        endif
         is_conv = .False.
         dt_max_loc = dt_max !seed local working copies from the (read-only) common block
         dt_inc_loc = dt_inc
@@ -16560,8 +17321,8 @@ C      implicit none
         if (krome_photo_on.eq.1) then
          call krome_set_photoBinJ(FLUX_RAD_eV(:))
          call krome_photoBin_scale(krome_photo_scale)
-        write(3535,'(I3)') k
-         call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))        
+        write(3535,'(A3,I3,A4,I3)') 'it=',it,' k=',k
+         call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))
          if (krome_debug.eq.1) then         
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
@@ -16652,7 +17413,7 @@ C                avoids redoing the whole dt_start->dt_max ramp from scratch.
         end do
 C ------ UPWARD EDDY MIXING (Eq. 2 term 1, Bangera et al. 2025) ------
 C       Phi = -K_zz * (dn_i/dz + n_i/H_p), Bangera et al. 2025
-C       Applied per species when tau_chem > tau_mix. Disabled by default
+C       Applied per species when tau_chem > tau_mix.
 
       if (k .gt. 1 .and. time .ge. tmax) then
         dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
@@ -16672,11 +17433,11 @@ C           Phi = -K_zz * (dn_i/dz + n_i/H_p); Phi>0 means upward (k->k-1)
 C           Amount transferred upward over the chemistry time step
             delta_n_mix = flux_up * time / dz_k
 C           Stability guard: at most 50% of either layer per step
-C            if (delta_n_mix .gt. 0.0d0) then
-C              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
-C            else
-C              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
-C            end if
+            if (delta_n_mix .gt. 0.0d0) then
+              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
+            else
+              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
+            end if
 C           Conserving transport: layer k loses, layer k-1 gains
             num_den(k,i)   = num_den(k,i)   - delta_n_mix
             num_den(k-1,i) = num_den(k-1,i) + delta_n_mix
@@ -16685,8 +17446,20 @@ C           Conserving transport: layer k loses, layer k-1 gains
       end if
 C ------ END EDDY MIXING ------
       end do
-      if (krome_debug.eq.1) then         
-       close(3535)
+      if (krome_debug.eq.1) then
+C Only close on the final outer iteration -- this used to close
+C unconditionally every call, but open(unit=3535,...) above only
+C executes once (inside the first_call gate). From iteration 2 onward
+C every write(3535,...) therefore hit a closed unit, which Fortran
+C silently reconnects to an implicit default file (fort.3535,
+C truncated fresh each time), so krome_bins_rates.dat itself froze
+C forever at iteration 1's (radiatively unconverged, near-zero) rates
+C while the real per-iteration data silently went to fort.3535 in
+C $TMPDIR and was never copied out. Confirmed 2026-08-12: test58's
+C tmpdir_listing.txt shows a fort.3535 the same size as the frozen
+C krome_bins_rates.dat, i.e. exactly one lost sweep per premature
+C close/implicit-reopen cycle.
+       if (it.eq.itmax) close(3535)
       endif
       !final output
       if (krome_output.eq.1) then

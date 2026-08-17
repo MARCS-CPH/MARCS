@@ -1782,6 +1782,7 @@ class krome:
 			'_ice':0e0,
 			'_total':0e0,
 			'_1D':0e0,
+			'_2D':0e0,
 			'_SING':0e0,
 			'_TRIP':0e0,
 			'l_':0e0,

@@ -2,8 +2,11 @@
 #reaction: C4H2 -> C2H2 + C2
 #source: Ferradaz et al. (2009), 293K, 115-225nm
 #https://www.uv-vis-spectral-atlas-mainz.org/uvvis/
-#total absorption cross section used for both photoabsorption and
-#photodissociation columns (single dissociation channel; no photoionization data)
+#CAUTION: total absorption cross section duplicated across all 3
+#proposed product channels for this species (C4H2__C2H2_C2.dat,
+#C4H2__C2H_C2H.dat, C4H2__C4H_H.dat) -- no experimental branching ratios
+#available. Summing the resulting rates over all channels will
+#overestimate C4H2's total photolysis rate.
 #wavelength(nm) photoabsorption(cm2) photodissociation(cm2) photoionization(cm2)
 115.080000 4.960000e-17 4.960000e-17 0.000000e+00
 116.040000 4.960000e-17 4.960000e-17 0.000000e+00

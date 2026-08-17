@@ -1,7 +1,8 @@
 -ATOL 1d-40
 -checkConserv 
 -noExample 
--noSinkCheck 
+-noSinkCheck
+-skipODEthermo 
 -RTOL 1D-8
 -unsafe 
 -useN 

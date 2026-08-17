@@ -1,10 +1,11 @@
--ATOL 1d-40
+-ATOL 1d-12
 -checkConserv 
--n networks/non_eq/react_Chapman_photo_krome_new_nanna_khm
+-n /groups/astro/tbalduin/networks/full_network_v7_WIP_NOT_READY_YET_vulcan_DMS.dat
 -noExample 
 -noSinkCheck 
 -options options_photochem
--project Chapman_output_test
+-project v7_DMS_N2Hfix
 -RTOL 1D-8
 -photoBins 7949
+-skipODEthermo 
 -useN 

@@ -2416,7 +2416,7 @@ end subroutine krome_load_opacity_table
     implicit none
 #KROME_double :: x(nmols)
 #KROME_double_value :: Tgas,xvar
-    real*8::flux(nrea),fluxmax,sumflux,n(nspec)
+    real*8::flux(nrea),fluxmax,sumflux,n(nspec),rates(nrea)
 #KROME_integer_value :: ifile
     integer::i
     character*50::rname(nrea)
@@ -2430,10 +2430,11 @@ end subroutine krome_load_opacity_table
     flux(:) = get_flux(n(:), Tgas)
     fluxmax = maxval(flux) !maximum flux
     sumflux = sum(flux) !sum of all the fluxes
+    rates(:) = krome_get_coef(Tgas,n(:))
     !loop on reactions
     do i=1,nrea
-       write(ifile,'(I8,5E17.8e3,a3,a50)') i,xvar,Tgas,flux(i),&
-            flux(i)/fluxmax, flux(i)/sumflux," ",rname(i)
+       write(ifile,'(I8,6E17.8e3,a3,a50)') i,xvar,Tgas,flux(i),&
+            flux(i)/fluxmax, flux(i)/sumflux,rates(i)," ",rname(i)
     end do
     write(ifile,*)
 
