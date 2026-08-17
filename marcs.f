@@ -16963,15 +16963,6 @@ C       enddo
 !--------------------------------------------
       subroutine krome_solve(ntau,T,ptot)
 !--------------------------------------------
-!DIR$ OPTIMIZE:0
-C -ipo (interprocedural optimization across the whole marcs.f) was found
-C 2026-08-17 to silently defeat the REWIND(3535) call below -- confirmed
-C by a matched ITEMAX=3 test: identical source, -ipo build accumulates
-C all iterations' krome_bins_rates.dat writes (75MB for 3 iterations),
-C no-ipo build correctly keeps only the final iteration's sweep (10.7MB).
-C Confirmed fix: this directive disables optimization for this routine
-C only (re-tested under a full -ipo build: back to 10.7MB/one iteration,
-C no crash), so -ipo stays enabled for the rest of the program.
       !TODO/TO CONSIDER
       !what if some speciesnames have capitals in them
       !what if speciesnames are ordered differently
@@ -17286,16 +17277,6 @@ C     --- of reading a different build's species list/order.
          write(13,'(A,/)') ' '
       endif 
 
-C REWIND krome_bins_rates.dat (unit 3535) at the start of every outer
-C iteration's layer sweep, so each iteration's writes overwrite the
-C previous iteration's in place instead of appending forever -- the file
-C stays open for the whole run (see the close(3535) comment below for why),
-C so without this it grows by one full iteration's worth of per-layer,
-C per-reaction rate dumps every single iteration (496MB for a 100-iteration
-C run). Only the final iteration's sweep is ever useful for inspection, so
-C rewinding keeps just that. Guarded the same way the write/open are
-C (krome_photo_on/krome_debug) to stay consistent with the existing gating.
-      if (krome_photo_on.eq.1 .and. krome_debug.eq.1) REWIND(3535)
       !main loop (bottom-to-top so mixed abundances feed upward into next layer)
       do k=ntau,1,-1
         if (unlimited_evolve) then
@@ -17321,9 +17302,21 @@ C control over integration length via the input file.
         if (krome_photo_on.eq.1) then
          call krome_set_photoBinJ(FLUX_RAD_eV(:))
          call krome_photoBin_scale(krome_photo_scale)
-        write(3535,'(A3,I3,A4,I3)') 'it=',it,' k=',k
-         call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))
-         if (krome_debug.eq.1) then         
+C krome_bins_rates.dat (unit 3535) is diagnostic-only -- krome_explore_flux
+C dumps per-reaction rates/fluxes but never feeds back into num_den or any
+C physics state, so skipping it on non-final iterations changes nothing
+C about the run itself. Previously this wrote every iteration and relied
+C on REWIND(3535) to overwrite the file back to just the last sweep, but
+C REWIND was found 2026-08-17 to be silently defeated by -ipo (confirmed
+C via a matched ITEMAX=3 test), letting every iteration's dump accumulate
+C forever (3+GB for a 99-iteration run instead of the intended ~10MB).
+C Writing only on the final iteration sidesteps the REWIND/-ipo interaction
+C entirely -- there is nothing to reset because nothing is written early.
+         if (krome_debug.eq.1 .and. it.eq.itmax) then
+          write(3535,'(A3,I3,A4,I3)') 'it=',it,' k=',k
+          call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))
+         endif
+         if (krome_debug.eq.1) then
           if (k.eq.1) then !only print values for first layer
            write(4242,*) krome_get_photoBinJ()
            write(5656,*) krome_get_photobinE_mid()
