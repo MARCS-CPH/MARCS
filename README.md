@@ -15,6 +15,10 @@ Here is a little checklist:
   - the ggchem16 executable in **GGchem/src16** (build it by running "make" inside GGchem/src16/;
     this binary is gitignored, so a fresh checkout won't have it, and marcs.f calls it through the
     GGchem/ggchem symlink, which points at GGchem/src16/ggchem16 and will otherwise be dangling)
+  - krome/data/database/leiden_xsecs -- this is a symlink, not a tracked directory (the LEIDEN
+    photodissociation cross-section files are too large to track in git). It points at
+    /groups/astro/tbalduin/krome_leiden_xsecs/, so a fresh checkout on a machine without access
+    to that path will need the symlink target updated to wherever that data has been copied to
   - marcs.input in the **input_files** directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
   - runmarcs file in the **runmarcs_files** directory (make sure all the output you want is comment out/in)
