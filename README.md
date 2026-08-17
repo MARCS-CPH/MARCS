@@ -35,14 +35,15 @@ In order to run KROME with MARCS a few steps have to be added to the above menti
 Before you can run a model with KROME you have to prepare the network you want to run.  
 You can find the relevant networks in the folder krome/networks.  
 There you can find some already prepared in the subfolder "noneq". 
-(for the example case in this repository its is advised to choose the "react_Chapman_incl_photo" network)  
-If you know which network you want to run you should go to the file "compile_krome.sh"
-and make sure to add your network path to this line "./krome -n networks/ADD_YOUR_NETWORK_PATH_HERE" 
-(a number of networks are already found in list).   
-When this is in place, give an appropriate name to the "project" in the first line of "compile_krome.sh".  
+(for the example case in this repository it is advised to choose the "DMS_v2" network,
+krome/networks/non_eq/full_network_DMS_v2.dat -- the current standard/most up to date network)  
+If you know which network you want to run you should go to the file "krome/compile_KROME.sh"
+and set the `network=` variable near the top to your network's path (e.g.
+`network=networks/non_eq/full_network_DMS_v2.dat`), then give an appropriate
+name to the `project=` variable right below it.  
 
 ### Compile and run
-Then you can execute "compile_krome.sh" and your krome build should get compiled.     
+Then you can execute "krome/compile_KROME.sh" and your krome build should get compiled.     
 When KROME is compiled, you can switch back to the main directory and compile marcs with krome.
 This is done by simply excuting the "make" command.  
 The relevant compiling options can be found in the makefile.  
@@ -51,49 +52,34 @@ It is highly advised to always use the optimised flags for compiling)
 Once you compiled marcs with krome you can run marcs by executing the runmarcs file as usual.  
 Make sure to comment in/out the krome output that you wanted to see in the runmarcs file.
 
-# SW 
-This file explains how to run MARCS with Static Weather,
-in order to produce MARCS models with clouds.
+# Additional physics
 
-The driftmarcs.f90 file has the conjugation of the calls to both 
-codes as well as important parameters between the codes comunication.
+### CIA (collision-induced absorption)
+MARCS can include collision-induced absorption via the `LINCIA` input
+parameter (0 = off, the default in every existing .input file; 1 = on).
 
-At the beginning of driftmarcs.f90 you will find the following variables 
-declared and defined:
-. f_opac: defines the fraction of the cloud opacity to be considered in marcs.
-in the first instance one should set this to the cloud opacity fraction one wants to start with.
-0 means no clouds, 1.0 means the full cloud calculated by driftmarcs.
+When enabled, MARCS reads its list of active pairs from a fixed path,
+`./data/cia_list.dat` -- this file is **not** created automatically, so you
+need to put one there yourself before setting LINCIA=1. Format: first line
+is the number of pairs, then one line per pair as
+`SPECIES1  SPECIES2  /path/to/converted/pair/data/`.
+`data/cia_pairs_all.dat` lists every CIA pair currently converted and
+available (21 pairs) in exactly this format and can be used as a source to
+copy the pairs you want into `data/cia_list.dat` -- it is a reference list
+only and is not read directly by MARCS.
 
-. delta_t: the relative error between two models after a MARCS+SW run. Initially set to a high value (100.0 fex) 
-so that the code always has to perform at least 2 runs of MARCS+SW before convergence.
+Pairs are matched generically by species name against GGchem's species
+tables, so any pair present in the converted data can be used, not just the
+originally-targeted N2/O2/CO2 set for Earth-type atmospheres.
 
-. delta_opac: the steps in cloud opacity to be taken between each run.
+### N2/O2 Rayleigh scattering
+N2 and O2 Rayleigh scattering is included automatically whenever those
+species are present in the atmosphere. There is no input switch for this --
+it runs independently of LINCIA/CIA.
 
-. idriftok: is 1 if SW has ran successfully.
-
-Files to care about:
-. opac_frac.in: store the current cloud opacity fraction to be taken.
-It is read my MARCS.
-
-.marcs2drift.dat: read by MARCS with SW's cloud information.
-
-.out3_dust.dat: contains main output from SW.
-
-.sw.out: contains log from SW run, where one can check for convergence.
-If the statement "regular end of integration" is found, then SW
-has converged and successfully ran.
-
-In driftmarcs.f90 we encounter two WHILE loops.
-
-The first while loop:
-    Here we run MARCS+SW while slowly adding the cloud to MARCS.
-    For example, if f_opac is set to 0.20 at the beginning and delta_opac 
-    to 0.20, then we will call MARCS+SW 5 times, each time with 20% more opacity.
-    In the final model we will have a model with the full cloud, but this
-    does not mean it is fully converged yet. This is where the second loop 
-    comes in...
-
-The second while loop:
-    Loops through MARCS+SW at 100% cloud opacity until the MARCS model previously
-    computed has a relative error in temperature of less than 10% - this value can be changed.
-    If convergence is not obtained within 20 loops, the code stops. - this value can also be modified.
+### conv_crit (chemistry integration length)
+Part of the noneq input block (see parameters_list.txt). A value of exactly
+`0` switches per-layer KROME chemistry integration to always run for the
+full `tMAX`, instead of the default `min(vert_mix_time, tMAX)`. Any nonzero
+value keeps the default behavior. This gives direct input-file control over
+integration length independent of the vertical mixing timescale.
