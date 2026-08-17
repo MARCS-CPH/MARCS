@@ -627,12 +627,23 @@ c     to obtain a partial pressure one multiplies the ratio of the
 c     element or molecule number density to the total number density
 c     by the total gas pressure
 c     write partial pressure of elements:
-      write(707,'(1p8e13.3e3)')(nat(elnum(i)) * pgas/n_total,i=1,el-1)
+c     PP.DAT FLOOR CLAMP: at cold/tenuous conditions (e.g. an
+c     extrapolated top layer) equilibrium partial pressures for exotic
+c     trace species (dimeric ions, fluorocarbons, exotic carbon chains,
+c     sulfur/phosphorus allotropes -- never anything the photochemistry
+c     network tracks) can underflow to exponents beyond what the e13.3e3
+c     field can represent, printing as '****' or a malformed literal
+c     that MARCS's reader may not catch. None of these species carry
+c     any real abundance at that point regardless, so clamp to a floor
+c     that always formats cleanly rather than risk an unreadable token.
+      write(707,'(1p8e13.3e3)')
+     >  (MAX(nat(elnum(i)) * pgas/n_total, 1.0d-300),i=1,el-1)
       write(707,*)
       write(321,'(1p8e13.3e3)')(nat(elnum(i)), i=1, el-1)
       write(321,*)
 c     write partial pressure of molecules:
-      write(707,'(1p8e13.3e3)')(nmol(i) * pgas/n_total,i=1,NMOLE)
+      write(707,'(1p8e13.3e3)')
+     >  (MAX(nmol(i) * pgas/n_total, 1.0d-300),i=1,NMOLE)
       write(321,'(1p8e13.3e3)')(nmol(i), i=1, NMOLE)
 c     write element number and corresponding name:
       write(707,'(i4,a20)')( (elnum(i),elnam(elnum(i))), i=1,el-1)
