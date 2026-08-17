@@ -13655,6 +13655,15 @@ C         We then check if our species is an atom
             if (.not. species_found) then
               print*,' species not in ggchem or krome-only list: '
      &           ,nm,molnames_new(nm)
+              print*,' Species not found in krome or ggchem.',
+     &           ' Potential solutions:'
+              print*,' 1) turn on NONEQ=1 if it is 0 by accident',
+     &           ' (krome-only species are only recognized when',
+     &           ' krome_solve has run at least once)'
+              print*,' 2) use a krome network that contains',
+     &           ' this species'
+              print*,' 3) remove this species from mol_names.dat',
+     &           ' if you intend to run only equilibrium chemistry'
               STOP 'Check species name in mol_names.dat'
             end if
           endif
