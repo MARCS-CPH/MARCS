@@ -1,0 +1,119 @@
+#!/bin/bash
+# SLURM resource specifications
+# (use an extra '#' in front of SBATCH to comment-out any unused options)
+#SBATCH --job-name=mCNOSz200DMSv2 # shows up in the output of 'squeue'
+#SBATCH --time=24:00:00       # specify the requested wall-time
+#SBATCH --partition=astro2_long   # specify the partition to run on
+#SBATCH --nodes=1              # number of nodes allocated for this job
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1    # number of MPI ranks per node
+#SBATCH --cpus-per-task=1       # number of OpenMP threads per MPI rank
+#SBATCH --mail-type=ALL
+
+module load astro gdb
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+# start from the base model used to validate the modern-GGchem implementation
+in_dir=./models/K2_18b_highZ_CNOS/chain/z_100/
+out_dir=./models/K2_18b_highZ_CNOS/chain/z_200_DMS_v2/
+
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+# chain guard: halt this stage (and everything depending on it) if the
+# previous stage did not deliver a model archive
+if [ ! -f ${in_filename}.arciv ]; then
+  echo "ERROR: input archive ${in_filename}.arciv missing - previous stage failed"
+  exit 1
+fi
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir -p ${out_dir}
+cp $CWD/$0    $CWD/${out_dir}   # copy the script itself into the output dir as early as possible
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+
+input_parameters=$CWD${input_folder}marcs_K2_18b_Irr_dtinc_ramp_z200.input
+input_elabund=$CWD${data_folder}elabund_K2_18b_CNOS_z200.dat
+input_opac=$CWD${data_folder}mol_names_75_DMS.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_K2_18_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+input_abundance=$CWD${data_folder}krome_init_abund_DMS.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+cp $input_abundance $TMPDIR/data/krome_init_abund.dat
+
+# stage the input archive directly into the job-private TMPDIR
+# (previously went through a shared file in $CWD, which raced when
+#  several jobs were submitted at once and could silently corrupt startup)
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
+
+cp marcs2gg_partpp.dat $TMPDIR
+cp marcs2ggchem_template.in $TMPDIR
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+cp marcs_v2 $TMPDIR/marcs
+
+cp ${in_dir}krome_flux_rad.dat $TMPDIR/
+
+cp $CWD/krome/build_DMS_v2/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+# marcs.f hardcodes './krome/MARCS_build/info.log' for the chem_spec species-name
+# parser, regardless of which krome build is actually in use. Overwrite that one
+# file inside this job's private TMPDIR only (never touches the real, on-disk
+# krome/MARCS_build/) so the species names it parses match build_DMS_v2's
+# network instead of the production network's stale, shorter info.log.
+cp $CWD/krome/build_DMS_v2/info.log $TMPDIR/krome/MARCS_build/info.log
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+
+./marcs
+
+### COPY FILES AFTER RUN ###
+
+### MAIN FILES
+cp arcivaab.dat    	$CWD/${out_filename}.arciv
+cp mxmodel.dat     	$CWD/${out_filename}.dat
+cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in
+cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir}
+cp $TMPDIR/spectrum.dat $CWD/${out_dir}
+
+### NON_EQ RELATED FILES
+cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat
+cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat
+cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat
+cp $TMPDIR/BPL_sun.dat $CWD/${out_dir}/BPL_sun.dat
+cp $TMPDIR/BPL_upper.dat $CWD/${out_dir}/BPL_upper.dat
+cp $TMPDIR/XJ_upper.dat $CWD/${out_dir}/XJ_upper.dat
+cp $TMPDIR/XJ_lower.dat $CWD/${out_dir}/XJ_lower.dat
+cp $TMPDIR/krome_bins_rates.dat $CWD/${out_dir}/krome_bins_rates.dat
+cp $TMPDIR/full_output.dat $CWD/${out_dir}/full_output.dat
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR

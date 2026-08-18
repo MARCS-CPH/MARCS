@@ -1,6 +1,7 @@
 # MARCS
-(A full list of all input parameters can be found in parameters_list.txt.
-For explanations of individual physics modules, see PHYSICS_OVERVIEW.md.)
+(A full list of all input parameters can be found in manuals/parameters_list.txt.
+For explanations of individual physics modules, see manuals/PHYSICS_OVERVIEW.md.
+For the list of atoms/molecules MARCS knows about, see manuals/at_and_mol_list.txt.)
 How to run a marcs model.  
 In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 ### Prepare input files
@@ -26,7 +27,7 @@ Here is a little checklist:
     this data publicly downloadable is a planned future improvement.)
   - marcs.input in the **input_files** directory (make sure to align all the input parameters correctly, for example have equal signs be aligned etc.)
         - in addition if you do not want non equilibrium chemistry to be calculated set NONEQ to zero (maybe a good idea for the first test run)
-  - runmarcs file in the **runmarcs_files** directory (make sure all the output you want is comment out/in)
+  - runmarcs file in the **execute_scripts** directory (make sure all the output you want is comment out/in)
   - make sure that you have a compiler installed and available to your shell. MARCS by default uses the ifort compilers, but gfortran is possible if needed.   
     (on the Copenhagen HPC this is done by adding the line "module load intel" to your .bashrc in your home folder. Make sure to restart your terminal/shell after adding the line)
 
