@@ -15,8 +15,8 @@ module load astro gdb
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 
-in_dir=./models/solar/
-out_dir=./models/solar/
+in_dir=./models/solar_type_star/
+out_dir=./models/solar_type_star/
 
 in_filename=${in_dir}marcs_output
 out_filename=${out_dir}marcs_output

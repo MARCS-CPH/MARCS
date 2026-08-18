@@ -15,7 +15,7 @@ module load astro gdb python/mamba/2023
 # Usage: sbatch virga/runmarcs_virga_test [input_deck_basename] [output_subdir_name]
 #   input_deck_basename : file under ./virga/, default marcs_sun_virga.input
 #   output_subdir_name  : subdir under ./models/virga_test/, default "test"
-# Restarts from the solar benchmark archive (models/solar/) -- VIRGA's
+# Restarts from the solar benchmark archive (models/solar_type_star/) -- VIRGA's
 # opacity isn't merged into the radiative transfer yet, so this is just a
 # pipeline smoke test, not a distinct physics case.
 INPUT_DECK=${1:-marcs_sun_virga.input}
@@ -25,7 +25,7 @@ OUT_SUBDIR=${2:-test}
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 
-in_dir=./models/solar/
+in_dir=./models/solar_type_star/
 out_dir=./models/virga_test/${OUT_SUBDIR}/
 
 in_filename=${in_dir}marcs_output
