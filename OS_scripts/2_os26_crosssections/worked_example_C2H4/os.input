@@ -1,0 +1,56 @@
+ $INPUTOSMOL
+  KTEMP = 13,
+  TMOL = 100.0,150.0,200.0,250.0,300.0,350.0,400.0,500.0,604.0,730.0,882.0,1065.0,1286.0,
+  MOLID = 'C2H4',
+  lchrom = 0
+ $END
+
+ $INPUTOS
+  OSFIL = 'C2H4_OS_100to1286K.dat'
+  losresl = 0,
+  osresl = 20000.,
+  wnos_first = 1.0,
+  wnos_last = 7100.0,
+ $END
+
+ $VALD_INP
+  lvald = 0
+  wb = 999.,
+  we = 999.,
+  elm_pick = 999
+  ion_pick = 999,
+  lgstel = 1,
+  nsort = 99
+  ktsort = 7
+  scalemet = 1.0
+ $END
+
+ $NPROFILE
+  profile = 'gauss'
+  lmarcs = 1,
+  atmos_voigt = '/ste4/uffegj/cmodels/ct20g00c11atb.dat'
+  vkmssp = 3.0,
+  nhalf = 10,
+ $END
+
+ $ABUNDANCES
+  sunz = 'y',
+  zscale = 1.0000,
+ $END
+
+ $SAMPLING
+  linedir = '/lustre/astro/tbalduin/molecules/C2H4/'
+  iso1 = 1
+  lexopart = 0
+
+  rel_iso_c = 1.000
+  wgt_iso_c = 12., 13.,
+  kiso_c = 1,
+
+  rel_iso_h = 1.000
+  wgt_iso_h = 1., 2., 3.,
+  kiso_h = 1
+
+  jderiv = 0,
+  linesc2h2_direct = 1
+ $END

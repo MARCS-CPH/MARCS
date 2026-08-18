@@ -1,0 +1,24 @@
+# Stage-4 config: converts an os26-produced <SPECIES>_OS_*.dat file (or a
+# UV-only *_UVonly_7949.dat intermediate, see 4_uvonly_alternative/) into
+# the crossec.dat/wn.dat/input.nml triplet MARCS actually reads.
+#
+# Run from /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/
+# (the marcs_opac_converter package is NOT pip-installed anywhere -- it only
+# imports because Python's empty-string sys.path entry picks up the local
+# package dir when run from inside this directory):
+#
+#   cd /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR
+#   python3 convert_opac config_stage4_<species>.yaml
+#
+# One entry per species; batch as many as you like in one file.
+marcsexomolcombined:
+  - writer: new
+    molid: <SPECIES>
+    # for an os26 output (absolute path is fine, or relative to this dir):
+    opac_files: /lustre/astro/tbalduin/molecules/<SPECIES>/crosssections/full_run/<SPECIES>_OS_<Tmin>to<Tmax>K.dat
+    # for a UV-only intermediate instead:
+    # opac_files: input_crossec_files/combined/<SPECIES>_UVonly_7949.dat
+    path: output/combined/<SPECIES>_new_<Tmin>to<Tmax>K
+
+# After running, verify before wiring in:
+#   ls output/combined/<SPECIES>_new_.../   # expect crossec.dat, wn.dat, input.nml all present

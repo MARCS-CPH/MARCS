@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --job-name=os26_<SPECIES>_full
+#SBATCH --time=96:00:00
+#SBATCH --partition=astro2_long
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=16G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+# --time: size to the combined line1.txt file size at ~0.03 h/GB, with
+# margin (observed rate: SO3 791GB->22.9h, H2O2 732GB->22.1h, C2H4
+# 1784GB->~52h). astro2_long allows up to 5 days (120h) -- don't leave this
+# at a default 24h for anything bigger than ~700GB, it WILL time out.
+
+module load astro
+
+CWD=$(pwd)
+RUNDIR=${CWD}/full_run
+mkdir -p ${RUNDIR}
+cp ${CWD}/os.input ${RUNDIR}/os.input
+cd ${RUNDIR}
+
+${CWD}/os26
+
+echo "Full run done."
+
+# Setup checklist before submitting (see os.input.template for the details):
+#   1. ln -s /lustre/astro/tbalduin/molecules/<SPECIES>/crosssections/../linelist/<TAG>.pf
+#            /lustre/astro/tbalduin/molecules/<SPECIES>/linelist/<MOLID>.pf
+#   2. ln -s /lustre/astro/tbalduin/molecules/_os26_tool/os26
+#            /lustre/astro/tbalduin/molecules/<SPECIES>/crosssections/os26
+#   3. os.input filled in and TMOL checked against the .pf file's real range
+#
+# After it finishes, verify before trusting it:
+#   grep -c Infinity full_run/<SPECIES>_OS_*.dat     # must be 0
+#   sed -n '12p' full_run/<SPECIES>_OS_*.dat         # spot check a data row
+# lines.tmp in full_run/ is scratch (can reach ~2x the combined line1.txt
+# size) -- safe to delete once <SPECIES>_OS_*.dat exists and is verified;
+# it serves no further purpose.

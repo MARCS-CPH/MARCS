@@ -1,0 +1,103 @@
+ $INPUTOSMOL
+  KTEMP = <N_TEMPS>,
+  TMOL = <COMMA-SEPARATED TEMPERATURE LIST, e.g. 100.0,150.0,200.0,...,4000.0>,
+  MOLID = '<SPECIES>',
+  lchrom = 0
+ $END
+
+ $INPUTOS
+  OSFIL = '<SPECIES>_OS_<Tmin>to<Tmax>K.dat'
+  losresl = 0,
+  osresl = 20000.,
+  wnos_first = 1.0,
+  wnos_last = <UPPER WAVENUMBER BOUND OF THE DOWNLOADED LINELIST, cm-1>,
+ $END
+
+ $VALD_INP
+  lvald = 0
+  wb = 999.,
+  we = 999.,
+  elm_pick = 999
+  ion_pick = 999,
+  lgstel = 1,
+  nsort = 99
+  ktsort = 7
+  scalemet = 1.0
+ $END
+
+ $NPROFILE
+  profile = 'gauss'
+  lmarcs = 1,
+  atmos_voigt = '/ste4/uffegj/cmodels/ct20g00c11atb.dat'
+  vkmssp = 3.0,
+  nhalf = 10,
+ $END
+
+ $ABUNDANCES
+  sunz = 'y',
+  zscale = 1.0000,
+ $END
+
+ $SAMPLING
+  linedir = '/lustre/astro/tbalduin/molecules/<SPECIES>/'
+  iso1 = 1
+  lexopart = 0
+
+  <ONE rel_iso_X/wgt_iso_X/kiso_X BLOCK PER ELEMENT IN THE FORMULA -- see examples below>
+
+  jderiv = 0,
+  linesc2h2_direct = 1
+ $END
+
+# ============================================================================
+# NOTES (read before filling in the placeholders above)
+# ============================================================================
+#
+# KTEMP / TMOL -- THE #1 SOURCE OF SILENT BREAKAGE IN THIS PIPELINE.
+#   TMOL must not extend past what the species' own partition-function file
+#   actually tabulates, or os26 silently writes "Infinity" for every
+#   temperature column beyond the PF table's range -- no error, no warning,
+#   just Infinity sitting in the output file (confirmed happened for both
+#   C2H4 and H2CS on the first attempt: requested up to 4000K/3000K, PF
+#   files only went to 1500K/2000K respectively). ALWAYS check the PF file
+#   first:
+#     tail -3 /lustre/astro/tbalduin/molecules/<SPECIES>/linelist/<TAG>.pf
+#   and truncate the standard TMOL grid (below) to the last standard point
+#   at or below that max. Do NOT pick a TMOL range "by analogy" to a
+#   chemically similar species -- different ExoMol linelists ship PF tables
+#   with different native temperature coverage; there's no way to know
+#   except checking.
+#
+#   Standard 19-point grid this project uses (truncate as needed):
+#   100.0,150.0,200.0,250.0,300.0,350.0,400.0,500.0,604.0,730.0,882.0,
+#   1065.0,1286.0,1554.0,1878.0,2269.0,2741.0,3311.0,4000.0
+#
+# wnos_last -- match the actual downloaded linelist coverage (check the
+#   highest-wavenumber chunk directory name under linelist/, e.g. if chunks
+#   go 00000-01000 ... 07000-08000, use 8000.0). Setting it higher than the
+#   real data just wastes compute sampling zero-opacity points; setting it
+#   lower silently truncates real coverage.
+#
+# .pf symlink -- os26 expects the partition function file at exactly
+#   linelist/<MOLID>.pf. The raw ExoMol download names it
+#   linelist/<TAG>.pf instead (e.g. 12C2-1H4__MaYTY.pf for C2H4) -- if the
+#   <MOLID>.pf symlink is missing, os26 crashes instantly with
+#   "forrtl: severe (29): file not found, unit 67" (0-second job, easy to
+#   miss). Create it once per species:
+#     ln -s linelist/<TAG>.pf linelist/<MOLID>.pf
+#
+# $SAMPLING isotope blocks -- one rel_iso_X/wgt_iso_X/kiso_X triplet per
+#   distinct element in the formula. Copy from an existing species with the
+#   same elements present (grep other os.input files under
+#   /lustre/astro/tbalduin/molecules/*/crosssections/os.input for examples).
+#   Common ones:
+#     H:  rel_iso_h = 1.000  /  wgt_iso_h = 1., 2., 3.,       / kiso_h = 1
+#     C:  rel_iso_c = 1.000  /  wgt_iso_c = 12., 13.,          / kiso_c = 1
+#     N:  rel_iso_n = 0.9964 /  wgt_iso_n = 14., 15.,          / kiso_n = 1
+#     O:  rel_iso_o = 0.99762, 0.00038, 0.002, / wgt_iso_o = 16.,17.,18., / kiso_o = 1
+#     S:  rel_iso_s = 1.000  /  wgt_iso_s = 32.,33.,34.,36., / kiso_s = 1
+#
+# Runtime -- dominated by I/O over the combined line1.txt, roughly
+#   ~0.029-0.030 hours per GB observed on this cluster (791GB -> 22.9h,
+#   1.78TB -> ~52h). Size the SLURM --time accordingly (see run_full.sh
+#   template) -- astro2_long allows up to 5 days.
