@@ -1,0 +1,13 @@
+# krome_init_abund.dat — initial species mixing ratios for krome_solve
+#
+# Used when INITAB=1 in the MARCS input file.
+# Each line specifies a species name and its mixing ratio (n_i / n_total).
+# Species names must match those in ./krome/MARCS_build/info.log exactly
+# (same case, no trailing spaces).
+# Species not listed here receive the default abundance (1E-20).
+# Lines starting with # and blank lines are ignored.
+#
+# Format:  species_name   mixing_ratio
+#
+# Example Earth-like atmosphere (modify as needed):
+C5H10O2S        0.5e-8 #0.5 Gt C = 1xEarth biomass

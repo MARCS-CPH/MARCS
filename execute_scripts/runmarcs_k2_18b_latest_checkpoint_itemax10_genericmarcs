@@ -1,0 +1,114 @@
+#!/bin/bash
+#SBATCH --job-name=K2_18bGenericMarcs
+#SBATCH --time=2:00:00
+#SBATCH --partition=astro2_short
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+module load astro gdb
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+# Minimal-change sanity check: restart from the most recent K2-18b
+# checkpoint's own archive, using every input file it already used
+# unchanged, only capping ITEMAX at 10. Same dedicated marcs_v7_DMS_N2Hfix
+# binary + krome/build_v7_DMS_N2Hfix + info.log override this checkpoint
+# was originally produced with (see runmarcs_chain_z200_v7N2Hfix_earthbiomass_cia_wip_full126
+# for the full history/reasoning).
+in_dir=./models/K2_18b_highZ_CNOS/chain/z_200_v7N2Hfix_earthbiomass_cia_wip_full126/
+out_dir=./models/k2_18b_latest_checkpoint_itemax10_genericmarcs/
+
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir -p ${out_dir}
+cp "$0" $CWD/${out_dir}
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+input_parameters=$CWD${input_folder}marcs_K2_18b_Irr_dtinc_ramp_z200_v6_earthbiomass_cia_itemax10.input
+input_elabund=$CWD${data_folder}elabund_K2_18b_CNOS_z200.dat
+input_opac=$CWD${data_folder}mol_names_75_newstep51.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_K2_18_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+input_abundance=$CWD${data_folder}krome_init_abund_earth_biomass_1x.dat
+input_cia=$CWD${data_folder}cia_pairs_earth.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+cp $input_abundance $TMPDIR/data/krome_init_abund.dat
+cp $input_cia $TMPDIR/data/cia_list.dat
+
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
+
+cp $CWD/GGchem/marcs2gg_partpp.dat $TMPDIR
+cp $CWD/GGchem/marcs2ggchem_template.in $TMPDIR
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+cp marcs $TMPDIR/marcs
+
+cp ${in_dir}krome_flux_rad.dat $TMPDIR/ 2>/dev/null
+
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+# marcs.f hardcodes ./krome/MARCS_build/info.log for species-name parsing
+# regardless of which krome build compiled the binary -- overwrite it here
+# to match build_v7_DMS_N2Hfix, same as the original checkpoint's script did.
+# using generic marcs -- krome/MARCS_build already IS this build, no override needed
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+cp $input_cia $CWD/${out_dir}
+
+./marcs
+MARCS_EXIT=$?
+
+### COPY FILES AFTER RUN ###
+
+if [ -f arcivaab.dat ]; then cp arcivaab.dat  $CWD/${out_filename}.arciv; fi
+if [ -f mxmodel.dat ]; then cp mxmodel.dat    $CWD/${out_filename}.dat; fi
+if [ -f $TMPDIR/marcs2ggchem.in ]; then cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in; fi
+if [ -f $TMPDIR/ggchem_out.txt ]; then cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt; fi
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir} 2>/dev/null
+if [ -f $TMPDIR/spectrum.dat ]; then cp $TMPDIR/spectrum.dat $CWD/${out_dir}; fi
+
+if [ -f "$TMPDIR/krome_full_output.dat" ]; then cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat; fi
+if [ -f "$TMPDIR/krome_final_output.dat" ]; then cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat; fi
+if [ -f "$TMPDIR/krome_flux_rad.dat" ]; then cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat; fi
+if [ -f "$TMPDIR/BPL_sun.dat" ]; then cp $TMPDIR/BPL_sun.dat $CWD/${out_dir}/BPL_sun.dat; fi
+if [ -f "$TMPDIR/BPL_upper.dat" ]; then cp $TMPDIR/BPL_upper.dat $CWD/${out_dir}/BPL_upper.dat; fi
+if [ -f "$TMPDIR/XJ_upper.dat" ]; then cp $TMPDIR/XJ_upper.dat $CWD/${out_dir}/XJ_upper.dat; fi
+if [ -f "$TMPDIR/XJ_lower.dat" ]; then cp $TMPDIR/XJ_lower.dat $CWD/${out_dir}/XJ_lower.dat; fi
+if [ -f "$TMPDIR/krome_bins_rates.dat" ]; then cp $TMPDIR/krome_bins_rates.dat $CWD/${out_dir}/krome_bins_rates.dat; fi
+if [ -f "$TMPDIR/full_output.dat" ]; then cp $TMPDIR/full_output.dat $CWD/${out_dir}/full_output.dat; fi
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR
+
+echo "marcs exited with status $MARCS_EXIT"
+exit $MARCS_EXIT
