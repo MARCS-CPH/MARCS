@@ -1,0 +1,91 @@
+#!/bin/bash
+#SBATCH --job-name=K2_18bStar
+#SBATCH --time=2:00:00
+#SBATCH --partition=astro2_devel
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+module load astro gdb
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+in_dir=./models/K2_18/star/K2_18_ab/
+out_dir=./models/k2_18b_star/
+
+in_filename=${in_dir}K2_18_abmarcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir -p ${out_dir}
+cp $CWD/$0    $CWD/${out_dir}   # copy the script itself into the output dir as early as possible
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+input_parameters=$CWD${input_folder}marcs_K2_18.input
+input_elabund=$CWD${data_folder}elabund_K2_18b.dat
+input_opac=$CWD${data_folder}mol_names_84_stellar.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_K2_18b_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
+
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+cp marcs $TMPDIR/
+cp $CWD/GGchem/marcs2ggchem_template.in $TMPDIR/
+cp $CWD/GGchem/marcs2gg_partpp.dat $TMPDIR/
+
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+#pwd
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+
+./marcs
+MARCS_EXIT=$?
+
+### COPY FILES AFTER RUN ###
+
+### MAIN FILES
+cp arcivaab.dat    	$CWD/${out_filename}.arciv
+cp mxmodel.dat     	$CWD/${out_filename}.dat
+cp full_output.dat	$CWD/${out_dir}/full_output.dat
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir} 2>/dev/null
+cp $TMPDIR/spectrum.dat $CWD/${out_dir}
+if [ -f $TMPDIR/marcs2ggchem.in ]; then cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in; fi
+if [ -f $TMPDIR/ggchem_out.txt ]; then cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt; fi
+
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR
+
+echo "marcs exited with status $MARCS_EXIT"
+exit $MARCS_EXIT
