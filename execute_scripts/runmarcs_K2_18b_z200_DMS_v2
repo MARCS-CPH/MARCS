@@ -26,7 +26,7 @@ input_folder=/input_files/
 data_folder=/data/
 
 mkdir -p ${out_dir}
-cp $CWD/$0    $CWD/${out_dir}   # copy the script itself into the output dir as early as possible
+cp "$0" $CWD/${out_dir}   # copy the script itself into the output dir; $0 is relative under bash, absolute under sbatch
 mkdir $TMPDIR
 mkdir $TMPDIR/data/
 
