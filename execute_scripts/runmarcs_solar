@@ -34,7 +34,7 @@ input_elabund=$CWD${data_folder}elabund_solar.dat
 input_opac=$CWD${data_folder}mol_names_84_stellar.dat
 input_spectrum=$CWD${data_folder}stellar_spectrum_solar_7949_1AU.dat
 input_jonabs=$CWD${data_folder}jonabs.dat
-input_cia=$CWD${data_folder}cia_pairs_all.dat
+input_cia=$CWD${data_folder}cia_pairs_all_with_ar.dat
 
 ### COPY INPUT FILES INTO TMP FOLDER ###
 cp $input_parameters  $TMPDIR/mxms7.input

@@ -17,9 +17,12 @@ need to put one there yourself before setting LINCIA=1. Format: first line
 is the number of pairs, then one line per pair as
 `SPECIES1  SPECIES2  /path/to/converted/pair/data/`.
 `data/cia_pairs_all.dat` lists every CIA pair currently converted and
-available (21 pairs) in exactly this format and can be used as a source to
+available (19 pairs) in exactly this format and can be used as a source to
 copy the pairs you want into `data/cia_list.dat` -- it is a reference list
-only and is not read directly by MARCS.
+only and is not read directly by MARCS. `data/cia_pairs_all_with_ar.dat`
+is the same but also includes the two Ar-bearing pairs (CO2-Ar, N2-Ar) --
+only usable with an elabund file that tracks Ar as a species, otherwise
+MARCS stops with "unrecognized species".
 
 Pairs are matched generically by species name against GGchem's species
 tables, so any pair present in the converted data can be used, not just the
