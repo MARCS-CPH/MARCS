@@ -19,8 +19,8 @@ TMPDIR=$(mktemp -p /dev/shm/ -u)
 # binary + krome/build_v7_DMS_N2Hfix + info.log override this checkpoint
 # was originally produced with (see runmarcs_chain_z200_v7N2Hfix_earthbiomass_cia_wip_full126
 # for the full history/reasoning).
-in_dir=./models/K2_18b_highZ_CNOS/chain/z_200_v7N2Hfix_earthbiomass_cia_wip_full126/
-out_dir=./models/k2_18b_planet/
+in_dir=./benchmark_models/k2_18b_planet/
+out_dir=./benchmark_models/k2_18b_planet/output/
 
 in_filename=${in_dir}marcs_output
 out_filename=${out_dir}marcs_output

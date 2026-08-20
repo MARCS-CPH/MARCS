@@ -13,10 +13,10 @@ module load astro gdb
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 
-in_dir=./models/K2_18/star/K2_18_ab/
-out_dir=./models/k2_18b_star/
+in_dir=./benchmark_models/k2_18b_star/
+out_dir=./benchmark_models/k2_18b_star/output/
 
-in_filename=${in_dir}K2_18_abmarcs_output
+in_filename=${in_dir}marcs_output
 out_filename=${out_dir}marcs_output
 
 input_folder=/input_files/

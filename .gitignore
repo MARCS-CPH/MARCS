@@ -22,6 +22,12 @@ krome/MARCS_build*/
 # --- Run output ---
 /models/
 
+# --- Benchmark models: track the reference input/output in each
+# benchmark_models/<name>/ dir, but never the output/ subdir a run writes
+# fresh results into -- keeps a run from ever silently overwriting the
+# tracked reference via a plain commit/add.
+/benchmark_models/*/output/
+
 # --- SLURM job logs ---
 slurm-*.out
 

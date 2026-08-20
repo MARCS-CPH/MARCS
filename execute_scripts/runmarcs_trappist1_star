@@ -13,8 +13,8 @@ module load astro gdb
 CWD=$(pwd)
 TMPDIR=$(mktemp -p /dev/shm/ -u)
 
-in_dir=./models/trappist_type_star/irrad/
-out_dir=./models/trappist1_star/
+in_dir=./benchmark_models/trappist1_star/
+out_dir=./benchmark_models/trappist1_star/output/
 
 in_filename=${in_dir}marcs_output
 out_filename=${out_dir}marcs_output
