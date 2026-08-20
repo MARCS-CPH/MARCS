@@ -4,15 +4,28 @@ General input paramters:
 - NEWMOD (Decides wether you start a model from scratch (1) or use an old one 0. 0 should be the default for time reasons)
 - NOARCH (write out feature. In most cases should be kept at 0)
 - JONTYP (Swtich to choose which partion functions are used. Should always be 3)
-- IDUST (Swticht to turn on Clouds/SW.)
-- JUMP (Depricated switch for different Eq. chemistry approaches. Only 4 should be used)
-- OS/ODF (Opacticy sampling or opacity distribution function. Always should be OS)
+- REMOVED 2026-08-20: JUMP. Was hard-locked to 4 (GGchem equilibrium
+  chemistry) -- the code used to stop immediately for any other value. All
+  the JUMP-gated dead branches for the old Tsuji/JFF/Gibbs chemistry paths
+  (JUMP=1/2/3) have been deleted and the live (JUMP=4) behavior is now
+  unconditional, so the parameter itself was removed. NOTE: only
+  input_files/marcs_sun.input (the one deck used by this session's
+  verification routine) has had the JUMP field removed from its header
+  line so far -- every other deck still has the old
+  "JUMP  =  4     MOLOLD=..." line and needs the same first-10-characters
+  trim (drop "JUMP  =  4", keep the rest) before it'll read correctly
+  against the current marcs.f. Do this per-deck as each one is actually
+  used, same treatment already applied to a handful of stale decks found
+  during the KROMEO removal.
 - MOLOLD (Switch used for quicker convergence by using older stored valous. Should be 1)
-- NLTE (Depricated. Keep 0)
+- REMOVED 2026-08-20: NLTE. Only ever gated an optional legacy write of
+  ATMOS.MULTI (a file format for Mats Carlsson's MULTI NLTE
+  radiative-transfer code). Zero effect on MARCS's own physics/convergence,
+  not archive-coupled -- clean removal, no caveats.
 - PP/SPH (Choose between plane parallel and sqhperical operation of the code)
 - TEFF (Effective temperature the solver should try to achieve. In units of K)
 - GRAV (Surface gravitiy of the simulated object. In units of Log g)
-- MODEL (Can be used to give a headline in the output file)
+- MODEL (Can be used to give a headline in the output file. Also round-trips through the binary .arciv archive/restart file -- unlike most other cosmetic-label parameters, this one can't be casually removed without also handling the archive format.)
 - M/MSN (Mass of the irradiated object when sphercial mode is chose, in solar masses)
 
 Convection related input parameters:
@@ -20,24 +33,28 @@ Convection related input parameters:
 - NOCONV (Number of first layers for which convection should be ignored. Counting from the top.)
 - XMAX (scales absorption that is used for the rossland mean opactiy. Probably keep at current value)
 - TAUM (Parameter used to distinguish at which optical depth, the core and the surface of the star lies.)
-- FACPLY (Depricated. Keep at 1)
-- METBL (Depricated. Keep at 0)
-- ILINE (Deprictaed. Keep at 1)
 - AMLOSS (Scales the mass loss for a stellar atmosphere. Potentially useful in the future. Currently keep at value its set to.)
-- MOLTSJ (Depricated. Keep at 1)
+- REMOVED 2026-08-20: ILINE. CORRECTION to earlier notes here calling this
+  "genuinely live": it wasn't. Its only gate (SUBROUTINE SETDIS) depended
+  on a window [XLINLO,XLINUP] that was never assigned anywhere in the
+  file, so the branch it controlled was unreachable in practice --
+  flipping ILINE between 0/1 was already a no-op before this removal. The
+  dead SETDIS branch was deleted (verified bit-exact). ILINE itself is
+  hardcoded to 1 in code (marcs.f, right after the deck read it used to
+  come from) rather than fully deleted, because it still round-trips
+  through the binary .arciv archive format (WRITE(IARCH)/READ(IARCH) in
+  ARCHIV/LISTMO/OLDARC) -- same category as MODEL. No longer a deck
+  input parameter.
 - LINCIA (Switch to enable (1) or disable (0, default in every existing .input file) CIA
           (collision-induced absorption). When enabled, MARCS reads its active pair list
           from a fixed path, ./data/cia_list.dat, which is not created automatically --
           see the "CIA" section in README.md for the file format and how to build one from
           data/cia_pairs_all.dat. Zero I/O and zero effect on a run unless explicitly set to 1.)
-- ISPEC (Switch which writes out a spectrum. Keep at 1)
 - MIHAL (Parameter that sets the lowest layer for which radiative equilibrium will be used. For Layers below flux constancy will be assumed.)
 - KONSG (For 0, no real impact on the simulation. For 1, radius and gravity can get varied. Usual value is 0)
 - KORT (Used to change between different ways of how the maximum temperature change is applied. For 0, temperature limitation is ignored. For 1 ... For 2 ... For 4 and 5, maximum change is equal to exactly KPP. For 6, its similar to 4 and 5 with some additional calculations. )
-- KPP (Maximum temperature change allowed. Expects a, at maximum 3 digit, integer. Usually one should choose a single digit integer.)
+- KPP (input-deck label only -- the actual Fortran variable it's read into is TDIFF, not any variable named KPP. Genuinely live: caps the per-iteration temperature-correction step size in the period-2 limit-cycle damper. Maximum temperature change allowed. Expects a, at maximum 3 digit, integer. Usually one should choose a single digit integer.)
 - TCONV (Convergence temperature. If the wanted change by MARCS is below this temperature, the simulation is converged)
-- lops (if 1 it can shift the os absorption and ensures not every value is used. Default is 0)
-- nops (Value that determines the denominator of the os absorption shifting determined by lops. For example if set to 3 only one third of the absorptions are used. Default value 1)
 - dpein (Determines the derivate stepsize in solve for the electron pressure. Keep low.)
 - dtin  (Determines the derivate stepsize in solve for the temperature. Keep low.)
 - METPE (Parameter which switches between the old method of calculation the electron pressure (1) and the new (2). For temps below 1500 K choose the new)
@@ -46,9 +63,9 @@ Convection related input parameters:
 - PNY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 8)
 - PY (Factor for convection calculation (Gustafsson 2008 Chapter 3.2 and Henyey et al. 1964). Default value is 0.076)
 - VFIX (Swtich that at 0 speeds up with some velocity calculations otherwise some calculatons are scaled by what is set at VFIX. Default value 0)
-- MYPNTS (Number of intergration points for a gaussian intergration. Default value is 1.)
+- MYPNTS (input-deck label only -- the actual Fortran variable it's read into is MMY, not any variable named MYPNTS. Genuinely live: number of Gaussian-quadrature integration points, used directly in CALL GAUSI(MMY,...). Typical decks use 4, not 1.)
 - NCORE (Realted to spherical models. Ignore in PP case. Number of rays for raytracing of the in the core. Default 5, but honestly I dont know.)
-- KDIFF (Realted to spherical models. Ignore in PP case. Manipulated how TAURAT is calculated. I dont think TAURAT does anything. Probably depricated.)
+- KDIFF (Genuinely live, despite older docs calling it "probably deprecated" -- feeds a real calculation, TAURAT=10.**(0.1*KDIFF-0.01), which affects spherical-mode ray tracing (via /CSPHER/ storage-association with TLIM). Ignore in PP case.)
 
 
 - ABUNDF (Integer number that determines how often are abundances updated. Setting it to a number X means only every X-th iteration updates the abundances. Useful for models that oscillate and speeds up convergence.)
@@ -60,32 +77,58 @@ Irradiation related input parameters:
 - RSTAR (Radius of the irradiating star. In units of solar radii.)
 - SMAJOR (Distance of the irradiating star. In units of A.)
 - FACTOR (Heat redistribution factor. See Eq. 3.1 in Azzurra d'Alessandros PhD thesis)
-- SPECTR (Switch to have the code use and input spectrum as input)      
+- SPECTR (Switch to have the code use and input spectrum as input)
 - SPECSC  (Scaling factor for the incoming radiation for spectrum. Useful for slowly converging a model or to model stellar evolution effects.)
 
 Surface related input parameters:
 
 - SURFAC (Switch that turns on the surface module (1). Default 0.)
-- TSURF (Sets the desired surface temperature in K.)
-- ALBEDO (Sets an albedo of the surface you are modelling. 1 full reflection resulting in doubling of the flux overall. 0 meaning no extra flux from the surface.)
+- TSURF (Sets the desired surface temperature in K. Genuinely live -- feeds directly into the temperature-anchor residual RT(K)=-(TT(K)-tbottom).)
+- ALBEDO (Sets an albedo of the surface you are modelling. 1 full reflection resulting in doubling of the flux overall. 0 meaning no extra flux from the surface. Genuinely live -- feeds directly into the reflected-flux term Pstar(JTAU)+=reflect*Pstar(JTAU).)
 - NCH4 (Switch that determines wether or not the opacity calculation of CH4 should be done in a step by step approach. Helps with convergence if CH4 is an issue. Default is 0)
+
+VIRGA related input parameters:
+
+- VIRGA (Switch to turn on (1) or off (0) the VIRGA cloud-opacity coupling, via a python3 subprocess call. Confirmed live but missing from earlier versions of this doc -- add here rather than assume it doesn't need documenting.)
 
 The noneq input parameters are:
  - NONEQ (Basic on/off switch for non equilibrium chemistry. Expects a numeric value of 0 (off) or 1 (on))
  - PHOTO (Basic on/off switch for including photo rates. Expects a numeric value of 0 (off) or 1 (on).
           currently only able to turn on/off the photolysis module for ozone with more potential features later)
  - phSCAL(Factor that scales the inensity of the radiation that the photo chemistry works with. Quick and easy parameter
-          to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)  
- - INITAB(Flag to turn on or off the use of initial abundances for the KROME runs)      
+          to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)
+ - INITAB(Flag to turn on or off the use of initial abundances for the KROME runs)
  - DTMIN (Starting timstep for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTMAX (Maximal timestep size for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTINC (By how much the starting timestep should increase every iteration until DTMAX is reached. Expect a value in the format of X.XX.
          Usually it is advised to have some increase or choose starting timestep and final time wisely to not have your calculation run for too long.)
- - KROMEO (KROME output parameter. Expectes either 0 for no output or 1.)
- - KDEBUG (Switch that when turned on (set to 1) writes out a lot of extra data arrays which can be useful for debugging or understanding the physics better. Usually keep it at 0)
- - KROMER (Switch that determines whether the krome calculations should be retunred to MARCS itself. 0 is off 1 is on.
-           Currently still a bit work in progress.)
+ - REMOVED 2026-08-20: KROMEO (krome_output). This gated krome_final_output.dat
+   and, when PHOTO=1, krome_flux_rad.dat -- both are now always written
+   unconditionally, so the switch was removed. If you need to suppress this
+   output for a large-grid/PHOTO=1 run, that's no longer input-file
+   configurable; ask before re-adding this as a parameter.
+ - KDEBUG (Switch that when turned on (set to 1) writes out a lot of extra data
+           arrays which can be useful for debugging or understanding the
+           physics better -- and this is real, non-trivial I/O: it gates a
+           per-wavelength write inside the main flux loop (BPL_sun.dat,
+           BPL_upper.dat, XJ_upper.dat, XJ_lower.dat -- one line per
+           wavelength point per outer iteration) plus a per-KROME-timestep,
+           per-layer dump to krome_full_output.dat. Cost scales with the
+           wavelength grid size and iteration count, so this is not free to
+           leave on for a full production run. Usually keep it at 0.)
+ - KROMER (CORRECTION 2026-08-20: earlier notes here saying this is a
+           confirmed no-op were WRONG -- an incomplete grep missed the real
+           usage. It IS a genuine, live on/off switch: at
+           marcs.f:14619 `if (krome_return == 1)` gates whether KROME's
+           computed number densities are actually copied back into MARCS's
+           num_den_at/num_den_mol/ppallmol/ppallat/krome_not_pp arrays (which
+           feed the rest of the model downstream). With KROMER=0, KROME still
+           runs and integrates the non-eq chemistry every iteration, but the
+           results are silently discarded -- never fed back into MARCS. This
+           is exactly a "debug the non-eq chemistry in isolation, disconnected
+           from the rest of the code" switch. 0 is off (isolated/no feedback),
+           1 is on (results used).)
  - conv_crit (Controls per-layer KROME chemistry integration length. A value of exactly 0 makes
               integration always run for the full tMAX. Any nonzero value uses the default
               min(vert_mix_time, tMAX) instead. Useful for direct input-file control over
@@ -96,3 +139,40 @@ Optical depth related input parameters:
  - LOGTAU (Parameter that determines the range optical depth for which the atmosphere should be simulated. Expects values that are exponents to the power ten. You need to provide at least two values
            one starting value and one final value.)
  - DIFFER (Value that determines by how much of LOGTAU a atmospheric layer should change.)
+
+Namelist input parameters (read via Fortran NAMELIST blocks, &name ... &end,
+rather than fixed-column fields -- easy to miss since they don't look like
+the rest of the file):
+
+ &abundances namelist:
+ - zscale (Metallicity scale factor relative to solar -- genuinely important,
+           applied to every element's abundance except H/He. Not cosmetic.)
+ - REMOVED 2026-08-20: sunz, abundatms_inp. Both were confirmed dead
+   (declared, part of the &abundances namelist, but never used in any
+   calculation). IMPORTANT if this namelist is ever revisited: ifort's
+   NAMELIST reader is strict -- it crashes (forrtl severe 19, "invalid
+   reference to variable in NAMELIST input") on any unrecognized name in
+   the input, so removing a namelist member is NOT free the way it would
+   be for e.g. a trailing fixed-column field -- every deck's &abundances
+   line still containing sunz=/abundatms_inp= must have those fields
+   removed too, or that deck will crash immediately. Confirmed by testing
+   the removal against an unpatched deck first (crashed as predicted),
+   then patching input_files/marcs_sun.input (the only deck in this
+   session's verification routine) and re-verifying bit-exact. Every
+   other deck's &abundances line still has the old fields and needs the
+   same fix before it will run -- same per-deck-as-used debt as the
+   JUMP/NLTE/ILINE/KROMEO removals.
+
+ &inputos namelist:
+ - losresl (If 1, the OS wavenumber grid is computed based on a specified
+            spectral resolution (osresl) instead of fixed steps. Genuinely live.)
+ - osresl (Spectral resolution used when losresl=1. Genuinely live.)
+ - wnos_first (First wavenumber of the OS grid. Genuinely live.)
+ - wnos_last (Last wavenumber of the OS grid. Genuinely live.)
+ - kos_step (Number of fixed steps used when losresl=0. Genuinely live.)
+
+ &outlist namelist:
+ - masslinf (Genuinely live -- gates real behavior, IF(masslinf.eq.0) GO TO 4001.)
+ - pecap (TRYCK/TRYCK_sph electron-pressure step cap, opt-in, off unless set
+          .true. -- helps oscillating/non-converging high-Z runs, can silently
+          truncate an otherwise-converged PPE(K) on runs that don't need it.)
