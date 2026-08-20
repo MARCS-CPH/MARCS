@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=K2_18bGenericMarcs
+#SBATCH --job-name=K2_18bPlanet
 #SBATCH --time=2:00:00
 #SBATCH --partition=astro2_short
 #SBATCH --nodes=1
@@ -20,7 +20,7 @@ TMPDIR=$(mktemp -p /dev/shm/ -u)
 # was originally produced with (see runmarcs_chain_z200_v7N2Hfix_earthbiomass_cia_wip_full126
 # for the full history/reasoning).
 in_dir=./models/K2_18b_highZ_CNOS/chain/z_200_v7N2Hfix_earthbiomass_cia_wip_full126/
-out_dir=./models/k2_18b_latest_checkpoint_itemax10_genericmarcs/
+out_dir=./models/k2_18b_planet/
 
 in_filename=${in_dir}marcs_output
 out_filename=${out_dir}marcs_output
