@@ -39,7 +39,7 @@ input_opac=$CWD${data_folder}mol_names_75_newstep51.dat
 input_spectrum=$CWD${data_folder}stellar_spectrum_K2_18_7949.dat
 input_jonabs=$CWD${data_folder}jonabs.dat
 input_abundance=$CWD${data_folder}krome_init_abund_earth_biomass_1x.dat
-input_cia=$CWD${data_folder}cia_pairs_earth.dat
+input_cia=$CWD${data_folder}cia_pairs_all.dat
 
 ### COPY INPUT FILES INTO TMP FOLDER ###
 cp $input_parameters  $TMPDIR/mxms7.input
