@@ -71,13 +71,6 @@
       parameter(natms=99,nions=127,nspec=896)       ! # elements and species
 
 
-* Dust
-* max_lay = maximum number of DRIFT layers
-* max_inc = maximum number of inclusions
-* max_eps = maximum number of affected elements
-      INTEGER MAX_LAY, MAX_INC, MAX_EPS
-      PARAMETER (MAX_LAY = 1000, MAX_INC = 18, MAX_EPS = 12)
-
 * Virga
 * nr_cond number of condesnates considered in VIRGA, condensates species shall be put into virga_condensates.dat
       integer nr_cond

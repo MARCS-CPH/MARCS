@@ -47,11 +47,11 @@ C      STEFF=5770
       
       implicit real*8 (a-h,o-z)
       include 'parameter.inc'
-      integer molh, jump
+      integer molh
       character molname*4,osfil*60,sampling*3,pp_sph*3
       logical pf,pfe,pfd,fixros,itstop,quit
       integer krome_on,krome_photo_on
-      integer krome_output,krome_debug,krome_return
+      integer krome_debug,krome_return
       integer ivirga_on
       integer onemor
       real*8 krome_tmax,krome_photo_scale
@@ -64,7 +64,7 @@ C      STEFF=5770
      * ntau,iter
       common /carc3/ f1p,f3p,f4p,f5p,hnic,presmo(33)
       common /cit/it,itmax
-      common /ci4/dum,idum(96),molh,jump 
+      common /ci4/dum,idum(96),molh 
       common /cpf/pf,pfe,pfd,fixros,itstop
       common /carc1/istral,idrab1,idrab2,idrab3,idrab4,idrab5,
      *  idrab6,iarch
@@ -74,7 +74,6 @@ C      STEFF=5770
      &  xmettryck(ndp,maxmet),xiontryck(ndp,maxmet),partp(ndp,0:maxmol),
      &  partpp(ndp,0:maxmol)
       common /cisph/isph
-      common /clist/nlte
       common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *  dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       logical pecap
@@ -83,18 +82,6 @@ C      STEFF=5770
       common /clevprint/ prj2(ndp),masslinf
       common /cpecap/ pecap
       common/cabinit/abinit(natms),kelem(natms),nelem
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
       character atnames*2, molnames*8, molnames2*4
       common /ggchemresults/
      > tgk,pgesk,ppelGG,ggmuk,ggrhok,ppsumk,ppappsumk,ppnonappsumk,
@@ -110,7 +97,7 @@ C      STEFF=5770
       common /ggchembool/ iggcall
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /virga/ ivirga_on
@@ -128,15 +115,12 @@ C
       open(unit=9,file='data/jonabs.dat',status='old',readonly)
       open(unit=16,file='arcivaaa.dat',status='old',readonly)
 
-      read(5,'(6(7x,i3,5x))') itmax,nprint,newmod,noarch,jontyp,idust
-      if (idust == 1) idustopac = 1
-      read(5,'(7x,i3,12x,a3,2(12x,i3),12x,a3)') jump,sampling,molold,
-     *  nlte,pp_sph
+      read(5,'(5(7x,i3,5x))') itmax,nprint,newmod,noarch,jontyp
+      read(5,'(12x,i3,12x,a3)') molold,
+     *  pp_sph
 
       if(pp_sph.eq.'sph' .or. pp_sph.eq.'SPH') isph = 1
-      
-      if(jump.ne.4) stop 
-     * 'Error: This MARCS version only works with GGchem eq. chemistry'
+
       iggcall = 0
       call oldsta
       call mainb
@@ -146,26 +130,6 @@ C
       call modjon(jontyp,io)
       call initab(io)
 
-      if(idust .eq. 1) then
-        if(newmod .ne. 0) stop 'Error: Dust only works for NEWMOD=0'
-        if(jontyp .ne. 3) stop 'Error: Dust only works for JONTYP=3'
-        if(jump .ne. 2) then
-            if(jump.ne.4) then 
-              stop 'Error: Dust only works for JUMP=2 or 4'
-            end if
-        end if
-        if(isph .eq. 1) stop 'Error: Dust only works for ISPH=0'
-        
-        print *, 'Reading DRIFT file...'
-        open(unit=976, file='f_cloud.in')
-        read(976,*) f_opac
-        close(976)
-        call drift2marcs
-        print *, 'Done.'
-        print *
-        call dust_opac_eps_interp
-        if (icloud_conv == 1) stop
-      end if
 
       molh = 0                           ! molh=1 => only h,h2,h2+ in molec. eq.
       metals = 0
@@ -329,7 +293,7 @@ C      PARAMETER (KFADIM=4000,IFADIM=1000)
       COMMON/CROS/ROSW(200)
       COMMON /CARC3/ F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /CARC4/ PROV(30),NPROVA,NPROVS,NPROV
-      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH
       COMMON/CMOL1/EH,FE,FH,FHE,FC,FCE,FN,FNE,FO,FOE,FK,FKE,FS,FSE
      &             ,FT,FTE
       COMMON /DENSTY/ ROTEST(NDP),PRH2O(NDP)
@@ -345,7 +309,7 @@ C      PARAMETER (KFADIM=4000,IFADIM=1000)
       common /ggchemdetabs / f1_dt(ndp), f5_dt(ndp), 
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
-      INTEGER MOLH, JUMP
+      INTEGER MOLH
 C
 C
       ISET=ISETA
@@ -393,11 +357,7 @@ C
         !molh=molhs
         molh = 0
 
-        IF (JUMP.GE.1) THEN
-         prh2o(ntp)=partryck(ntp,4)
-         ELSE
-         prh2o(ntp)=presmo(4)
-        ENDIF
+        prh2o(ntp)=partryck(ntp,4)
         
       endif
       if (nlayer == -1 ) then
@@ -885,7 +845,7 @@ C        COMMONS SHARED BY JON
       COMMON/CI1/FL2(5),PARCO(45),PARQ(180),SHXIJ(5),TPARF(4),
      *XIONG(16,5),EEV,ENAMN(ndp),SUMH(ndp),XKBOL,NJ(16),IEL(16),
      *SUMM(ndp),NEL
-      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH
       COMMON/CMOL2/PPKDUM(33),NMOL
       COMMON/CARC3/F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
@@ -921,7 +881,7 @@ c        COMMON SHARED BY GGCHEM
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
       
       CHARACTER*8 SOURCE,ABNAME
-      INTEGER MOLH, JUMP
+      INTEGER MOLH
                
 C
 c      print *, "archiv called"
@@ -988,18 +948,11 @@ C This following piece doesn't really make sense if JUMP .ne.0 !!!
 C -- but on the other hand probably it doesn't make harm, but be careful with the 
 C  meaning of presmp  -- study later!!! (UGJ 25/1/01):
 
-      IF (JUMP.GE.1) THEN 
- 100  DO 101 I=1,33          !345
+      DO 101 I=1,33          !345
 C  also in Tsujis routine is the number of molecules called NMOL
 C  for no confusing I didn't use this name here
        PRESMP(I)=MAX(PARTRYCK(KL,I),1.D-99)
  101  CONTINUE
-      ELSE 
-C  NMOL=33 is number of molecules considered in the old MARCS chem.equilibrium
-      DO 10 I=1,NMOL
-       PRESMP(I)=MAX(PRESMO(I),1.D-99)
-10    CONTINUE
-      ENDIF
      
       HNIP=HNIC
 C        CHANGE BACK AGAIN
@@ -2034,78 +1987,6 @@ C        **** PRINT-OUT ****
       end if
       END
 C
-      SUBROUTINE DUBINT(NXSKAL,XSKAL,NYSKAL,YSKAL,IYBEG,IYEND,N,X,Y,
-     &                                            FACTOR,IX,IY1,IY2)
-      implicit real*8 (a-h,o-z)
-C
-C        THIS ROUTINE COMPUTES INTERPOLATION FACTORS FOR INTERPOLATION I
-C        NOT NECESSARILY EQUIDISTANT, TWO DIMENSIONAL TABLE. SCALES
-C           XSKAL (NXSKAL POINTS)
-C           YSKAL(NYSKAL POINTS)
-C        THE TABLE IS ONLY DEFINED FOR Y-VALUES YSKAL(L), WHERE L IS
-C        WITHIN THE INTERVAL IYBEG(NX) TO IYEND(NX) FOR A GIVEN XSKAL(NX
-C        ARGUMENTS ARE GIVEN IN X AND Y (N POINTS).
-C        RESULTING FACTOR FOR POINT K IS PUT IN FACTOR(K,1-2,1-2)
-C        STARTING POINTS AT INTERPOLATION IN IX(K), REFERRING TO THE XSC
-C        IN IY1(K) AND IY2(K), REFERRING TO THE RESTRICTED Y SCALES DEFI
-C        XSCALE(IX(K)) AND XSCALE(IX(K)+1), RESPECTIVELY.
-C        INTERPOLATIONS AND EXTRAPOLATIONS ARE  L I N E A R .
-C
-      include 'parameter.inc'
-C
-      DIMENSION XSKAL(30),YSKAL(30),X(NDP),Y(NDP),FACTOR(NDP,2,2),
-     &          IYBEG(30),IYEND(30),IY1(NDP),IY2(NDP),IX(NDP)
-C
-      DO5 K=1,N
-      DO1 J=2,NXSKAL
-      JMEM1=J
-      IF(X(K).LT.XSKAL(J))GO TO 2
-    1 CONTINUE
-    2 IX(K)=JMEM1-1
-      JM1=JMEM1-1
-      DO3 J=2,NYSKAL
-      JMEM2=J
-      IF(Y(K).LT.YSKAL(J))GO TO 4
-    3 CONTINUE
-    4 IY=JMEM2-1
-      IY1(K)=IY+1-IYBEG(JM1)
-      IY1(K)=MIN0(IY1(K),IYEND(JM1)-IYBEG(JM1))
-      IY1(K)=MAX0(IY1(K),1)
-      IY2(K)=IY+1-IYBEG(JMEM1)
-      IY2(K)=MIN0(IY2(K),IYEND(JMEM1)-IYBEG(JMEM1))
-      IY2(K)=MAX0(IY2(K),1)
-      I1=IY1(K)+IYBEG(JM1)-1
-      I2=IY2(K)+IYBEG(JMEM1)-1
-      DX=(X(K)-XSKAL(JMEM1-1))/(XSKAL(JMEM1)-XSKAL(JMEM1-1))
-      DY1=(Y(K)-YSKAL(I1))/(YSKAL(I1+1)-YSKAL(I1))
-      DY2=(Y(K)-YSKAL(I2))/(YSKAL(I2+1)-YSKAL(I2))
-      FACTOR(K,1,1)=(1.-DX-DY1+DX*DY1)
-      FACTOR(K,2,1)=(1.-DY2)*DX
-      FACTOR(K,1,2)=(1.-DX)*DY1
-    5 FACTOR(K,2,2)=DX*DY2
-      RETURN
-      END
-C
-      SUBROUTINE DUMIN
-      implicit real*8 (a-h,o-z)
-C
-C 'DUMIN' READS THE FIRST SETS OF CARDS IN THE JONABS-DATA. THESE DATA
-C ARE USED IN ATMOS BUT NOT IN MARCS.  *NORD*
-C
-      COMMON /UTPUT/IREAD,IWRIT
-C
-      READ(IREAD,50)I,J
-      N=4+I/8+J/16+2*(I/16)
-      DO 100 I=1,N
-100   READ(IREAD,51)A
-      DO 101 J=1,3
-      READ(IREAD,50)N
-      DO 101 I=1,N
-101   READ(IREAD,51)A
-      RETURN
-50    FORMAT(2I5)
-51    FORMAT(A4)
-      END
 C
       FUNCTION FOUR(Y,X,K,N)
       implicit real*8 (a-h,o-z)
@@ -3795,14 +3676,6 @@ C
       include 'parameter.inc'
 C
       COMMON /UTPUT/IREAD,IWRIT
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
 C
 C INITJN INITIATES THE JON BLOCK FROM LUN 9
 C
@@ -3911,28 +3784,20 @@ C
       COMMON/CI9/AI
       COMMON/CI3/ALFA(300),GAMMA(300),G0(45),G2(80),XION(80),XL(80),
      *JBBEG(45),JCBEG(45),NK(45),NL(80),IFISH
-      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CI6/TP,IQFIX(16,5),NQTEMP
       COMMON/UTPUT/IREAD,IWRIT
       common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
-      INTEGER MOLH, JUMP
-      character sunz*1,head_elabund*100
+      INTEGER MOLH
+      character head_elabund*100
       common/cabinit/abinit(natms),kelem(natms),nelem
       common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
      *  vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
      * ntau,iter
-      dimension mx_elm(18),abundatms_inp(natms),sum(ndp),fakt(ndp)
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      namelist /abundances/sunz,zscale,abundatms_inp
+      dimension mx_elm(18),sum(ndp),fakt(ndp)
+      namelist /abundances/zscale
       data mx_elm /1, 2,6,7,8,10,11,12,13,14,16,19,20,23,25,27,21,17/
 C                  H He C N O Ne Na Mg Al Si  S K Ca Cr Fe Ni Ti Cl
       character*3 aifix
@@ -4001,8 +3866,7 @@ C and other routines from gem_init by common CI5.
 
       read(5,abundances)
       !BCE (10.02.23 - introducing metallicity changes)
-      !if Z= solar, then sunz=y and nothing changes
-      !else add to the abundances of all elements but H and He log(zscale).
+      !adds to the abundances of all elements but H and He log(zscale).
       print*, "Metallicity is ", zscale, " time(s) solar."
       metal_z=zscale !write out metallicity for use in other routines, e.g. VIRGA
       write(7,*) 'This model has the elemental abundances ',
@@ -4044,7 +3908,6 @@ C        /GRAMS OF HYDROGEN. SUMH=NUMBER OF OTHER NUCLEI/NUMBER OF HYDROGEN
 C        NUCLEI.
 C        SUMM=NUMBER OF NUCLEI OTHER THAN H, C, N, O / NUMBER OF HYDROGEN
 C
-      if(idust .eq. 0) then
       if(nmet.le.0) go to 22      !->which seems to be always the case
       nu=nel-nmet+1
       do i=nu,nel
@@ -4074,7 +3937,6 @@ C
       sumh(1:ntau)=sum(1:ntau)/aha-1.
       summ(1:ntau)=summ(1:ntau)-abmarcs(1,1:ntau)-abmarcs(3,1:ntau)-
      &  abmarcs(4,1:ntau)-abmarcs(5,1:ntau)
-      end if
 C
 C        **** 4 ****
 C
@@ -4210,7 +4072,7 @@ C        XKBOL=BOLTZMANN'S CONSTANT (EXPRESSED IN ERGS PER KELVIN
       EEV=1.602095E-12
       XMH=1.67339E-24
       XKBOL=1.38053E-16
-      if(idust.eq.0) enamn(1:ntau)=eev/(xmh*xmy(1:ntau))
+      enamn(1:ntau)=eev/(xmh*xmy(1:ntau))
       TP=0.
 C        TP IS THE TEMPERATURE AT THE 'PRECEDING' CALL OF JON.
 C
@@ -4306,7 +4168,7 @@ C
       COMMON/CI1/FL2(5),PARCO(45),PARQ(180),SHXIJ(5),TPARF(4),
      *XIONG(16,5),EEV,ENAMN(ndp),SUMH(ndp),XKBOL,NJ(16),IEL(16),
      *SUMM(ndp),NEL
-      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CI6/TP,IQFIX(16,5),NQTEMP
@@ -4338,7 +4200,7 @@ C     &  xmettryck(ndp,maxmet),xiontryck(ndp,maxmet)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
       
-        INTEGER MOLH, JUMP      
+        INTEGER MOLH      
 
 C      REAL PHYDRO
 C        STATEMENT FUNCTION FOR 10.**
@@ -4728,7 +4590,7 @@ C
 46    continue
 C
       RO=PE*XMY(kl)*(XMH/XKBOL)/(FE*T)
-      IF (JUMP.GE.1 .and. MOLH.eq.1) THEN
+      IF (MOLH.eq.1) THEN
 
        PG=PE*(1.+(FSUM+SUMH(kl))/FE)
            XNHE = abmarcs(2,kl) / (XMH*XMY(kl))
@@ -4777,12 +4639,8 @@ C
 
 ***************18.12.94 Ch.H
 
-      IF (JUMP.EQ.0) THEN
-       WRITE(IWRIT,208)HNIC,(PRESMO(I),I=1,13)
-       ELSE
-       WRITE(IWRIT,209) xmettryck(kl,1),(partryck(kl,I),I=1,2),
+      WRITE(IWRIT,209) xmettryck(kl,1),(partryck(kl,I),I=1,2),
      &  (PARTRYCK(kl,I),I=4,13)
-      ENDIF
 
 ************************
 
@@ -4825,23 +4683,6 @@ C COMPUTE KAPPA(5000.). 73.10.17 *NORD*.
       RETURN
       END
 C
-       FUNCTION LENSTR(STRING)
-      implicit real*8 (a-h,o-z)
-*
-* Returns the length of a string not counting trailing blanks
-*
-       CHARACTER*(*)  STRING
-*
-       DO 10 I = LEN(STRING), 1, -1
-         IF(STRING(I:I) .NE. ' ') THEN
-           LENSTR = I
-           RETURN
-         ENDIF
-   10  CONTINUE
-       LENSTR = 0
-       RETURN
-       END
-
       SUBROUTINE LISTMO(MO,IARCH,ISPH)
       implicit real*8 (a-h,o-z)
 C
@@ -4880,7 +4721,6 @@ C      REAL*8 ROSSO,PTAUO
 C      COMMON/COPPR/oppr(15,3,120,3),jvxmax,itxmax  !15mol,10dpt,100wn
 C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
       COMMON /Cspec/spec(nwl,3),ispec
-      COMMON /CLIST/NLTE
       COMMON /MASSE/RELM
       COMMON /CLIN/lin_cia
       COMMON /CNEWC3 /NEWC3
@@ -4904,7 +4744,7 @@ C      COMMON/COPPRR/xconop(120,10),xlineop(120,10)    !100wn,10dpt
      &  partpp(ndp,0:maxmol)
       common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
       COMMON/COPsum/ SSUM(NDP),XSUM(NDP),CONSUM(NDP)
-      COMMON/CI4/ TMOLIM, IELEM(16), ION(16,5), MOLH, JUMP
+      COMMON/CI4/ TMOLIM, IELEM(16), ION(16,5), MOLH
       COMMON /ROSSC/CXKAPR(NDP),CROSS(NDP)
       COMMON /COSEXP/ LOPS,NOPS
       DATA A,B/.34785485,.65214515/
@@ -4955,9 +4795,9 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_initabund/ krome_init_abund_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_output/ krome_debug,krome_return
       common /virga/ ivirga_on
-      integer krome_on,krome_photo_on,krome_output,krome_debug
+      integer krome_on,krome_photo_on,krome_debug
       integer krome_return,krome_init_abund_on,ivirga_on
       real*8 dt_start,dt_max,dt_inc,krome_tmax
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
@@ -5127,9 +4967,9 @@ C        CONVERT TO 'PHYSICAL FLUX'
         write(7,5330) dt_start,dt_max,krome_tmax,dt_inc
 5330     format('  Time integration: dt_start=',1pe9.2,
      &    '  dt_max=',1pe9.2,'  t_max=',1pe9.2,'  dt_inc=',0pf5.2)
-        write(7,5340) krome_output,krome_debug,krome_return
-5340     format('  I/O flags: krome_output=',i2,
-     &    '  krome_debug=',i2,'  krome_return=',i2)
+        write(7,5340) krome_debug,krome_return
+5340     format('  I/O flags: krome_debug=',i2,
+     &    '  krome_return=',i2)
       else
         write(7,*) 'Disequilibrium Status: OFF '
       end if
@@ -5188,35 +5028,6 @@ C        CONVERT TO 'PHYSICAL FLUX'
      *      TAU(I),T(I),TKORRM(I),FCONV(I),FCORR(I),I
     4 CONTINUE
 C
-      IF (NLTE.EQ.0) GO TO 4000
-C*
-C* 90-05-13 START OF MODIFICATIONS (MATS CARLSSON)
-C* PRINT MULTI ATMOSPHERIC FILE: ATMOS.MULTI
-C*
-      OPEN(33,FILE='ATMOS.MULTI',STATUS='NEW',CARRIAGE CONTROL='LIST')
-      WRITE(33,400) TEFF
-  400 FORMAT(' MARCS MODEL ATMOSPHERE, TEFF=',F10.2/' TAU(5000) SCALE')
-      WRITE(33,410) G
-  410 FORMAT('*'/'* LG G'/F6.2)
-      WRITE(33,420) JTAU
-  420 FORMAT('*'/'* NDEP'/I3)
-      WRITE(33,430)
-  430 FORMAT('*'/'*LG TAU(5000)    TEMPERATURE        NE         V',
-     * '              VTURB')
-      DO 450 I=1,JTAU
-        IF(TAUS(I).GT.0.0) THEN
-          TAULG=LOG10(TAUS(I))
-        ELSE
-          TAULG=2.*LOG10(TAUS(I+1))-LOG10(TAUS(I+2))
-        ENDIF
-        WRITE(33,440) TAULG,T(I),PE(I)/T(I)/1.380662E-16,0.,2.
-  440   FORMAT(1P,5E14.6)
-  450 CONTINUE
-      CLOSE(33)
-C*
-C* 90-05-13 END OF MODIFICATIONS
-C*
-4000  CONTINUE
       WRITE(7,207)
       WRITE(7,208)
       Z0=Z(1)
@@ -5286,25 +5097,11 @@ C one another). You can write both sets by deleting the first
 C "if(jump.ne.1)" loop. but be aware that the spectrum program
 C may have difficult finding P(ZrO), P6 and other part.pressures then.
 C     
-      IF (JUMP.GT.0) GO TO 2101
-      WRITE(7,213)
-      WRITE(7,214)
-      DO 7 I=1,JTAU
-        WRITE(7,215) I,HNIC(I),(PRESMO(JJ,I),JJ=1,13),PRESMO(31,I),I
-7     CONTINUE
-      WRITE(7,213)
-      WRITE(7,216)
-      DO 8 I=1,JTAU
-      WRITE(7,217) I,(PRESMO(J,I),J=14,16),(PRESMO(J,I),J=18,30),I
-8     CONTINUE
-      GO TO 2109
 2101  CONTINUE     ! go here if jump>0 (i.e. not old marcs chem. equilibrium.
-      IF (JUMP.EQ.3) GO TO 2102
 C here: JF's/Tsuji's molecular partial pressures from JANAF polynomial fits:
 
 C for Tsuji's eq names are not read in (MOL(J) as real*8...)
 
-      IF (jump.eq.4) THEN
       open(unit=90,file='full_output.dat',status='unknown')
 
 C Compute ion/molecule sums needed by unit 7 summary (ppp, ppm, ppnmol):
@@ -5543,25 +5340,12 @@ C --- Unit 90: One data row per atmospheric layer ---
 3231       continue
 
 
-      END IF
-
       write(7,*)
       write(7,*)
       close(90)
-      GO TO 2109
 
 !------------ END OF  WRITING PP FOR JUMP = 4 -----------
 
-
-
-2102  CONTINUE     ! go here if jump>2 (i.e. not old marcs chem.eq. and not JANAF fits).
-      IF (JUMP.GT.4) GO TO 2103   !here one can put other chem.eq. possibilities
-!       ERC: was GT3 before, but changed to GT4 to have Pgas printed in
-!       SUB routine init_ggchem
-C output from GEM:
-C
-      GO TO 2109
-2103  CONTINUE
 2109  CONTINUE     ! go here when finished the partial pressure writing
 1905  FORMAT(I3,18(2X,A4))
       write(7,*)' '
@@ -6072,7 +5856,7 @@ C
       common /ch4/ nch4
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /conv_help/ abund_freq,icalc_abund
@@ -6102,13 +5886,20 @@ C TEMPERATURE, GRAVITATION
       READ(5,62) TEFF,G,IDRAB1,IDRAB2,IDRAB3,IDRAB4,IDRAB5,IDRAB6,RELM
 C KONV, MIHAL
       ISTRAL=0
-      READ(5,631) NOCONV,XMAX,TAUM,FACPLY,METBL
-      IF(METBL.GT.1) METBL=1
+      READ(5,631) NOCONV,XMAX,TAUM
       IF(TAUM.EQ.0.) TAUM=50.
       IF(XMAX.EQ.0.) XMAX=1.E10
-      READ(5,63) ILINE,AMLOSS,MOLTSUJI,LIN_CIA,ISPEC
+      READ(5,63) AMLOSS,LIN_CIA
+C ILINE removed as an input parameter 2026-08-20 (confirmed dead: the
+C GLAMD/XLINLO/XLINUP-gated behavior it used to control in SETDIS was
+C unreachable, XLINLO/XLINUP were never assigned anywhere in this file).
+C Hardcoded to 1 (every existing deck's value) rather than dropped
+C entirely, since it still round-trips through the binary .arciv archive
+C format (WRITE(IARCH)/READ(IARCH) in ARCHIV/LISTMO/OLDARC) -- keeping
+C this assignment preserves that binary layout unchanged.
+      ILINE = 1
       READ(5,51) MIHAL,KONSG,KORT,TDIFF,TCONV
-      read(5,635) lops,nops,dpein,dtin,metpe
+      read(5,635) nops,dpein,dtin,metpe
 C CONVECTION PARAMETERS
       READ(5,50) PALFA,PBETA,PNY,PY,VFIX
 C
@@ -6177,7 +5968,7 @@ C
       read(5, 1240) krome_init_abund_on
 
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
-      read(5, 1238) krome_output,krome_debug,krome_return
+      read(5, 1238) krome_debug,krome_return
 
 
       if (krome_on.eq.1) then
@@ -6261,12 +6052,12 @@ C I3 window started one column before the digits actually began.
      & 'BOLOM. MAGN.=',F6.2)
 62    FORMAT(2(7X,F8.0),7X,6A4,6X,F8.0)
 621   FORMAT(2(7X,F8.1),7X,6A4,6X,F8.1)
-631   FORMAT(7X,I3,12X,E8.1,7X,f8.0,7x,f8.0,7x,I3)
+631   FORMAT(7X,I3,12X,E8.1,7X,f8.0)
 632   FORMAT(7X,I3,12X,1pE8.1,7X,0pf8.1,7x,f8.1,7x,I3)
-63    FORMAT(7X,I3,12X,E8.1,7X,I3,2(12X,I3))
+63    FORMAT(12X,E8.1,12X,I3)
 633   FORMAT(7X,I3,12X,1pE8.1,3(7X,I3))
 634   FORMAT(2(7X,F8.1),2(7X,f8.4))
-635   FORMAT(7X,I3,12x,i3,12x,f7.5,8x,f7.5,8x,i3)
+635   FORMAT(12x,i3,12x,f7.5,8x,f7.5,8x,i3)
 64    FORMAT(/20X,'NCORE  =',I10/20X,'KDIFF  =',I10)
 65    FORMAT(20X,'M/MSUN =',F10.1)
 66    FORMAT(20X,'XMAX   =',1PE10.2)
@@ -6275,7 +6066,7 @@ C I3 window started one column before the digits actually began.
 69    FORMAT(20X,'FACPLY =',F10.3)
 1236  FORMAT(7X,I3,12X,I3,12X,E8.1,7X,E8.1)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
-1238  FORMAT(7X,I3,12X,I3,12X,I3)
+1238  FORMAT(12X,I3,12X,I3)
 1239  FORMAT(7X,I3)
 1240  FORMAT(7X,I3)
       END
@@ -6385,11 +6176,11 @@ C        GT.0  GIVES H-MOLECULES ONLY
 C
 
       COMMON /CI3/DUM(885),IDUM(215),IFISH
-      COMMON /CI4/TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON /CI4/TMOLIM,IELEM(16),ION(16,5),MOLH
       COMMON /CI6/TP,IQFIX(16,5),NQTEMP
       DIMENSION IELS(16),IONS(16,5),IQFS(16,5)
       DATA JONOLD/1/,IMAX/16/,JMAX/5/
-      INTEGER MOLH, JUMP
+      INTEGER MOLH
 C
 C CHECK IF READY
       IF(JONTYP.EQ.JONOLD) RETURN
@@ -6479,14 +6270,6 @@ C
 C RETURN
 90    CONTINUE
       IF(IOUTS.GT.0) CALL INJON(2)
-      RETURN
-C
-C ENTRY MODMOL
-      ENTRY MODMOL(MOLTYP,IOUTS)
-      MOLH=0
-      IF(IOUTS.GT.0) CALL INJON(2)
-      WRITE(7,101) MOLTYP
-101   FORMAT('0MOLTYP=',I1)
       RETURN
       END
 C
@@ -7193,23 +6976,6 @@ CCC
       RETURN
       END
 C
-      SUBROUTINE MONTON(XI,N)
-      implicit real*8 (a-h,o-z)
-C
-C      PARAMETER(NDIM=100)
-      DIMENSION XI(N)
-C
-      DO 50 I=2,N
-      IF(XI(I).LT.XI(I-1)) GOTO 50
-      XI(I)=XI(I-1)-.05
-50    CONTINUE
-C
-C
-      RETURN
-C
-C
-      E  N  D
-C
       SUBROUTINE MULT(A,B,C,D,N,M)
       implicit real*8 (a-h,o-z)
 C
@@ -7427,17 +7193,6 @@ C
 C
       RETURN
 C
-      ENTRY SAVEON(LUN,LR)
-C
-      LREC=LREC+1
-      WRITE(LUN) A,TAULN,NTAU,ITER
-C
-C PRINT MESSAGE
-      WRITE(7,51) LUN,LREC
-51    FORMAT('0SAVED ON LUN',I3,', RECORD',I2)
-C
-      RETURN
-C
 C RESUME
       ENTRY RESUME(LUN,LR)
       DO 200 I=1,LR
@@ -7480,12 +7235,12 @@ C
 C
       COMMON /COPINF/ SUMOP(maxosmol,NDP),SUMKAP(maxosmol,NDP)
       COMMON /CMOL1/DMUDMU(9),FOE,XMUDMUD(6)
-      COMMON /CI4/dumdum,IDUMDUM(96),MOLH,JUMP
+      COMMON /CI4/dumdum,IDUMDUM(96),MOLH
       COMMON /CARC3/ F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
       COMMON /DENSTY/ BPZ(NDP),PRH2O(NDP)
       common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
-      INTEGER MOLH, JUMP
+      INTEGER MOLH
       COMMON /CMETPE/ PPEL(NDP), METPE
       
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
@@ -7508,19 +7263,6 @@ C
      >                       rC(ndp), rMg(ndp), rAl(ndp), 
      >                       rSi(ndp), rHe(ndp), ro_dt(ndp)
 C      
-! Dust
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
       common /dustplot/ x_gas(ndp,nwl), s_gas(ndp,nwl), gas_opac(ndp)
 C
       dimension x_cloud(ndp,nwl), s_cloud(ndp,nwl),
@@ -7550,9 +7292,6 @@ C
            PRINT*,' WLOS(1),XL(1,2),XL(2,2) = ',WLOS(1),XL(1,2),XL(2,2)
            STOP ' WLOS(1) (==1.E8/WNEND) < first continuums point'
          END IF
-         if (idust == 1) then
-            call dust_opac_eps_interp
-         end if
          IF (NOSMOL.GT.0) THEN
             CALL OSTABLOOK
          END IF       !if nosmol > 0
@@ -7661,13 +7400,6 @@ C
       x_gas(k,j) = x(k)*xkapr(k)
       s_gas(k,j) = s(k)*xkapr(k)
       end do
-! Addition of dust absorption & scattering
-      if(idust == 1) then
-      do k=1,jtau
-      x(k) = x(k)+(dust_abs(k,j)/xkapr(k))
-      s(k) = s(k)+(dust_sca(k,j)/xkapr(k))
-      end do
-      end if
 C     x_virga(k,j)/s_virga(k,j) (common /virgaopac/) are filled in by
 C     OSTABLOOK from virga2marcs.dat but are NOT YET merged into X/S
 C     here. TODO: add the merge (mass opacity cm^2/g -> multiply by
@@ -7679,44 +7411,6 @@ C     validated.
       DO  K=1,JTAU
       X(K)=X(K)*XMAX/(X(K)+XMAX)
       end do
-      if ( idust==1) then
-      
-         do l=1, 5
-            tau_c = 0.0
-            if ((wlos(j)<= tau_lambda(l)) 
-     >      .and. (wlos(j+1)> tau_lambda(l))) then
-            if (l==1) then
-            open(unit=4297, file='tau_cloud.dat', status="replace", 
-     *       position="append", action="write")
-            else 
-            open(unit=4297, file='tau_cloud.dat', status="old", 
-     *       position="append", action="write")
-            end if
-            write(4297,*) 'table for wavelength (in aa):'
-            write(4297,*) wlos(j)
-            do k=1, jtau
-                  x_cloud(k,j) = dust_abs(k,j)
-                  s_cloud(k,j) = dust_sca(k,j)
-                  if (k>1) then
-                        opac_k_b = opac_k
-                  end if
-                  opac_k = (x_gas(k,j) + s_gas(k,j) + 
-     *             x_cloud(k,j) + s_cloud(k,j))/xkapr(k)
-                  if (k==1) then
-                  tau_c = opac_k * tau(1)
-                  else
-                  tau_c = tau_c + 
-     *             0.5*(tau(k)-tau(k-1))*(opac_k_b+opac_k)
-                  end if
-                  write(4297,'(6e24.15)') x_cont(k,j), s_cont(k,j), 
-     *            x_line(k,j),x_cloud(k,j), s_cloud(k,j), tau_c
-            end do
-            write(4297,*)
-            write(4297,*)
-            close(4297)
-            end if
-         end do
-      end if
 50    FORMAT(' X',6(' ***',1PE12.5))
 C
 C
@@ -7784,12 +7478,6 @@ C END OF LOOP
 C
 C NORMAL END
 101   CONTINUE
-      RETURN
-C
-C COUNT ENTRY
-      ENTRY PECNT
-      WRITE(7,52) IT
-52    FORMAT('0TOTAL NUMBER OF CALLS TO JON FROM PEMAKE-R =',I5)
       RETURN
       END
 C
@@ -7916,61 +7604,6 @@ C
       END
 C
 C
-      SUBROUTINE ROSSOS
-      implicit real*8 (a-h,o-z)
-C
-      include 'parameter.inc'
-C
-      DIMENSION X(NDP),S(NDP),SUMW(NDP),sumabs(ndp)
-     *   ,sumwy(ndp),sumwyxs(ndp),dummy(ndp)
-      CHARACTER MOLNAME*4,OSFIL*60,SAMPLING*3
-C      REAL*8 Y,YA,SUMW,ROSSO,PTAUO
-      COMMON/COS/WNOS(NWL),CONOS(NDP,NWL),WLOS(NWL),WLSTEP(NWL)
-     *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
-     *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
-      COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
-     & VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),NTAU,ITER
-      COMMON /TAUC/TAU(NDP),DLNTAU(NDP),JTAU 
-      COMMON /CG/GRAV,KONSG
-      COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
-      COMMON /CROSSOS/ ROSSO(NDP),PTAUO(NDP)
-      COMMON /ROSSC/XKAPR(NDP),CROSS(NDP)
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-
-C CALCULATE DETAILED ROSSELAND MEAN
-
-      DO 116 K=1,NTAU
-        SUMW(K)=0.
-        ROSSO(K)=0.
-        dummy(k) = 1.
-116   CONTINUE
-
-      DO 117 J=1,NWTOT
-        CALL OPAC(J,X,S)
-        Y=((WLOS(J)/1.E4)**2)**3
-        DO 117 K=1,NTAU
-          YA=EXP(-1.438E8/(TT(K)*WLOS(J)))
-          YA=YA/(1.-YA)**2/Y
-          SUMW(K)=SUMW(K)+WLSTEP(J)*YA
-        if (wlos(j).le.5000. .or. wlos(j).ge.1.e5) go to 117
-          ROSSO(K)=ROSSO(K)+WLSTEP(J)*YA/(xkapr(k)*(X(K)+S(K)))
-117   CONTINUE
-1171  format(i5,i3,1p8e12.3,0pf8.0)
-C
-
-      DO 111 K=1,NTAU
-        ROSSO(K)=SUMW(K)/ROSSO(K)
-        PTAUO(K)=GRAV*TAU(K)/ROSSO(K)
-111   CONTINUE
-C
-1172  format(i5,1p3e12.3,0pf8.0)
-      RETURN
-      END
-C
       SUBROUTINE SCALE(LUN)
       implicit real*8 (a-h,o-z)
 C
@@ -8069,24 +7702,11 @@ C        EXECUTION IS STOPPED WITH A PRINT-OUT.
 C
       DIMENSION XLB(500)
       COMMON/CXLSET/XL(200,10),NSET,NL(10)
-      COMMON/CLINE1/XLINLO,XLINUP,TSKAL(30),
-     &             PESKAL(30),IPEBEG(30),IPEEND(30),LINUN,NTSKAL,NPSKAL
-      COMMON/CLINE3/GLAMD(100),JLBDS
       COMMON/UTPUT/IREAD,IWRIT
-        COMMON/CLINE4/ILINE
 C
       NLP=1
       NSET=IFIRST
       DO2 J=1,NLB
-       IF(ILINE.LE.0)GOTO1
-      IF(XLB(J).LT.XLINLO.OR.XLB(J).GT.XLINUP)GO TO 1
-      DO11 K=1,JLBDS
-      KMEM=K
-      IF(XLB(J).LE.GLAMD(K))GO TO 12
-   11 CONTINUE
-   12 IF(J.EQ.NLB)GO TO 1
-      IF(XLB(J+1).LE.GLAMD(KMEM))GO TO 2
-    1 CONTINUE
       XL(NLP,NSET)=XLB(J)
       IF(J.EQ.NLB)GO TO 3
       NLP=NLP+1
@@ -9064,19 +8684,6 @@ C SPACE ALLOCATION
       COMMON /SPACE1/XJ1,XJ2,XJ3,TJ1,TJ2,XJT1,XJT2,XJT3,PRJ,TTT,PRT
      &  ,XJPE1,XJPE2,XJPE3,TPE,PRPE
       COMMON /SPACE2_PP/FCT,FCPE,PET,PEPE
-! Dust
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
 ! IRRADIATION
       COMMON /CROSSIR/ROSSIR(NDP),ROSSPIR(NDP),SUMWIR(NDP),TAURIR(NDP)
       COMMON /CPLANCKIR/PLANCKIR(NDP),PLANCKPIR(NDP),SUMWPIR(NDP),
@@ -9093,7 +8700,7 @@ C SPACE ALLOCATION
       common /ctcorlast/tcorlast 
       DATA IVERS,IEDIT/21,1/
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
-      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
@@ -9150,13 +8757,7 @@ C with a message that says exactly what to do about it.
         else
         write(*,*) "Did not find krome_flux_rad.dat, consider using
      > such a file for better convergence"
-        endif
-         if (krome_debug.eq.1) then
-            open(unit=7676,file='BPL_sun.dat')
-            open(unit=7777,file='BPL_upper.dat')
-            open(unit=7878,file='XJ_upper.dat')
-            open(unit=7979,file='XJ_lower.dat')
-          endif        
+        endif  
 C       
         first_call_rad=.False.
         endif
@@ -9560,17 +9161,7 @@ C END OF WAVELENGTH LOOP
       S01=log10(S(01))
       S25=log10(S(25))
 30    FORMAT(1X,26F5.2)
-      if (krome_debug.eq.1) then
-            write(7676,'(2(999E17.8e3))') WLOS(J), BPL(steff,WLOS(J))
-            Rsun_au=0.00465047
-            Rstar_au= rstar*Rsun_au
-            delta_omega = (Rstar_au/(semimajor))**2.0 /
-     &        (4.0*(f_irrad))
-            bstar_upper=BPL(steff,WLOS(J))*delta_omega
-            write(7777,'(2(999E17.8e3))') WLOS(J), bstar_upper
-            write(7878,'(2(999E17.8e3))') WLOS(J), XJ(1)
-            write(7979,'(2(999E17.8e3))') WLOS(J), XJ(ntau)  
-      endif
+
 
       if (krome_on.eq.1) then
        if (krome_photo_on.eq.1) then
@@ -9620,12 +9211,6 @@ C amplify or flip sign the way the recursive elimination can.
       end if
 
 150   CONTINUE
-      if (krome_debug.eq.1) then
-       close(7676)
-       close(7777)
-       close(7878)
-       close(7979)
-      endif
       close(960)
       ftot_a = 0.0
       do j=1, nwtot
@@ -11021,29 +10606,6 @@ C END TAU LOOP
       MSB=0
       MSB=MSA-MSB
 
-      RETURN
-      END
-C
-      FUNCTION TRQUAD(N,X,F,W)
-      implicit real*8 (a-h,o-z)
-C
-      DIMENSION X(N),F(N),W(2*N)
-C
-C TRAPEZOIDAL QUADRATURE PLUS NEXT ORDER CORRECTION FOR NON-
-C -EQUIDISTANT GRID.
-      N1=N-1
-      Q=0.
-      DO 100 K=2,N
-      W(K)=X(K)-X(K-1)
-      W(N+K)=(F(K)-F(K-1))/W(K)
-100   Q=Q+W(K)*(F(K-1)+F(K))
-      Q=Q*6.
-      DO 101 K=2,N1
-101   Q=Q+(W(K+1)-W(K))*(W(K)*W(N+K+1)+W(K+1)*W(N+K))
-      W1=((W(2)+0.5*W(3))*W(N+2)-0.5*W(2)*W(N+3))*2.0/(W(2)+W(3))
-      WN=((W(N)+0.5*W(N1))*W(N+N)-0.5*W(N)*W(N+N1))*2.0/(W(N)+W(N1))
-      Q=0.083333333*(Q+W(2)**2*W1-W(N)**2*WN)
-      TRQUAD=Q
       RETURN
       END
 C
@@ -13153,96 +12715,6 @@ C  RETURNS THE SMALLEST VALUE X02AAF SUCH THAT 1+X02AAF>1
       RETURN
           END
 
-      SUBROUTINE X1MAKE(N,XXI,W,XI)
-      implicit real*8 (a-h,o-z)
-      PARAMETER(NDIM=100)
-      DIMENSION XI(NDIM),W(NDIM),XXI(NDIM)
-C
-      I=N
-      DO 5 J=1,N-1
-        XI(I)=XXI(I-1)
-        I=I-1
-    5 CONTINUE
-
-      F=.5
-      XI(1)=XI(2)+F*(XI(2)-XI(3))/(W(3)/W(2)-1.)
-
-      RETURN
-
-      E  N  D
-
-      SUBROUTINE XIINIT(WVAL,K,XIVAL,N,XI,W)
-      implicit real*8 (a-h,o-z)
-
-      PARAMETER (NDIM=100)
-      DIMENSION XI(NDIM),W(NDIM)
-      DIMENSION A(NDIM),B(NDIM),C(NDIM),ITYPE(NDIM)
-
-      D1=(XI(2)-XI(1))/(W(2)-W(1))
-      D2=(XI(3)-XI(2))/(W(3)-W(2))
-      YPI=D1*D1/D2
-      DO 105 I=2,N
-        HI=W(I)-W(I-1)
-        DI=(XI(I)-XI(I-1))/HI
-        IF(YPI/DI.GT.1.) THEN
-          ITYPE(I)=0
-          C(I)=(1./DI-1./YPI)/DI/HI
-          BB=1./YPI-2.*XI(I-1)*C(I)
-          A(I)=W(I-1)-XI(I-1)*(BB+C(I)*XI(I-1))
-          B(I)=-.5*BB/C(I)
-          YPI=1./(BB+2.*C(I)*XI(I))
-        ELSE
-          ITYPE(I)=1
-          C(I)=(DI-YPI)/HI
-          B(I)=YPI-2.*W(I-1)*C(I)
-          A(I)=XI(I-1)-W(I-1)*(B(I)+W(I-1)*C(I))
-          YPI=B(I)+2.*C(I)*W(I)
-        END IF
-  105 CONTINUE
-
-      RETURN
-      ENTRY XIMAKE(WVAL,K,XIVAL,N,XI,W)
-      IF(WVAL.LE.W(K).OR.K.EQ.N) GOTO 12
-      DO 10 I=1,N-K-1
-        K=K+1
-        IF(WVAL.LE.W(K)) GO TO 12
-   10 CONTINUE
-      K=N
-
-   12 IF(ITYPE(K).EQ.1) THEN
-      XIVAL=A(K)+WVAL*(B(K)+C(K)*WVAL)
-      ELSE
-        YYY=B(K)*B(K) - (A(K)-WVAL)/C(K)
-      IF(YYY.LT.0.) THEN
-1234  FORMAT('XIMAKE: K,B(K),A(K),WVAL,C(K),YYY '/I5,1P5E13.5)
-1235  FORMAT(I5,F8.5,F10.5,1P3E15.5)
-         STOP 'XIMAKE-KRASCH'
-      ENDIF
-        XIVAL=B(K)-DSQRT(B(K)*B(K)-(A(K)-WVAL)/C(K))
-      END IF
-C
-C
-      RETURN
-C
-C
-      E  N  D
-C
-      SUBROUTINE XMETAL(ID,N,W,XI)
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      DIMENSION W(6),XI(6)
-      COMMON /ODFAD/ V(NDP,4)
-      DO 5 I=1,N-2
-        XI(I)=V(ID,I)
-    5 CONTINUE
-
-      FN=.5
-      XI(N-1)=XI(N-2)+FN*((XI(N-3)-XI(N-2))*(1.-W(N-2))/
-     &                          (W(N-3)-W(N-2)))
-
-      RETURN
-      E  N  D
-C
       SUBROUTINE ZEROF(F,DX,DFDX)
       implicit real*8 (a-h,o-z)
 C
@@ -13316,7 +12788,7 @@ C
      *    ,KOS_STEP,NWTOT,NOSMOL,NEWOSATOM,NEWOSATOMLIST
      *    ,nchrom,OSFIL(maxosmol),MOLNAME(maxosmol),SAMPLING
       !COMMON/CARC3/F1P,F3P,F4P,F5P,HNIC,PRESMO(33)
-      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH,JUMP
+      COMMON/CI4/ TMOLIM,IELEM(16),ION(16,5),MOLH
       common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),
      *dxi,f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
@@ -13336,7 +12808,6 @@ C     parameter(nspec=892)
       common /cgem/pres_gem(ndp,nspec)
       common /cgemnames/natms_gem,nions_gem,nspec_gem,name_gem(nspec)
 C atms,ions,spec ~ highest index of neutral atoms, ions, species total
-      common /cdrift/ idust, ieps, idustopac,icloud_conv
       character name_gem*8
       common /cabink/abink(ndp,nspec)
       common /ch4/ nch4
@@ -13345,7 +12816,7 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       dimension pe_gem(ndp),ptot1(ndp),dptot(ndp)
      &  ,pe1(ndp),dptot2(ndp),dpe2(ndp),dpe(ndp)
       integer krome_photo_on,call_counter
-      INTEGER MOLH, JUMP
+      INTEGER MOLH
       DATA FIRST/.TRUE./
 
       common /ggchemmu/ggmu(NDP),ggrho(NDP),ppsum(ndp),ppappsum(ndp),
@@ -13408,7 +12879,6 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       TPART = 0.
       call_counter = 0
       end if
-      call timex1
       do it=1,ntau
          do jv=1,nwtot
             conos(it,jv) = 0.
@@ -13821,8 +13291,6 @@ C ....the plot
 
       FIRST = .FALSE.
 
-      call timex1
-
       contains
       function upper(strIn) result(strOut)
       ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
@@ -13915,23 +13383,6 @@ C AFTER X(N)
 C
 C
 C
-      SUBROUTINE DAYTIM(ADATE,ATIME)
-      implicit real*8 (a-h,o-z)
-C   This routine returns date and time in 9 character format.
-C   The routine is highly machine dependent !
-C   This version is for VAX.
-C
-      CHARACTER*9 ADATE,ATIME
-      ADATE=' ' 
-      ATIME=' ' 
-C_ursa      CALL DATE_AND_TIME(ADATE)  
-C_ursa      CALL TIME(ATIME)
-C      ADATE(5:5)=CHAR(ICHAR(ADATE(5:5))+32)
-C      ADATE(6:6)=CHAR(ICHAR(ADATE(6:6))+32)
-      RETURN
-      END
-C
-C
       function second()
       implicit real*8 (a-h,o-z)
 c  Added by Bjorn S. Nilsson, nbi, on 19-Feb-1991;  for DEC-stations
@@ -13955,86 +13406,6 @@ C      SECOND=0.01*DFLOAT(LCSEC)
 C      RETURN
 C      END
 C
-      SUBROUTINE TIMEX
-      implicit real*4 (a-h,o-z)
-C   This routine prints total accumulated time and time spent since
-C  last call.
-C
-      CHARACTER*20 FORM/'(A,F05.2,A,F05.2,A)'/
-      REAL(KIND=4), SAVE, DIMENSION(2):: time_last=(/0.,0./), time_0
-      REAL(KIND=4), SAVE, DIMENSION(2):: time_now=(/0.,0./)
-      ENTRY TIMEX0
-C      TIME_LAST=SECOND(DUMTIM)  
-      call etime(time_last)
-      time_0 = time_last
-C      TIME_LAST=SECOND()
-      RETURN
-      ENTRY TIMEX1
-C      TIME_NOW=SECOND(DUMTIM)
-C      TIME_NOW=SECOND()
-      call etime(time_now)
-      L1=5
-      IF(TIME_NOW(1).GT.99.) L1=6
-      IF(TIME_NOW(1).GT.999.) L1=7
-      IF(TIME_NOW(1).GT.9999.) L1=8
-      IF(TIME_NOW(1).GT.99999.) L1=9
-      IF(TIME_NOW(1).GT.999999.) L1=10
-      WRITE(FORM(5:6),'(I2.2)') L1
-      DELTA_TIME=TIME_NOW(1)-TIME_LAST(1)
-      tot_time = time_now(1) - time_0(1)
-      L1=5
-      IF(DELTA_TIME.GT.99.) L1=6
-      IF(DELTA_TIME.GT.999.) L1=7
-      IF(DELTA_TIME.GT.9999.) L1=8
-      IF(DELTA_TIME.GT.99999.) L1=9
-      IF(DELTA_TIME.GT.999999.) L1=10
-      WRITE(FORM(13:14),'(I2.2)') L1
-      
-      TIME_LAST=TIME_NOW
-      RETURN
-      END
-C
-C
-      SUBROUTINE TIMEF
-      implicit real*4 (a-h,o-z)
-C   This routine prints total accumulated time and time spent since
-C  last call.
-C
-      REAL(KIND=4), SAVE, DIMENSION(2):: time_last=(/0.,0./), time_0
-      REAL(KIND=4), SAVE, DIMENSION(2):: time_now=(/0.,0./)
-      CHARACTER*20 FORM/'(A,F05.2,A,F05.2,A)'/
-      ENTRY TIME0
-C      TIME_LAST=SECOND(DUMTIM)  
-      call etime(time_last)
-      time_0 = time_last
-C      TIME_LAST=SECOND()
-      RETURN
-      ENTRY TIME1
-C      TIME_NOW=SECOND(DUMTIM)
-C      TIME_NOW=SECOND()
-      call etime(time_now)
-      L1=5
-      IF(TIME_NOW(1).GT.99.) L1=6
-      IF(TIME_NOW(1).GT.999.) L1=7
-      IF(TIME_NOW(1).GT.9999.) L1=8
-      IF(TIME_NOW(1).GT.99999.) L1=9
-      IF(TIME_NOW(1).GT.999999.) L1=10
-      WRITE(FORM(5:6),'(I2.2)') L1
-      DELTA_TIME=TIME_NOW(1)-TIME_LAST(1)
-      tot_time = time_now(1) - time_0(1)
-      L1=5
-      IF(DELTA_TIME.GT.99.) L1=6
-      IF(DELTA_TIME.GT.999.) L1=7
-      IF(DELTA_TIME.GT.9999.) L1=8
-      IF(DELTA_TIME.GT.99999.) L1=9
-      IF(DELTA_TIME.GT.999999.) L1=10
-      WRITE(FORM(13:14),'(I2.2)') L1
-      PRINT FORM, ' Total time spent: ',tot_time,' sec. Added time: ',
-     1 DELTA_TIME,' sec.'
-      TIME_LAST=TIME_NOW
-      RETURN
-      END
-      
 !-----------------------------------------------------------------------
 ! GETTIME: Prints total accumulated time and time spent since last call
 ! Juncher 2015
@@ -14221,2064 +13592,6 @@ C
       RETURN
       END
 
-
-
-      FUNCTION TG01BT(II,ND,N,X,F,D,XX) 
-      implicit real*8 (a-h,o-z)
-      DIMENSION X(ND),F(ND),D(ND)
-      COMMON /TG01BA/I1,IN,KK
-      I1 = 1     ! we fix extrapolated values to be == end value
-      IN = 1
-C ROUTINE TO CALCULATE VALUE FXX OF SPLINE IN POINT XX WHEN N KNOTS
-C (XI,FI) WITH DERIVATIVE DI ARE GIVEN.
-C II<0 => SEARCH THE WHOLE RANGE. II >= 0 => FUNCTION HAS PREVIOUSLY 
-C BEEN ENTERED WITH A SMALLER VALUE OF XX.
-C COMMON VALUES I1 AND IN CONTROLS WHAT TO DO IF XX IS OUTSIDE X INTERVAL.
-C
-C II NEGATIVE, RESET
-      IF(II.LT.0) KK=2  
-C   
-C CHECK IF OUTSIDE  
-      IF(XX.LT.X(1)) GOTO 110   
-      IF(XX.GT.X(N)) GOTO 120   
-      DO 100 K=KK,N 
-      IF(XX.LT.X(K)) GOTO 101   
-100   CONTINUE  
-      KK=N  
-      GOTO 102  
-101   KK=K  
-C   
-C CALCULATE FUNCTION
-102   DX=X(KK)-X(KK-1)  
-      DF=F(KK)-F(KK-1)  
-      P=(XX-X(KK-1))/DX 
-      Q=1.-P
-      TG01BT=Q*F(KK-1)+P*F(KK)+P*Q*  
-     & (Q*(D(KK-1)*DX-DF)-P*(D(KK)*DX-DF))  
-      RETURN
-C   
-C BEFORE X(1)   
-110   TG01BT=0.  
-      IF(I1.LE.0) RETURN
-      TG01BT=F(1)
-      IF(I1.EQ.1) RETURN
-      TG01BT=TG01BT+(XX-X(1))*D(1)
-      IF(I1.EQ.2) RETURN
-      DX=X(2)-X(1)  
-      D2=2.*(3.*(F(2)-F(1))/DX**2-(2.*D(1)+D(2))/DX)
-      TG01BT=TG01BT+.5*(XX-X(1))**2*D2
-      IF(I1.EQ.3) RETURN
-      D36=(D(1)+D(2)-2.*(F(2)-F(1))/DX)/DX**2   
-      TG01BT=TG01BT+(XX-X(1))*(XX-X(1))**2*D36
-      RETURN
-C   
-C AFTER X(N)
-120   TG01BT=0.  
-      IF(IN.LE.0) RETURN
-      TG01BT=F(N)
-      IF(IN.EQ.1) RETURN
-      TG01BT=TG01BT+(XX-X(N))*D(N)
-      IF(IN.EQ.2) RETURN
-      DX=X(N)-X(N-1)
-      D2=2.*(-3.*(F(N)-F(N-1))/DX**2+(2.*D(N)+D(N-1))/DX)   
-      TG01BT=TG01BT+.5*(XX-X(N))**2*D2
-      IF(IN.EQ.3) RETURN
-      D36=(D(N)+D(N-1)-2.*(F(N)-F(N-1))/DX)/DX**2   
-      TG01BT=TG01BT+(XX-X(N))*(XX-X(N))**2*D36
-      END
-C
-C
-C
-      SUBROUTINE TB04AT(ND,N,X,F,D,W)
-      implicit real*8 (a-h,o-z)
-C
-      DIMENSION X(ND),F(ND),D(ND),W(3,ND)   
-C   
-C THIS VERSION OF TB04A IS identical to TB04A, except that it can be
-C called with arrays which might be dimensioned larger than the part
-C of it which is used for the interpolation.
-C INPUT ARE X(I), FUNCTION VALUE IN N KNOTS. THEN THE DERIVATIVE IS 
-C CALCULATED IN THE KNOTS. W=0 AT SUCCESFULL RETURN, OTHERWISE W=1.
-C X(I) SHOULD BE IN STRICTH INCREASING ORDER, X1<X2<...<XN.
-C In the call from SUBROUTINE PROFILE, X(1), X(2),...,X(NTAU) are the 
-C temperature values at the NTAU optical depth values, and the derivative
-C dPg/dT (=D(N))is calculated in the NTAU points, for later use to 
-C calculate Pg in the points where the temperature of the
-C absorption coefficient is known.  
-C         
-C FIRST POINT   
-      CXB=1./(X(2)-X(1))
-      CXC=1./(X(3)-X(2))
-      DFB=F(2)-F(1) 
-      DFC=F(3)-F(2) 
-      W(1,1)=CXB*CXB
-      W(3,1)=-CXC*CXC   
-      W(2,1)=W(1,1)+W(3,1)  
-      D(1)=2.*(DFB*CXB*CXB*CXB-DFC*CXC*CXC*CXC) 
-C   
-C INTERIOR POINTS   
-      N1=N-1
-      DO 100 K=2,N1 
-      CXA=CXB   
-      CXB=1./(X(K+1)-X(K))  
-      DFA=DFB   
-      DFB=F(K+1)-F(K)   
-      W(1,K)=CXA
-      W(3,K)=CXB
-      W(2,K)=2.*(CXA+CXB)   
-      D(K)=3.*(DFB*CXB*CXB+DFA*CXA*CXA) 
-100   CONTINUE  
-C   
-C LAST POINT
-      W(1,N)=CXA*CXA
-      W(3,N)=-CXB*CXB   
-      W(2,N)=W(1,N)+W(3,N)  
-      D(N)=2.*(DFA*CXA*CXA*CXA-DFB*CXB*CXB*CXB) 
-C   
-C ELIMINATE AT FIRST POINT  
-      C=-W(3,1)/W(3,2)  
-      W(1,1)=W(1,1)+C*W(1,2)
-      W(2,1)=W(2,1)+C*W(2,2)
-      D(1)=D(1)+C*D(2)  
-      W(3,1)=W(2,1) 
-      W(2,1)=W(1,1) 
-C   
-C ELIMINATE AT LAST POINT   
-      C=-W(1,N)/W(1,N-1)
-      W(2,N)=W(2,N)+C*W(2,N-1)  
-      W(3,N)=W(3,N)+C*W(3,N-1)  
-      D(N)=D(N)+C*D(N-1)
-      W(1,N)=W(2,N) 
-      W(2,N)=W(3,N) 
-C   
-C ELIMINATE SUBDIAGONAL 
-      DO 110 K=2,N  
-      C=-W(1,K)/W(2,K-1)
-      W(2,K)=W(2,K)+C*W(3,K-1)  
-      D(K)=D(K)+C*D(K-1)
-110   CONTINUE  
-C   
-C BACKSUBSTITUTE
-      D(N)=D(N)/W(2,N)  
-      DO 120 KK=2,N 
-      K=(N+1)-KK
-      D(K)=(D(K)-W(3,K)*D(K+1))/W(2,K)  
-120   CONTINUE  
-C   
-      RETURN
-      END
-C
-   
-      subroutine atoms_head
-* reads integrated metal opacity file in ascii format
-      implicit real*8 (a-h,o-z)
-C     implicit none
-*
-      integer np6,ntemp,maxpnt,nel
-      parameter (np6 = 9)
-      parameter (ntemp = 17)
-      parameter (maxpnt = 153910)
-      parameter (nel = 92)
-*
-      integer ispec(184),itemp,ip6,nwave,i,n,nwav
-      real*8 waven
-C     real p6(np6),temp(ntemp),abund(nel)
-      real abund(nel)
-      real opl(np6,ntemp)
-      real xite
-      character*60 filename
-      character*80 string
-*
-c     data filename /'/ste1/uffegj/atoms/metals_sun_ascii.x03'/
-      common /catoms_head/ p6(9),temp(17)
-c     print *,'name of the input file ?'
-c     read(*,'(a)') filename(1)
-c     open(11,file=filename(1),form='unformatted',status='old')
-c     print *,'name of the output file ?'
-c     read(*,'(a)') filename(2)
-c     open(41,file=filename,form='formatted',recl=1246,
-c    &     status='unknown',readonly)
-      open(13,file='metals.output',status='unknown')
-*
-      read(41,1080) string
-      write(13,1080) string
-* 1) info record
- 1080 format(a80)
-      
-      read(41,1080) string
-      write(13,1080) string
-* 2) info record
-      
-      read(41,1000) ispec
-      write(13,1000) ispec
-* 3) ispec:  integers identifying all species included:
-*            ex: 9201 = U II, 600 = C I    (max number=2*92)
- 1000 format(184i5)
-      
-      read(41,1010) xite
-      write(13,1010) xite
-* 4) xite: [km/s]  microturbulence velocity (for line broadening)
- 1010 format(f5.2)
-      
-      read(41,1020) ip6     !1020 or *
-      if(ip6.ne.np6) then
-       
-        stop 'Data file not as expected'
-      endif
-      write(13,1020) np6
-* 5) np6: number of P6 values (must always=9)
- 1020 format(i3)
-      
-      read(41,1030) (p6(i),i=1,np6)
-      write(13,1030) (p6(i),i=1,np6)
-* 6) P6: [dyn] Damping pressures for "van der Waals" line broadening
-*        to be computed as P(HI) + 0.42*P(HeI) + 0.85*P(H2)
- 1030 format(1p,9e10.2,0p)
-      
-      read(41,1020) itemp
-      if(itemp.ne.ntemp) then
-        
-        stop 'Data file not as expected'
-      endif
-      write(13,1020) ntemp
-* 7) ntemp: number of T values (must always=17)
-     
-      read(41,1070) (temp(i),i=1,ntemp)
-      write(13,1070) (temp(i),i=1,ntemp)
-* 8) temp: [K] temperature values for excitation, ionization, chemical
-*       equilibrium, line broadening (LTE)
- 1070 format(17f8.0)
-      
-      read(41,1040) nwave
-      write(13,1040) nwave
-* 9) nwave will probably be 153910, the expected number of wavelength points
- 1040 format(i10)
-      
-      read(41,1080)
-      write(13,*) 'dummy record'
-* 10) dummy record: unly used in single species files
-      
-      read(41,1080)
-      write(13,*) 'dummy record'
-* 11) dummy record: unly used in single species files
-      
-      read(41,1050,err=3879) abund
-      write(13,1050) abund
-* 12) abund: logarithmic number abundances used in the compilation of the file
-*            on a scale where H = 12.00, 92 values, -99. means not used/known
- 1050 format(92f7.2)
-      
-      goto 3880
- 3879 continue
-      
- 3880 continue
-*
-* 12 header lines ready, write 153910 opacity data recods:
-*
-      nwav=0
-     
-      write(13,*) ' now starting big read; maxpnt,np6,ntemp=',
-     &     maxpnt,np6,ntemp
-C     do n=1,maxpnt+1
-C     read(41,1060,end=98,err=99) 
-C    &   waven,((opl(ip6,itemp),ip6=1,np6),itemp=1,ntemp)
-* waven: [cm-1] vacuum wave number
-* opl: log(10) opacity, opacity in cm2/g stellar matter
-*      opl = -30.0 or -40.0 means no significant metal line opacity found
-* acurracy: Line data: b-b transition line data of neutral and singly-ionized
-*           atoms were all adopted from VALD, January 1998. (cf A&AS 112, 525)
-*           For 36 rare species no line data is there or the solar abundance=0
-*           For the species where continuous opacities are considered,
-*           the line opacity data [cm2/g] is complete to better than 1% of
-*           the continuous opacity (at the relevant T and wavel). Based on the
-*           experience from these species similar completness levels were
-*           adopted for all other species.
-
-      return
-      end
-
-
-      SUBROUTINE atomw
-C
-C Mean atomic weights are stored into the vector watom, AB2001
-C Species 1:92 are included, as in irwin.dat
-C Deuterium is added as number 93, because it is treated as a seperate
-C atom in gfits.data of molecules. Actually W(H)=1.007825, while Earth
-C mixture of H and D has W(H+D)=1.0079 as given for watom(1).
-C
-
-      IMPLICIT real*8 (a-h,o-z)
-      character atomname*2
-      common /cwatom/watom(200)
-      common /catomname/atomname(200)
-
-
-      DO i=1,200
-         watom(i) = 0.0
-      ENDDO
-
-      watom(1)  =   1.0079 !H  Hydrogen
-      watom(2)  =   4.0026 !He Helium
-      watom(3)  =   6.941  !Li Lithium
-      watom(4)  =   9.0121 !Be Beryllium
-      watom(5)  =  10.81   !B  Boron
-      watom(6)  =  12.011  !C  Carbon
-      watom(7)  =  14.0067 !N  Nitrogen
-      watom(8)  =  15.9994 !O  Oxygen
-      watom(9)  =  18.9984 !F  Fluorine
-      watom(10) =  20.179  !Ne Neon
-      watom(11) =  22.9897 !Na Sodium
-      watom(12) =  24.305  !Mg Magnesium
-      watom(13) =  26.9814 !Al Aluminum
-      watom(14) =  28.0855 !Si Silicon
-      watom(15) =  30.9737 !P  Phosphorus
-      watom(16) =  32.06   !S  Sulfur
-      watom(17) =  35.453  !Cl Chlorine
-      watom(18) =  39.948  !Ar Argon
-      watom(19) =  39.0983 !K  Potassium
-      watom(20) =  40.08   !Ca Calcium
-      watom(21) =  44.9559 !Sc Scandium
-      watom(22) =  47.88   !Ti Titanium
-      watom(23) =  50.9415 !V  Vanadium
-      watom(24) =  51.996  !Cr Chromium
-      watom(25) =  54.9380 !Mn Manganese
-      watom(26) =  55.847  !Fe Iron
-      watom(27) =  58.9332 !Co Cobalt
-      watom(28) =  58.96   !Ni Nickel
-      watom(29) =  63.546  !Cu Copper
-      watom(30) =  65.38   !Zn Zinc
-      watom(31) =  69.72   !Ga Gallium
-      watom(32) =  72.59   !Ge Germanium
-      watom(33) =  74.9216 !As Arsenic
-      watom(34) =  78.96   !Se Selenium
-      watom(35) =  79.904  !Br Bromine
-      watom(36) =  83.80   !Kr Krypton
-      watom(37) =  85.4678 !Rb Rubidium
-      watom(38) =  87.62   !Sr Strontium
-      watom(39) =  88.9059 !Y  Yttrium
-      watom(40) =  91.22   !Zr Zirconium
-      watom(41) =  92.9064 !Nb Niobium
-      watom(42) =  95.94   !Mo Molybdenum
-      watom(43) =  97.907  !Tc Technetium
-      watom(44) = 101.07   !Ru Ruthenium
-      watom(45) = 102.9055 !Rh Rhodium
-      watom(46) = 106.42   !Pd Palladium
-      watom(47) = 107.868  !Ag Silver
-      watom(48) = 112.41   !Cd Cadmium
-      watom(49) = 114.82   !In Indium
-      watom(50) = 118.69   !Sn Tin
-      watom(51) = 121.75   !Sb Antimony
-      watom(52) = 127.60   !Te Tellurium
-      watom(53) = 126.9045 !I  Iodine
-      watom(54) = 131.29   !Xe Xenon
-      watom(55) = 132.9054 !Cs Cesium
-      watom(56) = 137.33   !Ba Barium
-      watom(57) = 138.9055 !La Lanthanum
-      watom(58) = 140.12   !Ce Cerium
-      watom(59) = 140.9077 !Pr Praseodymium
-      watom(60) = 144.24   !Nd Neodymium
-      watom(61) = 144.913  !Pm Promethium
-      watom(62) = 150.36   !Sm Samarium
-      watom(63) = 151.96   !Eu Europium
-      watom(64) = 157.25   !Gd Gadolinium
-      watom(65) = 158.9254 !Tb Terbium
-      watom(66) = 162.50   !Dy Dysprosium
-      watom(67) = 164.9304 !Ho Holmium
-      watom(68) = 167.26   !Er Erbium
-      watom(69) = 168.9342 !Tm Thulium
-      watom(70) = 173.04   !Yb Ytterbium
-      watom(71) = 174.967  !Lu Lutetium
-      watom(72) = 178.49   !Hf Hafnium
-      watom(73) = 180.9479 !Ta Tantalum
-      watom(74) = 183.85   !W  Tungsten
-      watom(75) = 186.207  !Re Rhenium
-      watom(76) = 190.2    !Os Osmium
-      watom(77) = 192.22   !Ir Iridium
-      watom(78) = 195.08   !Pt Platinum
-      watom(79) = 196.9665 !Au Gold
-      watom(80) = 200.59   !Hg Mercury
-      watom(81) = 204.383  !Tl Thallium
-      watom(82) = 207.2    !Pb Lead
-      watom(83) = 208.9804 !Bi Bismuth
-      watom(84) = 208.982  !Po Polonium
-      watom(85) = 209.987  !At Astatine
-      watom(86) = 222.018  !Rn Radon
-      watom(87) = 223.020  !Fr Francium
-      watom(88) = 226.0254 !Ra Radium
-      watom(89) = 227.0278 !Ac Actinium
-      watom(90) = 232.0381 !Th Thorium
-      watom(91) = 231.0359 !Pa Protactinium
-      watom(92) = 238.051  !U  Uranium
-      watom(93) = 2.01410  !D  Deuterium
-
-      RETURN
-      END
-
-C---------------------------------------------------------
-
-      SUBROUTINE atomnam
-C
-C 1 or 2 character names of atoms.
-C Species 1:92 are included, as in irwin.dat
-C
-
-
-      implicit REAL*8 (a-h,o-z)
-      character atomname*2
-      common /cwatom/watom(200)
-      common /catomname/atomname(200)
-
-      DO i=1,200
-         atomname(i) = '  '
-      ENDDO
-
-      atomname(1)  = 'H ' ! Hydrogen
-      atomname(2)  = 'He' ! Helium
-      atomname(3)  = 'Li' ! Lithium
-      atomname(4)  = 'Be' ! Beryllium
-      atomname(5)  = 'B ' ! Boron
-      atomname(6)  = 'C ' ! Carbon
-      atomname(7)  = 'N ' ! Nitrogen
-      atomname(8)  = 'O ' ! Oxygen
-      atomname(9)  = 'F ' ! Fluorine
-      atomname(10) = 'Ne' ! Neon
-      atomname(11) = 'Na' ! Sodium
-      atomname(12) = 'Mg' ! Magnesium
-      atomname(13) = 'Al' ! Aluminum
-      atomname(14) = 'Si' ! Silicon
-      atomname(15) = 'P ' ! Phosphorus
-      atomname(16) = 'S ' ! Sulfur
-      atomname(17) = 'Cl' ! Chlorine
-      atomname(18) = 'Ar' ! Argon
-      atomname(19) = 'K ' ! Potassium
-      atomname(20) = 'Ca' ! Calcium
-      atomname(21) = 'Sc' ! Scandium
-      atomname(22) = 'Ti' ! Titanium
-      atomname(23) = 'V ' ! Vanadium
-      atomname(24) = 'Cr' ! Chromium
-      atomname(25) = 'Mn' ! Manganese
-      atomname(26) = 'Fe' ! Iron
-      atomname(27) = 'Co' ! Cobalt
-      atomname(28) = 'Ni' ! Nickel
-      atomname(29) = 'Cu' ! Copper
-      atomname(30) = 'Zn' ! Zinc
-      atomname(31) = 'Ga' ! Gallium
-      atomname(32) = 'Ge' ! Germanium
-      atomname(33) = 'As' ! Arsenic
-      atomname(34) = 'Se' ! Selenium
-      atomname(35) = 'Br' ! Bromine
-      atomname(36) = 'Kr' ! Krypton
-      atomname(37) = 'Rb' ! Rubidium
-      atomname(38) = 'Sr' ! Strontium
-      atomname(39) = 'Y ' ! Yttrium
-      atomname(40) = 'Zr' ! Zirconium
-      atomname(41) = 'Nb' ! Niobium
-      atomname(42) = 'Mo' ! Molybdenum
-      atomname(43) = 'Tc' ! Technetium
-      atomname(44) = 'Ru' ! Ruthenium
-      atomname(45) = 'Rh' ! Rhodium
-      atomname(46) = 'Pd' ! Palladium
-      atomname(47) = 'Ag' ! Silver
-      atomname(48) = 'Cd' ! Cadmium
-      atomname(49) = 'In' ! Indium
-      atomname(50) = 'Sn' ! Tin
-      atomname(51) = 'Sb' ! Antimony
-      atomname(52) = 'Te' ! Tellurium
-      atomname(53) = 'I ' ! Iodine
-      atomname(54) = 'Xe' ! Xenon
-      atomname(55) = 'Cs' ! Cesium
-      atomname(56) = 'Ba' ! Barium
-      atomname(57) = 'La' ! Lanthanum
-      atomname(58) = 'Ce' ! Cerium
-      atomname(59) = 'Pr' ! Praseodymium
-      atomname(60) = 'Nd' ! Neodymium
-      atomname(61) = 'Pm' ! Promethium
-      atomname(62) = 'Sm' ! Samarium
-      atomname(63) = 'Eu' ! Europium
-      atomname(64) = 'Gd' ! Gadolinium
-      atomname(65) = 'Tb' ! Terbium
-      atomname(66) = 'Dy' ! Dysprosium
-      atomname(67) = 'Ho' ! Holmium
-      atomname(68) = 'Er' ! Erbium
-      atomname(69) = 'Tm' ! Thulium
-      atomname(70) = 'Yb' ! Ytterbium
-      atomname(71) = 'Lu' ! Lutetium
-      atomname(72) = 'Hf' ! Hafnium
-      atomname(73) = 'Ta' ! Tantalum
-      atomname(74) = 'W ' ! Tungsten
-      atomname(75) = 'Re' ! Rhenium
-      atomname(76) = 'Os' ! Osmium
-      atomname(77) = 'Ir' ! Iridium
-      atomname(78) = 'Pt' ! Platinum
-      atomname(79) = 'Au' ! Gold
-      atomname(80) = 'Hg' ! Mercury
-      atomname(81) = 'Tl' ! Thallium
-      atomname(82) = 'Pb' ! Lead
-      atomname(83) = 'Bi' ! Bismuth
-      atomname(84) = 'Po' ! Polonium
-      atomname(85) = 'At' ! Astatine
-      atomname(86) = 'Rn' ! Radon
-      atomname(87) = 'Fr' ! Francium
-      atomname(88) = 'Ra' ! Radium
-      atomname(89) = 'Ac' ! Actinium
-      atomname(90) = 'Th' ! Thorium
-      atomname(91) = 'Pa' ! Protactinium
-      atomname(92) = 'U ' ! Uranium
-      atomname(93) = 'D ' ! Deuterium
-
-      RETURN
-      END
-
-
-      module mie_precision
-      use, intrinsic :: iso_fortran_env ! Requires fortran 2008
-      implicit none
-
-      !!!
-      ! Different sets of single, double and quad precision availible for DIHRT
-      ! Try different sets should one fail to compile/give errors for any reason
-      ! This module should be compiled first in the DIHRT chain and used in every
-      ! module/subroutine when required
-      !!!
-
-      private
-      public :: sp, dp, qp
-
-
-      ! Fortran 2008 intrinsic precisions - reccomonded if possible
-      integer, parameter :: sp = REAL32
-      integer, parameter :: dp = REAL64
-      integer, parameter :: qp = REAL128
-
-      end module mie_precision
-
-      module mie_data
-        
-      use mie_precision,ONLY: sp,dp,qp
-      !use drift_data,ONLY: n_dust => NDUST
-      implicit none
-        
-        
-        
-      ! Constants
-      real(kind=dp), parameter :: pi = 4.0_dp * atan(1.0_dp) 
-      real(kind=dp), parameter :: pi2 = 8.0_dp * atan(1.0_dp)
-      real(kind=dp), parameter :: onethird = 1.0_dp/3.0_dp
-
-      ! Parameters
-      !integer, parameter :: n_wl = 31     ! Number of wavelengths
-      logical, parameter :: Brug = .True. ! Use Bruggeman method? .False. = LLL method
-      integer, parameter :: a_type = 0    ! 0 = mean grain size, 1 = effecitve grain size
-
-
-      end module mie_data
-!      ********************************************************************
-!New Mie routine for cloud opacity calculation (June 2023)
-
-! ******************************************************************
-! MIEX: MIE SCATTERING CODE FOR LARGE GRAINS
-! BCE: Mie code by Sebastian Wolf - see contact below!
-!  _____________________________________________________
-!  Contact information:   swolf@mpia.de (Sebastian Wolf)
-! ==================================================================
-
-      module datatype
-      implicit none
-      integer, parameter, public ::  r1=selected_real_kind(1)  ! real*4
-      integer, parameter, public ::  r2=selected_real_kind(9)  ! real*8 (double precision)
-      end module datatype
-
-
-! ====================================================================================================
-! Collection of subroutines
-! ====================================================================================================
-      module mie_routines
-      private :: aa2
-      public  :: shexqnn2
-      contains
-  ! ==================================================================================================
-  ! Subroutine for calculations of the ratio of derivative to the function for Bessel functions
-  ! of half order with complex argument: J'(n)/J(n). The calculations are given by the recursive
-  ! expression ``from top to bottom'' beginning from n=num.
-  ! *  a=1/x (a=2*pi*a(particle radius)/lambda - size parameter).
-  ! *  ri - complex refractive index.
-  ! *  ru-array of results.
-  ! - this routine is based on the routine 'aa' published by
-  !       N.V.Voshchinnikov: "Optics of Cosmic Dust",
-  !                           Astrophysics and Space Physics Review 12,  1 (2002)
-  ! ==================================================================================================
-      pure subroutine aa2( a, ri, num, ru )
-      use datatype
-
-      implicit none
-
-      ! variables for data exchange.....................................................................
-      real(kind=r2), intent(in)                   :: a
-      complex(kind=r2), intent(in)                :: ri
-      integer, intent(in)                         :: num
-      complex(kind=r2), dimension(:), intent(out) :: ru
-
-      ! local variables.................................................................................
-      integer :: i, i1, j, num1
-      complex(kind=r2) :: s, s1
-      !-------------------------------------------------------------------------------------------------
-      ! initialisierung: not necessary (+ slowes the code down remarkably)
-      ! ru(:) = (0.0, 0.0)
-
-      s       = a / ri
-      ru(num) = real(num+1,kind=r2) * s
-      num1    = num - 1
-      do j=1, num1
-            i     = num - j
-            i1    = i + 1
-            s1    = i1 * s
-            ru(i) = s1 - 1.0_r2 / (ru(i1) + s1)
-      end do
-      end subroutine aa2
-
-
-      !===================================================================================================
-      ! shexqnn2
-      ! --------
-      ! - for a given size parameter 'x' and (complex) refractive index 'ri' the following quantities
-      !   are determined:
-      !   * Qext     - extinction effiency
-      !   * Qsca     - scattering effiency
-      !   * Qabs     - absorption effiency
-      !   * Qbk      - backscattering effiency
-      !   * Qpr      - radiation pressure effiency
-      !   * albedo   - Albedo
-      !   * g        - g scattering assymetry factor
-      !   * SA1, SA2 - scattering amplitude function
-      ! - further input parameters
-      !   * doSA = .true.  ->  calculation of the scattering amplitudes
-      !   * nang ... half number of scattering angles theta in the intervall 0...PI/2
-      !              (equidistantly distributed)
-      ! - this routine is based on the routine 'shexqnn' published by
-      !       N.V.Voshchinnikov: "Optics of Cosmic Dust",
-      !                           Astrophysics and Space Physics Review 12,  1 (2002)
-      !===================================================================================================
-      subroutine shexqnn2( ri, x, Qext, Qsca, Qabs, Qbk, 
-     * Qpr, albedo, g, ier, SA1, SA2, doSA, nang )
-      use datatype
-
-      implicit none
-
-      ! variables for data exchange.....................................................................
-      complex(kind=r2), intent(in)  :: ri
-      real(kind=r2), intent(in)     :: x
-      real(kind=r2), intent(out)    :: Qext, Qsca, Qabs, 
-     > Qbk, Qpr, albedo, g
-      integer, intent(out)          :: ier
-      complex(kind=r2), dimension(:), intent(out) :: SA1, SA2
-      logical, intent(in)           :: doSA
-      integer, intent(in)           :: nang
-
-      ! local variables.................................................................................
-      integer       :: iterm, nterms, num, iu0, 
-     * iu1, iu2, iang2, iang
-      real(kind=r2) :: r_iterm, factor, eps, pi, ax, 
-     * besJ0, besJ1, besJ2, besY0, besY1, besY2, b, an, 
-     * y, ass, w1, qq, fac, an2, P, T, Si, Co, z, xmin
-
-      complex(kind=r2) :: ra0, rb0, ra1, rb1, r, 
-     * ss, s1, s2, s3, s, rr
-
-      real(kind=r2),dimension(0:1)   :: fact
-      real(kind=r2),dimension(:),allocatable,save :: mu, fpi, 
-     *                                     fpi0, fpi1, ftau
-      complex(kind=r2),dimension(:),allocatable,save :: ru
-      !$omp threadprivate(ru,mu,fpi,fpi0,fpi1,ftau)
-      !-------------------------------------------------------------------------------------------------
-      ! Maximum number of terms to be considered
-      nterms = 100000000
-      ! this works for x up to 1.d9, but needs a hell more of memory!!
-      !nterms= 550000000
-
-      ! Accuracy to be achieved
-      eps    = 1.0e-15_r2
-
-      ! Minimum size parameter
-      xmin   = 1.0e-6_r2
-
-      !-------------------------------------------------------------------------------------------------
-      ! initialization
-      if (.not.allocated(ru)) then
-            allocate( ru(1:nterms), mu(1:nang), fpi(1:nang), 
-     >              fpi0(1:nang), fpi1(1:nang), ftau(1:nang))
-      endif
-      ier     = 0
-      Qext    = 0.0_r2
-      Qsca    = 0.0_r2
-      Qabs    = 0.0_r2
-      Qbk     = 0.0_r2
-      Qpr     = 0.0_r2
-      albedo  = 0.0_r2
-      g       = 0.0_r2
-      fact(0) = 1.0_r2
-      fact(1) = 1.0e+250_r2
-      factor  = 1.0e+250_r2
-
-      ! null argument
-      if (x <= xmin) then
-            ier = 1
-            print *, "<!> Error in subroutine shexqnn2:"
-            print *, "    - Mie scattering limit exceeded:"
-            print *, "      current size parameter: ", x
-      else
-            pi = 4.0_r2 * atan(1.0_r2) ! PI = 3.14...
-            ax = 1.0_r2 / x
-            b  = 2.0_r2 * ax**2
-            ss = (0.0_r2, 0.0_r2)
-            s3 = (0.0_r2,-1.0_r2)
-            an = 3.0_r2
-
-            ! define the number for subroutine aa2 [Loskutov (1971)]
-            y   = sqrt( RI * conjg(ri) )  *  x
-            num = 1.25 * y + 15.5
-
-            if      ( y<1.0_r2 ) then
-            num = 7.5 * y + 9.0
-            else if ( (y>100.0_r2) .and. (y<50000.0_r2) ) then
-            num = 1.0625 * y + 28.5
-            else if ( y>=50000.0_r2 ) then
-            num=1.005*y+50.5
-            end if
-
-            if(num > nterms) then
-            ier = 2
-            print *, "<!> Error in subroutine shexqnn2:"
-            print *, "    - Maximum number of terms  : ", nterms
-            print *, "    - Number of terms required : ", num
-      print *, 
-     *  "** Solution: Increase default value of the variable 'nterm' **"
-            else
-            ! logarithmic derivative to Bessel function (complex argument)
-            call aa2(ax,ri,num,ru)
-
-            ! ------------------------------------------------------------------------------------------
-            ! FIRST TERM
-            ! ------------------------------------------------------------------------------------------
-            ! initialize term counter
-            iterm = 1
-
-            ! Bessel functions
-            ass = sqrt( pi / 2.0_r2 * ax )
-            w1  = 2.0_r2/pi * ax
-            Si  = sin(x)/x
-            Co  = cos(x)/x
-
-            ! n=0
-            besJ0 =  Si / ass
-            besY0 = -Co / ass
-            iu0   = 0
-
-            ! n=1
-            besJ1 = ( Si * ax - Co) / ass
-            besY1 = (-Co * ax - Si) / ass
-            iu1   = 0
-            iu2   = 0
-
-            ! Mie coefficients
-            s   = ru(1) / ri + ax
-            s1  = s * besJ1 - besJ0
-            s2  = s * besY1 - besY0
-            ra0 = s1 / (s1 - s3 * s2)   ! coefficient a_1
-
-            s   = ru(1) * ri + ax
-            s1  = s * besJ1 - besJ0
-            s2  = s * besY1 - besY0
-            rb0 = s1 / (s1 - s3 * s2)   ! coefficient b_1
-
-            ! efficiency factors
-            r    = -1.5_r2 * (ra0-rb0)
-            Qext = an * (ra0 + rb0)
-            Qsca = an * (ra0 * conjg(ra0)  +  rb0 * conjg(rb0))
-
-            ! scattering amplitude functions
-            if (doSA) then
-                  do iang=1, nang
-                  mu(iang) = cos( (real(iang,kind=r2)-1.0_r2) * 
-     >             (pi/2.0_r2)/real(nang-1,kind=r2) )
-                  end do
-
-                  fpi0(:) = 0.0_r2
-                  fpi1(:) = 1.0_r2
-                  SA1(:)  = cmplx( 0.0_r2, 0.0_r2 )
-                  SA2(:)  = cmplx( 0.0_r2, 0.0_r2 )
-
-                  r_iterm = real(iterm,kind=r2)  ! double precision
-                  fac     = (2.0*r_iterm + 1.0_r2) / 
-     >             (r_iterm * (r_iterm+1.0_r2))
-
-                  do iang=1, nang
-                  iang2      = 2 * nang - iang
-
-                  fpi(iang)  = fpi1(iang)
-                  ftau(iang) = r_iterm * mu(iang) * fpi(iang)  - 
-     >              (r_iterm+1.0) * fpi0(iang)
-
-                  P          = (-1.0)**(iterm-1)
-                  SA1(iang)  = SA1(iang)   +   fac * 
-     >             (ra0*fpi(iang)  + rb0*ftau(iang))
-
-                  T          = (-1.0)**iterm
-                  SA2(iang)  = SA2(iang)   +   fac * 
-     >             (ra0*ftau(iang) + rb0*fpi(iang) )
-
-                  if  ( iang /= iang2 )  then
-                        SA1(iang2) = SA1(iang2)   +   
-     >                   fac * (ra0*fpi( iang)*P + rb0*ftau(iang)*T)
-                        SA2(iang2) = SA2(iang2)   +   
-     >                   fac * (ra0*ftau(iang)*T + rb0*fpi( iang)*P)
-                  end if
-                  end do
-
-                  iterm   = iterm + 1
-                  r_iterm = real(iterm, kind=r2)
-
-                  do iang=1, nang
-                  fpi1(iang) = ((2.0*r_iterm-1.0) / 
-     >             (r_iterm-1.0))   *   mu(iang)  *  fpi(iang)
-                  fpi1(iang) = fpi1(iang)   -   
-     >             r_iterm * fpi0(iang)/(r_iterm-1.0)
-                  fpi0(iang) = fpi(iang)
-                  end do
-            else
-                  ! start value for the next terms
-                  iterm = 2
-            end if
-
-            ! ------------------------------------------------------------------------------------------
-            ! 2., 3., ... num
-            ! ------------------------------------------------------------------------------------------
-            z = -1.0_r2
-
-            do
-                  an  = an + 2.0_r2
-                  an2 = an - 2.0_r2
-
-                  ! Bessel functions
-                  if(iu1 == iu0) then
-                  besY2 = an2 * ax * besY1 - besY0
-                  else
-                  besY2 = an2 * ax * besY1 - besY0 / factor
-                  end if
-                  if(dabs(besY2) > 1.0e+300_r2) then
-                  besY2 = besY2 / factor
-                  iu2   = iu1 + 1
-                  end if
-                  besJ2 = (w1 + besY2 * besJ1) / besY1
-
-                  ! Mie coefficients
-                  r_iterm = real(iterm,kind=r2)
-
-                  s   = ru(iterm) / ri + r_iterm * ax
-                  if(iu1>1) then
-                  ier=1
-                  return
-                  endif
-                  if(iu2>1) then
-                  ier=1
-                  return
-                  endif
-                  s1  = s * besJ2 / fact(iu2) - 
-     >             besJ1 / fact(iu1) ! Subscript #1 of the array FACT has value 2 which is greater than the upper bound of 1
-                  s2  = s * besY2 * fact(iu2) - 
-     >             besY1 * fact(iu1)
-                  ra1 = s1 / (s1 - s3 * s2)                        ! coefficient a_n, (n=iterm)
-
-                  s   = ru(iterm) * ri + r_iterm * ax
-                  s1  = s * besJ2 / fact(iu2) - 
-     >             besJ1 / fact(iu1)
-                  s2  = s * besY2 * fact(iu2) - 
-     >             besY1 * fact(iu1)
-                  rb1 = s1 / (s1 - s3 * s2)                        ! coefficient b_n, (n=iterm)
-
-                  ! efficiency factors
-                  z  = -z
-                  rr = z * (r_iterm + 0.5_r2) * (ra1 - rb1)
-                  r  = r + rr
-                  ss = ss + (r_iterm - 1.0_r2) * 
-     >             (r_iterm + 1.0_r2) / r_iterm * (ra0 * conjg(ra1)  
-     >                   + rb0 * conjg(rb1)) 
-     >            + an2 / r_iterm / (r_iterm - 1.0_r2) * 
-     >            (ra0 * conjg(rb0))
-                  qq   = an * (ra1 + rb1)
-                  Qext = Qext + qq
-                  Qsca = Qsca + an * (ra1 * conjg(ra1) 
-     >             + rb1 * conjg(rb1))
-
-                  ! leaving-the-loop criterion
-                  if ( dabs(qq / qext) < eps ) then
-                  exit
-                  end if
-
-                  ! Bessel functions
-                  besJ0 = besJ1
-                  besJ1 = besJ2
-                  besY0 = besY1
-                  besY1 = besY2
-                  iu0   = iu1
-                  iu1   = iu2
-                  ra0   = ra1
-                  rb0   = rb1
-
-                  ! scattering amplitude functions
-                  if (doSA) then
-                  r_iterm = real(iterm,kind=r2)
-                  fac      = (2.0 * r_iterm+1.0) / 
-     >             (r_iterm * (r_iterm+1.0))
-
-                  do iang=1, nang
-                        iang2      = 2 * nang - iang
-
-                        fpi(iang)  = fpi1(iang)
-                        ftau(iang) = r_iterm * mu(iang) * fpi(iang) 
-     >                    -  (r_iterm+1.0) * fpi0(iang)
-
-                        P          = (-1.0)**(iterm-1)
-                        SA1(iang)  = SA1(iang)   +   fac * 
-     >                   (ra0*fpi(iang) + rb0*ftau(iang))
-
-                        T          = (-1.0)**iterm
-                        SA2(iang)  = SA2(iang)   +   fac * 
-     >                  (ra0*ftau(iang) + rb0*fpi(iang))
-
-                        if  ( iang /= iang2 ) then
-                        SA1(iang2) = SA1(iang2)   +   
-     >                   fac * (ra0*fpi(iang)*P  + rb0*ftau(iang)*T)
-                        SA2(iang2) = SA2(iang2)   +   
-     >                   fac * (ra0*ftau(iang)*T + rb0*fpi( iang)*P)
-                        end if
-                  end do
-
-                  iterm   = iterm + 1
-                  r_iterm = real(iterm,kind=r2)
-
-                  do iang=1, nang
-                        fpi1(iang) = ((2.0*r_iterm-1.0) / 
-     >                   (r_iterm-1.0))   *   mu(iang)  *  fpi(iang)
-                        fpi1(iang) = fpi1(iang)   -   
-     >                   r_iterm * fpi0(iang)/(r_iterm-1.0)
-                        fpi0(iang) = fpi(iang)
-                  end do
-                  else
-                  iterm = iterm + 1
-                  endif
-
-                  if ( iterm==num ) then
-                  exit
-                  else
-                  cycle
-                  end if
-            end do
-
-            ! efficiency factors (final calculations)
-            Qext   = b * Qext
-            Qsca   = b * Qsca
-            Qbk    = 2.0_r2 * b * r * conjg(r)
-            Qpr    = Qext - 2.0_r2 * b * ss
-            Qabs   = Qext - Qsca
-            albedo = Qsca / Qext
-            g      = (Qext - Qpr) / Qsca
-            end if
-      end if
-      !deallocate( ru, mu, fpi, fpi0, fpi1, ftau )
-      ier=0
-      return
-      end subroutine shexqnn2
-      end module mie_routines
-
-      module mie_opacity
-      use mie_precision
-      use mie_data
-      use mie_routines
-      implicit none
-
-      complex(kind=dp), allocatable, 
-     > dimension(:,:) :: e_inc, N_inc
-      real(kind=dp), parameter :: 
-     > vol2rad = (3.0_dp/(4.0_dp*pi))**(1.0_dp/3.0_dp)
-
-      contains
-
-      subroutine calc_Mie(LL,N_eff,kext_dust,g_dust,
-     > a_dust,kabs_dust,ksca_dust)
-    !! Uses MieX large size parameter routines: Wolf & Voshchinnikov (2004)
-    !! References: Helling et al. (2008), Lee et al. (2015b), Lee et al. (2016)
-      
-      implicit none
-      include 'parameter.inc'
-      
-      real(kind=dp), dimension(4), intent(in) :: LL
-      complex(kind=dp), dimension(nwl), intent(in) ::  N_eff
-      real(kind=dp), dimension(nwl), intent(out) :: 
-     > kext_dust, g_dust, a_dust, kabs_dust, ksca_dust
-      integer, parameter :: rnang = 1
-      integer :: rier, l, nwtot, kos_step
-      real(kind=dp) :: x, rQext, rQsca, rQabs, rQbk, rQpr, 
-     > ralbedo, rg, a, cross_sec_g
-      complex(kind=dp), dimension(rnang) :: rSA1, rSA2
-      complex(kind=dp) :: N_efft
-      logical, parameter :: rdoSA = .False.
-      real(kind=dp) :: wnos, conos, wlos, wlstep
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-
-      
-      ! Use mean (0) or effective (1) cloud particle radius [cm]
-      if (a_type == 0) then
-            a = (LL(2)/LL(1)) * vol2rad
-      else if (a_type == 1) then
-            a = (LL(4)/LL(3)) * vol2rad
-      end if
-
-      ! Cross sectional area * g-1 [cm2 g-1]
-      cross_sec_g = (LL(1))*pi*a**2
-
-      ! Mie Theory Step----------------------------
-      do l = 1, nwtot
-
-            ! Size parameter - limit to 1e-6 and 10000 (micron)(2000 for low memory)
-            x = (pi2*(a*1.0000e+8_dp))/wlos(l)
-            x = max(1.00001e-2_dp, x)
-            x = min(1.0000e+8_dp, x)
-            N_efft = N_eff(l)
-
-            ! Mie theory routine - careful with memory in parallel and large n_wl
-            call shexqnn2(N_efft, x, rQext, rQsca, rQabs, 
-     >      rQbk, rQpr, ralbedo, rg, 
-     >       rier, rSA1, rSA2, rdoSA, rnang)
-
-            kext_dust(l) = cross_sec_g * rQext
-            a_dust(l) = ralbedo
-            g_dust(l) = rg
-            kabs_dust(l) = cross_sec_g * rQabs
-            ksca_dust(l) = cross_sec_g * rQsca
-            !end if
-
-      end do
-
-      end subroutine calc_Mie
-
-      subroutine calc_emt(Vol,N_eff)
-      !! Effective medium theory routines
-      !! Calculates (n,k) constants of mixed material cloud particle
-      !! Uses the Bruggeman method with LLL method backup
-      !! References: Helling et al. (2008), Lee et al. (2015b), Lee et al. (2016)
-      
-      implicit none
-      include 'parameter.inc'
-      integer :: n, l, j, n_dust, nwtot, kos_step
-      integer :: n_lay, n_eps
-      real(kind=dp) :: wnos, conos, wlos, wlstep
-      real(kind=dp), dimension(max_inc),intent(in) :: Vol
-      complex(kind=dp), dimension(nwl) :: e_eff
-      complex(kind=dp), dimension(nwl), intent(out) ::  N_eff
-      complex(kind=dp) :: e_eff0, N_eff0
-      logical :: errflag = .False.
-      logical :: first_call = .True.
-      complex(kind=dp) :: cri_inc
-      complex(kind=dp), allocatable, dimension(:,:) :: e_inc, N_inc
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      real(kind=dp) :: dabstable, dscatable, eps, temp, pgas,
-     * rhod, rho_sw, rho_dtg, z_sw, z_marcs_init, 
-     * z_marcs, pg_read, tt_init, eps_init, eps_new,
-     * r_null, f_eps, f_opac
-
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-
-      common /cdustnew/ cri_inc(max_inc, nwl), n_dust
-
-      ! On first call, allocate local global arrays
-      if (first_call .eqv. .True.) then
-            allocate(e_inc(n_dust, nwtot), N_inc(n_dust, nwtot))
-            do l = 1, nwtot
-            do n = 1, n_dust
-            N_inc(n,l) = cri_inc(n,l)
-            e_inc(n,l) = m2e(N_inc(n,l)) ! N_inc**2
-            end do
-            end do
-
-            first_call = .False.
-      end if
-
-      ! Main wavelength loops
-      
-      do l = 1, nwtot
-            ! Effective Medium Theory (EMT) step
-            N_eff0 = (0.0_dp,0.0_dp)
-            do n = 1, n_dust
-            N_eff0 = N_eff0 + Vol(n) * N_inc(n,l)
-            end do
-
-            ! Try Bruggeman approach
-            if (Brug .eqv. .True.) then
-            ! Call Newton-Raphson minimization
-            call NR(N_inc(1:n_dust,l),Vol(1:n_dust),
-     >       N_eff0,N_eff(l),errflag)
-
-            ! if fails (errflag) use LLL method
-            if (errflag .eqv. .True.) then
-            e_eff0 = (0.0_dp,0.0_dp)
-            do n = 1, n_dust
-                  e_eff0 = e_eff0 + Vol(n)*e_inc(n,l)**(onethird)
-            end do
-            e_eff(l) = e_eff0**3
-            N_eff(l) = e2m(e_eff(l))
-            errflag = .False.
-            end if
-            ! Try LLL method
-            else if (Brug .eqv. .False.) then
-            e_eff0 = (0.0_dp,0.0_dp)
-            do n = 1, n_dust
-                  e_eff0 = e_eff0 + Vol(n)*e_inc(n,l)**(onethird)
-            end do
-            e_eff(l) = e_eff0**3
-            N_eff(l) = e2m(e_eff(l))
-            end if
-
-      end do
-
-
-      end subroutine calc_emt
-
-      ! ------------- Functions for LLL theory ------------- !!
-      pure complex(kind=dp) function e2m(e)
-      
-      implicit none
-      
-      real(kind=dp) :: ereal, eimag, n, k
-      real(kind=dp) :: sqrte2
-      complex(kind=dp), intent(in) :: e
-
-      ereal = real(e,kind=dp)
-      eimag = aimag(e)
-      sqrte2 = sqrt(ereal*ereal + eimag*eimag)
-      n = sqrt(0.5_dp * ( ereal + sqrte2))
-      k = sqrt(0.5_dp * (-ereal + sqrte2))
-      e2m = cmplx(n,k,kind=dp)
-      end function e2m
-
-
-      pure complex(kind=dp) function m2e(m)
-      
-      implicit none
-
-      real(kind=dp) :: ereal, eimag, n, k
-      complex(kind=dp), intent(in) :: m
-
-      n = real(m,kind=dp)
-      k = aimag(m)
-      ereal = n*n - k*k
-      eimag = 2.0_dp * n * k
-      m2e = cmplx(ereal,eimag,kind=dp)
-      end function m2e
-
-      ! -------------------------------------------------------------------------------------------------
-      ! A program for function minimization using the Newton-Raphson method.
-      ! -------------------------------------------------------------------------------------------------
-      pure subroutine NR(M_inc,V_inc,M_eff0,M_eff,unphysical)
-      implicit none
-
-      integer, parameter :: itmax = 30
-      integer :: it
-      real(kind=dp), dimension(:), intent(in)  :: V_inc
-      real(kind=dp), dimension(2,2) :: DF
-      real(kind=dp), dimension(2) ::  Fold, FF, FF1, FF2, FF3, FF4
-      real(kind=dp), dimension(2) :: corr, xx, xnew
-      real(kind=dp) :: qual, de1, de2
-      complex(kind=dp), dimension(:), intent(in) :: M_inc
-      complex(kind=dp), intent(in)  :: M_eff0
-      complex(kind=dp), intent(out) :: M_eff
-      logical, intent(inout) :: unphysical
-
-      M_eff = M_eff0
-
-      do it = 1, itmax
-            xx(1) = real(M_eff,kind=dp)
-            xx(2) = aimag(M_eff)
-            call Bruggeman(M_eff,M_inc,V_inc,FF)
-            qual = FF(1)*FF(1) + FF(2)*FF(2)
-            de1 = xx(1)*1.0e-5_dp
-            de2 = xx(2)*1.0e-5_dp
-            call Bruggeman(M_eff
-     >       +cmplx(de1,0.0_dp,kind=dp),M_inc,V_inc,FF1)
-            call Bruggeman(M_eff
-     >       -cmplx(de1,0.0_dp,kind=dp),M_inc,V_inc,FF2)
-            call Bruggeman(M_eff
-     >       +cmplx(0.0_dp,de2,kind=dp),M_inc,V_inc,FF3)
-            call Bruggeman(M_eff
-     >       -cmplx(0.0_dp,de2,kind=dp),M_inc,V_inc,FF4)
-            DF(1,1) = (FF1(1)-FF2(1)) / (2.0_dp*de1)
-            DF(1,2) = (FF3(1)-FF4(1)) / (2.0_dp*de2)
-            DF(2,1) = (FF1(2)-FF2(2)) / (2.0_dp*de1)
-            DF(2,2) = (FF3(2)-FF4(2)) / (2.0_dp*de2)
-            Fold = FF
-            call gauss(2,2,DF,corr,FF)
-            corr = -corr
-            call eff_pullback(2,xx,corr,Fold,
-     >       xnew,unphysical,M_inc,V_inc)
-            if (unphysical) then
-      !        print*, qual, 'qual'
-            exit
-            end if
-            M_eff = cmplx(xnew(1),xnew(2),kind=dp)
-            if (abs(qual) < 1.0e-13_dp) then
-            exit
-            end if
-      end do
-
-      end subroutine NR
-
-
-      !!! Combine using Bruggeman formula
-      ! define function to be minimized
-      pure subroutine Bruggeman(M_eff,M_inc,V_inc,FF)
-      implicit none
-
-      integer :: i
-      real(kind=dp), dimension(:), intent(in) :: V_inc
-      real(kind=dp), intent(out) :: FF(2)
-      complex(kind=dp), intent(in) :: M_eff
-      complex(kind=dp), dimension(:), intent(in) :: M_inc
-      complex(kind=dp) :: fun, mm2, mmi2
-
-      mm2 = M_eff**2
-      fun = cmplx(0.0_dp,0.0_dp,kind=dp)
-      do i = 1, size(V_inc)
-            mmi2 = M_inc(i)**2
-            fun = fun + V_inc(i)*(mmi2 - mm2)/(mmi2 + 2.0_dp*mm2)
-      end do
-
-      FF(1) = real(fun,kind=dp)
-      FF(2) = aimag(fun)
-
-      end subroutine Bruggeman
-
-      ! Pull Back Eff
-      pure subroutine eff_pullback(N,xx,dx,Fold,
-     > xnew,unphysical,M_inc,V_inc)
-      implicit none
-
-      integer, intent(in) :: N
-      integer, parameter :: itmax = 20
-      integer :: it
-      real(kind=dp), dimension(:),intent(in) :: V_inc
-      real(kind=dp), dimension(N), intent(in) :: xx,Fold
-      real(kind=dp), dimension(N), intent(inout) :: dx
-      real(kind=dp), dimension(N), intent(out) :: xnew
-      real(kind=dp), dimension(2) :: Fnew(2)
-      real(kind=dp) :: fac,qold,qnew
-      complex(kind=dp), dimension(:),intent(in) :: M_inc
-      complex(kind=dp) :: mm
-      logical, intent(out) :: unphysical
-
-      qold = Fold(1)*Fold(1)+Fold(2)*Fold(2)
-      fac = 1.0_dp
-
-      do it = 1, itmax
-            xnew = xx + fac*dx
-
-            if ((xnew(1) > 0.0_dp).and.(xnew(2) > 0.0_dp)) then
-            mm = cmplx(xnew(1),xnew(2),kind=dp)
-            call Bruggeman(mm,M_inc,V_inc,Fnew)
-            qnew = Fnew(1)*Fnew(1)+Fnew(2)*Fnew(2)
-            unphysical = .False.
-            if (qnew < qold) then
-            exit
-            end if
-            else
-            unphysical = .True.
-            endif
-
-            fac = fac*0.7_dp
-      enddo
-
-      end subroutine eff_pullback
-
-      !**********************************************************************
-      pure subroutine gauss(Nd,N,a,x,b)
-      implicit none
-      !**********************************************************************
-      !*****                                                            *****
-      !*****   Diese Routine loesst ein lineares Gleichungssystem       *****
-      !*****   der Form    (( a )) * ( x ) = ( b )     nach x auf.      *****
-      !*****   Der Algorithmus funktioniert, indem die Matrix a         *****
-      !*****   auf Dreiecksform gebracht wird.                          *****
-      !*****                                                            *****
-      !*****   EINGABE:  Nd = Dimension der Vektoren, der Matrix        *****
-      !*****              N = Dimension der Gl-Systems (N<=Nd)          *****
-      !*****              a = (N x N)-Matrix                            *****
-      !*****              b = (N)-Vektor                                *****
-      !*****   AUSGABE:   x = (N)-Vektor                                *****
-      !*****                                                            *****
-      !**********************************************************************
-      !*
-      integer, intent(in) :: Nd, N
-      integer :: i, j, k, kmax
-      real(kind=dp), dimension(Nd,Nd), intent(inout) :: a
-      real(kind=dp), dimension(Nd), intent(inout) :: b
-      real(kind=dp), dimension(Nd), intent(out) :: x
-      real(kind=dp) :: c, amax
-
-      do i = 1, N-1
-      !*       ------------------------------------------
-      !*       ***  MAX-Zeilentausch der i-ten Zeile  ***
-      !*       ------------------------------------------
-            kmax = i
-            amax = abs(a(i,i))
-            do k = i+1, N
-            if (abs(a(k,i)) > amax) then
-            amax = abs(a(k,i))
-            kmax = k
-            endif
-            end do
-
-            if (kmax /= i) then
-            do j = 1, N
-            c = a(i,j)
-            a(i,j) = a(kmax,j)
-            a(kmax,j) = c
-            end do
-            c = b(i)
-            b(i) = b(kmax)
-            b(kmax) = c
-            end if
-      !*
-      !*       ---------------------------------
-      !*       ***  bringe auf Dreiecksform  ***
-      !*       ---------------------------------
-            do k = i+1, N
-            c = a(k,i) / a(i,i)
-            a(k,i) = 0.0_dp
-            do j = i+1, N
-            a(k,j) = a(k,j) - c * a(i,j)
-            end do
-            b(k) = b(k) - c * b(i)
-            end do
-      !*
-      end do
-      !*
-      !*     --------------------------
-      !*     ***  loese nach x auf  ***
-      !*     --------------------------
-      do i = N, 1, -1
-            c = 0.0_dp
-            if (i < N) then
-            do j = i+1, N
-            c = c + a(i,j) * x(j)
-            end do
-            end if
-            x(i) = (b(i) - c) / a(i,i)
-      end do
-
-      end subroutine gauss
-      end module mie_opacity
-
-!-----------------------------------------------------------------------
-! Calculates the dust opacity for each wavelength at each depth layer 
-! by interpolating the dust opacity table. 
-! Using interpolation scheme from petitRadtrans. 
-! BCE 2022
-!-----------------------------------------------------------------------
-      subroutine dust_opac_eps_interp
-
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-
-      ! internal variables)
-      DOUBLE PRECISION:: kappa_abs_0(nwl), 
-     * kappa_abs_1(nwl), kappa_sca_0(nwl),
-     * kappa_sca_1(nwl), abs_r(nwl),
-     * sca_r(nwl), eps_0(max_eps),
-     * eps_1(max_eps), eps_r(max_eps),
-     * rhod_0(max_eps), rhod_1(max_eps)
-      double precision:: kappa_cloud, kappa_cloud_old, 
-     * edepletion, kappa_cloud_diff, epsilon_cloud,
-     * kappa_cloud_abs, kappa_cloud_int
-      dimension edepletion(max_eps, ndp)
-      dimension kappa_cloud_diff(ndp), kappa_cloud_old(ndp)
-      dimension kappa_cloud_abs(ndp)
-      dimension kappa_cloud_int(ndp)
-      dimension pgmarcs(ndp), ptot(ndp)
-      dimension a1(nwl), a2(nwl), s1(nwl), s2(nwl)
-      dimension rho(ndp)
-      dimension icloud_diff(ndp)
-      COMMON /CSTYR/MIHAL,NOCONV
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     * ntau,iter
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      common/ci9/ai(16)
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      common/cabinit/abinit(natms),kelem(natms),nelem
-      common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),dxi,
-     *           f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
-      common/ci1/fl2(5),parco(45),parq(180),shxij(5),tparf(4),
-     *  xiong(16,5),eev,enamn(ndp),sumh(ndp),xkbol,nj(16),iel(16),
-     *  summ(ndp),nel
-      common /cdusteps/ ielnr(max_eps)
-      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
-     * isw(max_eps)
-      common /dpeset/ dpein,dtin, pe_corr(ndp)
-      dimension sum(ndp)
-      dimension pg(ndp),diff(ndp,max_lay),imin(ndp),itemp(12),
-     *      imin2(ndp) 
-      dimension f_abs(nwl), f_sca(nwl)
-      dimension diff_Ps_vals(max_lay), diff_Ts_vals(max_lay)
-      dimension mx_elm(18)
-      data eev/1.602095e-12/,xmh/1.67339e-24/ 
-      data mx_elm /1, 2,6,7,8,10,11,12,13,14,16,19,20,23,26,27,22,17/
-            
-      dust_abs(1:ntau,1:nwtot) = 0.
-      dust_sca(1:ntau,1:nwtot) = 0.
-      
-      if (idustopac==1) then
-      open(unit=976, file='f_cloud.in')
-      read(976,*) f_opac
-      print*, "f is ", f_opac
-      close(976)
-
-      open(unit=389, file='./data/abinit_abmarcs.dat')
-      read(389,*)
-      do n=1, max_eps !dependent on amount of elements in abinit_abmarcs.dat
-        read(389, '(12x,i2,8x,i2,4x,i2)') 
-     >       iabinit(n), iabmarcs(n), isw(n) 
-      
-      end do
-      close(389)  
-      end if
-      do i=1,18
-            abmarcs(i,1:ntau) = abinit(mx_elm(i))
-      end do
-      istruc_len = ntau
-      if (n_lay > 0) then
-      p_min = MINVAL(pgas(1:n_lay))
-      p_max = MAXVAL(pgas(1:n_lay))
-
-      
-      if (idustopac ==1) then
-            pgmarcs(1:istruc_len) = pg_read(1:istruc_len) 
-      else 
-            do k=1,istruc_len
-                  ptot(k)=pp(k)-ppr(k)-ppt(k)+pe_corr(k)   
-            end do
-            pgmarcs(1:istruc_len) = ptot(1:istruc_len)
-      end if
-      icloud_count = 0
-
-      do i_str=1, istruc_len
-        call search_intp_ind(pgas, n_lay, pgmarcs(i_str), 1, m)
-        if (pgmarcs(i_str) <= pgas(m) .and. (m==1)) then
-           
-            dust_abs(i_str, 1:nwtot) = 
-     >      dabstable(m, 1:nwtot)  
-
-            dust_sca(i_str, 1:nwtot) =   
-     >      dscatable(m, 1:nwtot) 
-
-
-            eps_new(1:n_eps, i_str) = 
-     >      eps(1:n_eps, m) 
-
-
-        else if ((pgmarcs(i_str)>= pgas(m)) .and. 
-     >         (pgmarcs(i_str)<= pgas(m+1))) then
-
-            kappa_abs_0(1:nwtot) = dabstable(m, 1:nwtot)
-            kappa_abs_1(1:nwtot) = dabstable(m+1, 1:nwtot)
-
-            kappa_sca_0(1:nwtot) = dscatable(m, 1:nwtot)
-            kappa_sca_1(1:nwtot)= dscatable(m+1, 1:nwtot)
-
-            eps_0(1:n_eps) = eps(1:n_eps, m)
-            eps_1(1:n_eps) = eps(1:n_eps, m+1)
-
-            p0 = pgas(m)
-            p1 = pgas(m+1)
-            pmarcs = pgmarcs(i_str)
-
-            p1_p0 = p1/p0 
-            p1_p = p1/pmarcs
-            p_p0 = pmarcs/p0
-
-            dust_abs(i_str, 1:nwtot) = 
-     >       kappa_abs_0(1:nwtot)**(log10(p1_p)/log10(p1_p0)) * 
-     >       kappa_abs_1(1:nwtot)**(log10(p_p0)/log10(p1_p0))
-
-            dust_sca(i_str, 1:nwtot) =   
-     >       kappa_sca_0(1:nwtot)**(log10(p1_p)/log10(p1_p0)) * 
-     >       kappa_sca_1(1:nwtot)**(log10(p_p0)/log10(p1_p0))
-
-            eps_new(1:n_eps, i_str) = 
-     >       eps_0(1:n_eps)**(log10(p1_p)/log10(p1_p0)) * 
-     >       eps_1(1:n_eps)**(log10(p_p0)/log10(p1_p0))
-
-            else if (pgmarcs(i_str)>pgas(m+1)) then
-            if (icloud_count==0) then
-            ncloud = i_str-1
-            icloud_count = 1
-            end if
-            dust_abs(i_str,1:nwtot) = 0.0
-            dust_sca(i_str,1:nwtot) = 0.0
-            eps_new(1:n_eps, i_str) = -1.0
-
-            end if
-
-        
-      end do
-      else if (n_lay <= 0) then
-      print*, "0 layers in DRIFT - no cloud!"
-      do i_str=1, istruc_len
-            dust_abs(i_str,1:nwtot) = 0.0
-            dust_sca(i_str,1:nwtot) = 0.0
-            eps_new(1:n_eps, i_str) = -1.0
-      end do
-      ncloud = 0
-      !idust =0
-      end if
-
-      do i=1, ntau
-        do m=1, n_eps
-         do n=1, max_eps
-            if (ielnr(m)==isw(n)) then
-              eps_init_el = 10.0**(abinit(iabinit(n))-12.0)
-              if (eps_new(m,i) <0.0) then
-                  eps_new(m,i) = eps_init_el
-                 
-              end if             
-            exit
-            end if   
-          end do
-        end do
-      end do
-
-      do m=1, n_eps
-      epsilon_cloud(m, 1:ntau) = eps_new(m,1:ntau)
-      end do
-      
-      
-      if (idustopac==1) then
-      do i=1, ntau
-      kappa_cloud(i, 1:nwtot) = 0.0
-      do j=1, nwtot
-            kappa_cloud(i,j) = 
-     *       dust_abs(i,j) + dust_sca(i,j)
-     
-      end do
-      end do
-      kappa_cloud_int(1:ntau) = 0.0
-      do i=1, nwtot
-      kappa_cloud_int(1:ntau) = kappa_cloud_int(1:ntau)+
-     *  kappa_cloud(1:ntau, i)*wlstep(i)*1.0e-4
-      end do
-
-      open(unit=880, file='driftmarcs_it.in')
-      read(880,*) it_driftmarcs
-      close(880)
-
-      end if
-      
-
-      call cloud_opac(f_opac)
-
-      do i=1, ntau
-        do m=1, n_eps
-         do n=1, max_eps
-            if (ielnr(m)==isw(n)) then
-              abmarcs(iabmarcs(n),i) = 
-     *         log10(epsilon_cloud(m,i)) + 12.0  
-            exit
-            end if   
-          end do
-        end do
-      end do
-      
-      
-      sum(1:ntau)=0.0
-      xmy(1:ntau)=0.0
-      summ(1:ntau)=0.0
-      sumh(1:ntau)=0.0
-      enamn(1:ntau)=0.0
-      do i=1,16
-        abmarcs(i,1:ntau)=10.**abmarcs(i,1:ntau)
-        sum(1:ntau)=sum(1:ntau)+abmarcs(I,1:ntau)
-      end do
-      abmarcs(17,1:ntau)=10.**abmarcs(17,1:ntau)
-      abmarcs(18,1:ntau)=10.**abmarcs(18,1:ntau)
-      aha=abmarcs(1,1)
-      do i=1,16
-        abmarcs(i,1:ntau)=abmarcs(i,1:ntau)/aha
-        summ(1:ntau)=summ(1:ntau)+abmarcs(i,1:ntau)
-        xmy(1:ntau)=xmy(1:ntau)+abmarcs(i,1:ntau)*ai(i)
-      end do
-      abmarcs(17,1:ntau)=abmarcs(17,1:ntau)/aha
-      abmarcs(18,1:ntau)=abmarcs(18,1:ntau)/aha
-      xmy(1:ntau)=xmy(1:ntau)/ai(1)
-      sumh(1:ntau)=sum(1:ntau)/aha-1.
-      summ(1:ntau)=summ(1:ntau)-abmarcs(1,1:ntau)-abmarcs(3,1:ntau)-
-     *  abmarcs(4,1:ntau)-abmarcs(5,1:ntau)
-     
-      enamn(1:ntau) = eev/(xmh*xmy(1:ntau))
-      
-      idustopac = 0
-
-      do i=1, ntau
-      kappa_cloud(i, 1:nwtot) = 0.0
-      do j=1, nwtot
-            kappa_cloud(i,j) =  
-     *       dust_abs(i,j) + dust_sca(i,j)
-      end do
-      end do
-      kappa_cloud_int(1:ntau) = 0.0
-      do i=1, nwtot
-      kappa_cloud_int(1:ntau) = kappa_cloud_int(1:ntau)+
-     *  kappa_cloud(1:ntau, i)*wlstep(i)*1.0e-4
-      end do
-      open(unit=0307, file='kappa_cloud_lay.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      write(0307, *) kappa_cloud_int(i)
-      end do
-      close(0307)
-
-      open(unit=0407, file='dust_abs.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      write(0407, *) dust_abs(i, 1:nwtot)
-      end do
-      close(0407)
-      open(unit=0507, file='dust_sca.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      write(0507, *) dust_sca(i, 1:nwtot)
-      end do
-      close(0507)
-      open(unit=0707, file='epsilon_cloud.dat', status='replace',
-     * position='append', action='write' )
-      do m=1, n_eps
-      write(0707, *) ielnr(m), epsilon_cloud(m,1:ntau)
-      end do
-      close(0707)    
-
-      if (it_driftmarcs>1) then
-      print*, 'Checking for opacity differences.'
-      
-      open(0302,file='kappa_cloud_lay_old.dat',
-     &  status='old',readonly)
-      do i=1, ntau
-            read(0302,*) kappa_cloud_old(i)
-      end do
-      close(0302)
-      do i=1, ncloud
-      
-       if (kappa_cloud_int(i)>0.0) then
-       mag1 = nint(log10(kappa_cloud_int(i)))
-       else
-       mag1 = 0
-       end if
-      if (kappa_cloud_old(i)>0.0) then
-      mag2 = nint(log10(kappa_cloud_old(i)))
-      else
-      mag2=0
-      end if
-      
-      if (kappa_cloud_old(i)<=1.0e-20)  then
-        if (mag1 == mag2 .or. mag1 == mag2-1 .or. 
-     *   mag1 == mag2+1) then
-          kappa_cloud_diff(i) = 0.0
-          icloud_diff(i) = 0
-        else
-          if(kappa_cloud_old(i)==0.0) then
-            kappa_cloud_old(i)=1.0e-30
-            kappa_cloud_diff(i) = 
-     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
-     * kappa_cloud_old(i)
-          else
-          kappa_cloud_diff(i) = 
-     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
-     * kappa_cloud_old(i)
-          end if
-        end if 
-      else 
-      kappa_cloud_diff(i) = 
-     * ((kappa_cloud_old(i) - kappa_cloud_int(i)))/
-     * kappa_cloud_old(i)
-      end if
-
-      end do
-      
-      do i=1, ntau
-      kappa_cloud_abs(i) = abs(kappa_cloud_diff(i))
-      end do
-
-      index_kappa = maxloc(kappa_cloud_abs(1:ntau), dim=1)
-      print*, "Max cloud opacity difference was ", 
-     * kappa_cloud_diff(index_kappa)
-      open(unit=990, file='kappa_diff.dat', status='replace')
-      write(990,*) kappa_cloud_diff(index_kappa)
-      close(990)
-      end if
-      return
-      end
-!-----------------------------------------------------------------------
-      subroutine cloud_opac(f_dust)
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      integer:: i, ielnr, n_eps, ntau, nwtot
-      real*8 :: kappa_cloud, epsilon_cloud,f_dust
-      real*8 :: epsilon_cloud_old, 
-     * dust_abs, dust_sca
-
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     & ntau,iter
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-
-      
-      open(0207,file='dust_abs_old.dat',
-     &  status='old',readonly)
-      do i=1, ntau
-            read(0207,*) dust_abs_old(i, 1:nwtot)
-      end do
-      close(0207)
-      open(0107,file='dust_sca_old.dat',
-     &  status='old',readonly)
-      do i=1, ntau
-            read(0107,*) dust_sca_old(i, 1:nwtot)
-      end do
-      close(0107)
-
-      open(0507,file='epsilon_cloud_old.dat',
-     &  status='old',readonly)
-      do i=1, n_eps
-            read(0507,*) ielnr, epsilon_cloud_old(i, 1:ntau)
-      end do
-      close(0507)
-      do i=1, ntau
-
-      dust_abs(i, 1:nwtot) = 
-     *   f_dust* dust_abs(i, 1:nwtot) + 
-     *   (1.0-f_dust)*dust_abs_old(i,1:nwtot)
-
-      dust_sca(i, 1:nwtot) = 
-     *   f_dust* dust_sca(i, 1:nwtot) + 
-     *   (1.0-f_dust)*dust_sca_old(i,1:nwtot)
-      end do
-      
-      do i=1, n_eps
-      epsilon_cloud(i, 1:ntau) = 
-     *       f_dust*epsilon_cloud(i,1:ntau) +
-     *       (1.0-f_dust)*epsilon_cloud_old(i, 1:ntau)
-      end do
-
-      return
-      end 
-!-----------------------------------------------------------------------
-      subroutine search_intp_ind(binbord,binbordlen,arr,arrlen,intpint)
-
-      implicit none
-
-      INTEGER            :: binbordlen, arrlen, intpint(arrlen)
-      DOUBLE PRECISION   :: binbord(binbordlen),arr(arrlen)
-      INTEGER            :: i_arr
-      INTEGER            :: pivot, k0, km
-
-      ! carry out a binary search for the interpolation bin borders
-
-      do i_arr = 1, arrlen
-
-      if (arr(i_arr) >= binbord(binbordlen)) then
-            intpint(i_arr) = binbordlen - 1
-      else if (arr(i_arr) <= binbord(1)) then
-            intpint(i_arr) = 1
-      else
-
-            k0 = 1
-            km = binbordlen
-            pivot = (km+k0)/2
-
-            do while(km-k0>1)
-
-            if (arr(i_arr) >= binbord(pivot)) then
-                  k0 = pivot
-                  pivot = (km+k0)/2
-            else
-                  km = pivot
-                  pivot = (km+k0)/2
-            end if
-
-            end do
-
-            intpint(i_arr) = k0
-
-      end if
-
-      end do
-      return
-      end
-
-
-!-----------------------------------------------------------------------
-! Writes a MARCS output file to be read by DRIFT
-! Juncher 2015
-!-----------------------------------------------------------------------
-      subroutine marcs2drift
-      
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      character flag(ndp)
-      dimension pg(ndp),surfgrav(ndp),v(ndp),emu(ndp),rad(ndp)
-      dimension flip_rad(ndp), abundances(ndp,100), pg2(ndp)
-      dimension kappa_cloud_int(ndp)
-      real*8 :: kappa_cloud, kappa_cloud_int
-      common /tauc/tau(ndp),dtauln(ndp),jtau
-      common /cg/grav,konsg /cteff/teff,flux
-      common /masse/relm
-      common /mixc/palfa,pbeta,pny,py /cvfix/vfix
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     & vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     & ntau,iter
-      common /cstyr/mihal,noconv
-      common /rossc/xkapr(ndp),cross(ndp)
-      common /cabinit/abinit(natms),kelem(natms),nelem
-      common /tsuji/ nattsuji,nmotsuji,parptsuji(500)
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      common /cmolrat/ fold(ndp,8),molold,kl
-      common /cmetpe/ ppel(ndp), metpe
-      common /cdustopac/ dust_abs(ndp,nwl), dust_sca(ndp,nwl),
-     *      dust_abs_old(ndp,nwl), dust_sca_old(ndp,nwl),
-     *      kappa_cloud(ndp,nwl),epsilon_cloud(max_eps,ndp),
-     *      epsilon_cloud_old(max_eps,ndp)
-      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
-     * isw(max_eps)
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      open(unit=389, file='./data/abinit_abmarcs.dat')
-      read(389,*)
-      do n=1, max_eps !dependent on amount of elements in abinit_abmarcs.dat
-        read(389, '(12x,i2,8x,i2,4x,i2)') 
-     >       iabinit(n), iabmarcs(n), isw(n) 
-      
-      end do
-      close(389)
-
-      open(unit=2873, file='nlay_nwtot.in', status="replace", 
-     *       position="append", action="write")
-      write(2873,*) ntau
-      write(2873,*) nwtot
-      close(2873)
-
-
-      sun_rad = 6.96342e10   ! cm
-      
-! Radius
-      relr = sqrt(relm/grav*10**(4.44))
-
-      flip_rad(1:ntau) = 0.
-      do k=1,ntau
-        kl = k
-        furem = fure
-        fure = 1./(xkapr(k)*ro(k))
-        if(k .eq. 1) cycle
-        flip_rad(k) = flip_rad(k-1) + (tau(k)-tau(k-1))*(fure+furem)*0.5
-      end do
-      rad(1:ntau) = 0.
-      do k=1,ntau
-        rad(k) = flip_rad(ntau-k+1)+relr*sun_rad
-      end do
-      
-! Gas pressure
-      do k=1,ntau
-        kl = k
-      if(metpe.eq.1) then
-        call jon(tt(k),ppe(k),1,pgx,rox,dumx,0)
-      else if(metpe.eq.2) then
-        pgx =  pp(k)-ppr(k)-ppt(k)
-        !call jon(tt(k),ppel(k),1,pgx,rox,dumx,0)
-      end if
-        pg(k) = PGx
-      end do
-
-! Surface gravity
-      do k=1,ntau
-        surfgrav(k) = (relr*sun_rad/rad(k))*grav
-      end do 
-
-! Convective velocity
-      do k=1,ntau
-        if(k .gt. 1) go to 13
-        v(k) = 0.
-        go to 15
-        
-13      if(k .eq. ntau) go to 14
-        ya=(tau(k)-tau(k-1))/(tau(k+1)-tau(k-1))
-        yb=1.-ya
-        v(k)=ya*vv(k+1)+yb*vv(k)
-        if(vv(k).gt.0..and.vv(k+1).gt.0.) v(k)=
-     &    exp(ya*log(vv(k+1))+yb*log(vv(k)))
-        go to 15
-        
-14      continue
-        ya=(2.*tau(k)-tau(k-1)-tau(k-2))/(tau(k)-tau(k-2))
-        yb=1.-ya
-        v(k)=ya*vv(k)+yb*vv(k-1)
-15      continue
-      end do
-
-! Convection flag
-      do k=1,ntau
-        if(v(k) .eq. 0.) then
-          flag(k) = 'F'
-        else
-          flag(k) = 'T'
-        end if
-      end do   
-      
-! Mean molecular mass
-      do k=1,ntau
-        kl = k
-        emu(k) = (1.38*ro(k)*tt(k))/(1.67e-8*pg(k))
-
-      end do  
-      
-! Save to file
-      open(unit=33, file='marcs2drift.dat')
-      
-      write(33,'(a2)') ' !'
-      write(33,'(a43)')' ! MARCS output file to be read in by DRIFT'
-      if(idust .eq. 0) then
-        write(33,'(a2)') ' ! Dust not included'
-      else
-        write(33,'(a2)') ' ! Dust included'
-      end if
-      write(33,'(a2)') ' !'
-      write(33,'(a32,a19)') ' ! Model parameters: Teff, logg,',
-     *  ' mixing, overshoot:'
-      write(33,'(f12.3,f13.3,f13.3,f13.3)') teff, log10(grav), 
-     *  palfa, 2.200
-      write(33,'(a2)') ' !'
-      write(33,'(a31)') ' ! Number of atmosphere layers:'
-      write(33,'(i5)') ntau
-      write(33,'(a2)') ' !'
-      write(33,'(a42)') ' ! Number of elements in abundances table:'
-      write(33,'(i5)') nelem
-      write(33,'(a2)') ' !'
-      write(33,'(a32)') ' ! Z of the considered elements:'
-      do i=1,nelem,8
-        if(i .gt. nelem-8) then
-          write(33,'(8(i5.2,1x))') (kelem(j), j=i,nelem)
-        else
-          write(33,'(8(i5,1x))') (kelem(j), j=i,i+7)
-        end if
-      end do      
-      write(33,'(a2)') ' !'
-      write(33,'(a5,6a16,a6,a16)') ' !  #', 'Rad [cm]', 
-     *  'Temp [K]', 'Pgas [dyn cm-2]', 'Ro [g cm-3]', 'g [cm s-2]',
-     *  'v_conv [cm s-1]', 'Flag', 'mu [amu]'
-      do k=1,ntau
-        write(33,'(i5,6e16.8,a6,e16.8)') k, rad(k), tt(k), pg(k),
-     *  ro(k), surfgrav(k), v(k), flag(k), emu(k)
-      end do
-      write(33,'(a2)') ' !'
-      write(33,'(a41)') ' ! Initial Element abundances for each Z:'
-      do i=1,nelem-1,8
-        if(i .gt. nelem-9) then
-          write(33,'(8f6.2)') (abinit(j), j=i,nelem-1)
-        else
-          write(33,'(8f6.2)') (abinit(j), j=i,i+7)
-        end if
-      end do
-      close(33)
-      if (idust == 0) then
-      open(unit=0307, file='kappa_cloud_lay.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      kappa_cloud_int(i) = 0.0
-      write(0307, *) kappa_cloud_int(i)
-      end do
-      close(0307)
-
-      open(unit=0407, file='dust_abs.dat', status="replace", 
-     *       position="append", action="write")
-
-      
-      do i=1, ntau
-      dust_abs(i, 1:nwtot) = 0.0
-      write(0407, *) dust_abs(i, 1:nwtot)
-      end do
-      close(0407)
-      open(unit=0507, file='dust_sca.dat', status="replace", 
-     *       position="append", action="write")
-
-      do i=1, ntau
-      dust_sca(i, 1:nwtot) = 0.0
-      write(0507, *) dust_sca(i, 1:nwtot)
-      end do
-      close(0507)
-
-      do m=1, max_eps
-              eps_init_el = 10.0**(abinit(iabinit(m))-12.0)
-              epsilon_cloud(m,1:ntau) = eps_init_el            
-      end do
-
-
-      open(unit=0707, file='epsilon_cloud.dat', status='replace',
-     * position='append', action='write' )
-      do m=1, max_eps
-      write(0707, *) isw(m), epsilon_cloud(m,1:ntau)
-      end do
-      close(0707)    
-      end if
-      return 
-      end
-
-    
-
 ************************************************************************
 c routine that calls GGChem
 c updated jan 2021
@@ -16342,8 +13655,7 @@ c and total molecular pressure.
      >                ,idmarcspart(75),idggchempart(75)     
      >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
+
       common/ci5/abmarcs(18,ndp),anjon(18,5),h(5),part(18,5),dxi,
      *           f1,f2,f3,f4,f5,xkhm,xmh,xmy(ndp)
       common/ci1/fl2(5),parco(45),parq(180),shxij(5),tparf(4),
@@ -16357,36 +13669,12 @@ c and total molecular pressure.
       common /molupdate/ molnames_new, 
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp_sw(max_lay),pgas_sw(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdusteps/ ielnr(max_eps)
-      common /cdustindex/ iabinit(max_eps), iabmarcs(max_eps), 
-     * isw(max_eps)
-      
       bar=1.Q+6
       do n=1, 48
             abundforgg(n) = abinit(n)
       end do
       
       
-      if (idust ==1) then
-      do m=1, n_eps
-         do n=1, max_eps
-            if (ielnr(m)==isw(n)) then
-            abundforgg(iabinit(n)) = 
-     >       log10(abmarcs(iabmarcs(n), k))+12.
-             
-              exit
-            end if
-          end do
-      end do
-      end if
-
       open(unit=546, file='abund_drift.in', status='replace')
       do n=1, 48
             if (n <36  .or. n==44 ) then
@@ -16715,260 +14003,6 @@ C       enddo
       return
       end
 
-!-----------------------------------------------------------------------
-! Reads in the dust data from the DRIFT output file and makes a table
-! of dust opacities
-! Juncher 2015
-! BCE 2023 updats to use new mie routine
-!-----------------------------------------------------------------------
-      subroutine drift2marcs
-      use mie_precision,only: sp,dp,qp
-      use mie_data
-      use mie_opacity
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      real*8    :: L0(max_lay), L1(max_lay), 
-     * L2(max_lay), L3(max_lay), object
-      !real*8, parameter :: pi = 3.14159265
-      character (len=50) :: dust_names, dust_files
-      character (len=50) :: find_dust, dname
-      character(99) get_path
-      character(:), allocatable :: path
-      complex(kind=dp) :: cri_inc
-      logical   :: first
-      complex(kind=dp), dimension(nwl) :: N_eff
-      real(kind=dp), dimension(4) :: LL
-      real(kind=dp),dimension(nwl) :: k_ext_lay, g_lay, a_lay,
-     > kabs_dust, ksca_dust
-
-      dimension :: V_inc(max_inc,max_lay),
-     *             a(max_lay)
-      dimension :: tt_read(ndp),rad_read(ndp),
-     *  ro_read(ndp), surfgrav_read(ndp), v_read(ndp), 
-     *  flag_read(ndp), emu_read(ndp)
-
-
-      dimension :: wn(2000),p(2),step(2),var(2)
-      common /statec/ppr(ndp),ppt(ndp),pp(ndp),gg(ndp),zz(ndp),dd(ndp),
-     * vv(ndp),ffc(ndp),ppe(ndp),tt(ndp),tauln(ndp),ro(ndp),
-     * ntau,iter
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      common /cdustdata/ dabstable(max_lay,nwl),dscatable(max_lay,nwl),
-     *    eps(max_eps,max_lay),temp(max_lay),pgas(max_lay), 
-     *    rhod(max_lay), rho_sw(max_lay), rho_dtg(ndp),
-     *    z_sw(max_lay),z_marcs_init(ndp), 
-     *    z_marcs(ndp), pg_read(ndp), tt_init(ndp),
-     *    eps_init(max_eps, ndp),  eps_new(max_eps, ndp), 
-     *      r_null,f_eps,f_opac, n_lay, n_eps
-      common /cdustdata2/ dust_names(max_inc), dust_files(max_inc)
-      common /cdusteps/ ielnr(max_eps)
-      common /cdrift/ idust, ieps, idustopac, icloud_conv
-      common /cdustnew/ cri_inc(max_inc,nwl), n_dust
-
-! Read in dust data from DRIFT
-      open(110,file='./out_default/drift2marcs.dat',
-     &  status='old',readonly)
-      do i=1,50
-        read(110,'(A)') find_dust
-        if (find_dust(5:17) == ' dust species') then
-            read (find_dust(:4),'(i4)') n_dust
-            exit
-        end if
-      end do
-      print*, "Number of dust species: ", n_dust
-      if(n_dust .gt. max_inc) then
-        print *, 'Error: increase max_inc.'
-        stop
-      end if
-      do i=1,n_dust
-        read(110,*) dust_names(i)
-      end do
-      read(110,'(i4)') n_eps
-      if (n_eps>max_eps) then 
-      print*, 'Error: increase max_eps'
-      stop
-      end if
-      print*, "Number of affected elements by cloud formation: ", n_eps
-      do i=1,n_eps
-        read(110,*) ielnr(i)
-      end do
-      read(110,*)
-      read(110,*)
-      i = 1
-      do
-        read(110,'(8e20.12,99e20.12)',iostat=io) 
-     *    z_sw(i),temp(i),rho_sw(i),pgas(i),L0(i),L1(i),
-     *    L2(i), L3(i), rhod(i), V_inc(1:n_dust,i),
-     *    eps(1:n_eps,i)
-        if(io .lt. 0) exit
-        if(L0(i) .le. 0.) then
-            exit
-        else
-          a(i) = (3./4./pi)**(1./3.)*L1(i)/L0(i) 
-        end if
-        i = i + 1
-      end do
-      close(110)
-      n_lay = i-1
-      print*, "DRIFT layers #", n_lay
-      open(unit=189, file='dust_file.dat', readonly)
-      do n=1, max_inc
-            read(189,'(A)') dname
-            n_on = 0
-            do i=1, n_dust
-              if (trim(dname)== dust_names(i)) then
-                  read(189, '(A)') get_path
-                  path= trim(get_path)
-                  dust_files(i) = path
-                  n_on =1
-                  exit
-              end if
-            end do
-            if (n_on == 0) read(189, *) 
-      end do
-      close(189)
-
-      open(unit=33, file='marcs2drift.dat')
-      do i=1,22
-            read(33,*)
-      end do
-      do k=1,ntau
-        
-        read(33,'(i5,6e16.8,a6,e16.8)') k_read, rad_read(k), 
-     *  tt_read(k), pg_read(k), ro_read(k),
-     *  surfgrav_read(k), v_read(k), flag_read(k), emu_read(k)
-      if (k==1) r_null = rad_read(k)
-      
-      end do
-      close(33)
-      if(n_lay .gt. max_lay) then
-        print *, 'Warning: only used the first 1000 layers from DRIFT.'
-      end if
-      
-! Read in optical constants
-      
-      call optical_data(n_dust, cri_inc)
-
-! Make opacity table
-      do j=1,n_lay
-      !calculate effective medium theory
-      call calc_emt(V_inc(:,j), N_eff)
-      LL(1) = L0(j)
-      LL(2) = L1(j)
-      LL(3) = L2(j)
-      LL(4) = L3(j)
-      call calc_Mie(LL,N_eff,k_ext_lay,g_lay,
-     > a_lay, kabs_dust, ksca_dust)
-      dabstable(j, :) = kabs_dust
-      dscatable(j, :) = ksca_dust
-      end do
-     
-
-      return
-      end
-
-      !-----------------------------------------------------------------------
-! Reads in optical data for solids
-! Juncher 2015
-! BCE 2023 updated for different interpolation/extrapolation
-!-----------------------------------------------------------------------
-      subroutine optical_data(n_dust, cri_inc)
-      use mie_precision,ONLY: sp,dp,qp
-      implicit real*8 (a-h,o-z)
-      include 'parameter.inc'
-      integer :: i, j, k, io, u, nlines, counter, n_dust, n_lines
-      real*8, allocatable, dimension(:) :: wl_work, n_work, k_work
-      real*8  :: a, b, nkdata(3,3000)
-      real*8  :: ndata(max_inc,nwl), kdata(max_inc,nwl)
-      complex(kind=dp) :: cri_inc(max_inc, nwl)
-      character :: filename(16)*50
-      character(len=200) :: info
-      logical :: conducting,ex
-      character (len=50) :: dust_names, dust_files
-      common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
-     *    kos_step,nwtot
-      common /cdustdata2/ dust_names(max_inc), dust_files(max_inc)
-      !common /cdustnew/ cri_inc(max_inc,nwl), n_dust
-      
-      do i=1, n_dust
-        u = 6785
-        open(unit=u,file=dust_files(i))
-        
-        read(u,*) n_lines, conducting
-        read(u,*) ; read(u,'(A200)') info; 
-     *  read(u,*) ; read(u,*)
-        allocate(wl_work(n_lines),n_work(n_lines),k_work(n_lines))
-
-        do l = 1, n_lines
-            read(u,*) wl_work(l),n_work(l),k_work(l)
-            n_work(l) = max(0.0D+0, n_work(l))
-            k_work(l) = max(0.0D+0, k_work(l))
-            if (dust_names(i) == 'CaSiO3[s]') then
-            n_work(l) = 1.0
-            k_work(l) = 0.0
-            end if
-        enddo
-        close(u)
-
-        wl_work(:) = wl_work(:)*1.0e+4
-        do l = 1, nwtot
-            ! If required wavelength is less than available data - keep constant
-         if (wlos(l) < wl_work(1)) then
-            ndata(i,l) = n_work(1)
-            kdata(i,l) = k_work(1)
-            ! If required wavelength is greater than available data - extrapolate
-            ! Non conducting: n is constant - k is linear decreasing
-            ! Conducting: n and k are log-log extrapolated
-         else if (wlos(l) > wl_work(n_lines)) then
-            if (conducting .eqv. .False.) then
-                ndata(i,l) = n_work(n_lines)
-                kdata(i,l) = k_work(n_lines)*wl_work(n_lines)/wlos(l)
-            else if (conducting .eqv. .True.) then
-                do l1 = n_lines,1,-1
-                  if (wl_work(l1) < 0.7D+0*wl_work(n_lines)) then  ! data can be noisy, so
-                    exit                                           ! it's safer to use larger
-                  endif                                            ! region to get the slope
-                enddo
-                fac = log(wlos(l)/wl_work(n_lines))/
-     *           log(wl_work(l1)/wl_work(n_lines))
-                ndata(i,l) = exp(log(n_work(n_lines)) 
-     &            + fac*log(n_work(l1)/n_work(n_lines)))
-                kdata(i,l) = exp(log(k_work(n_lines)) 
-     &            + fac*log(k_work(l1)/k_work(n_lines)))
-            endif
-              ! Data is availible in the required wavelength range - log-log interpolation
-              
-       else
-              ! Loop across work arrays untill straddle point is point then interpolate
-            do l1 = 1, n_lines - 1
-              if (wlos(l) >= wl_work(l1) .and. 
-     *         wlos(l) <= wl_work(l1+1)) then
-                  fac = log(wlos(l)/wl_work(l1))/
-     *             log(wl_work(l1+1)/wl_work(l1))
-                  ndata(i,l) = exp(log(n_work(l1)) 
-     *             + fac*log(n_work(l1+1)/n_work(l1)))
-                  if (k_work(l1) <= 0.0D+0 .or. 
-     *             k_work(l1+1) <= 0.0) then
-                    kdata(i,l) = 0.0D+0
-                  else
-                    kdata(i,l) = exp(log(k_work(l1)) 
-     *                      + fac*log(k_work(l1+1)/k_work(l1)))
-                  endif
-                  exit
-              endif
-            enddo
-       endif
-      enddo
-      deallocate(wl_work,n_work, k_work)
-      
-      end do
-      do i=1,nwtot
-        cri_inc(1:n_dust,i) = 
-     >   dcmplx(ndata(1:n_dust,i),kdata(1:n_dust,i))
-      end do
-      
-      end
 !--------------------------------------------
       subroutine krome_solve(ntau,T,ptot)
 !--------------------------------------------
@@ -17064,7 +14098,7 @@ C      implicit none
      >                ,atnames(22),molnames(543),molnames2(75)
       common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
-      common /noneq_output/ krome_output,krome_debug,krome_return
+      common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
@@ -17205,9 +14239,6 @@ C     --- of reading a different build's species list/order.
          call krome_set_photobinE_log(photo_bins_low,photo_bins_high)
          
        if (krome_debug.eq.1) then
-         open(unit=5656,file='krome_bins_mid.dat')
-         open(unit=5959,file='krome_bins_delta.dat')
-         open(unit=4242,file='krome_bins_photoJ.dat')
          open(unit=3535,file='krome_bins_rates.dat')
        endif
       endif
@@ -17325,13 +14356,7 @@ C entirely -- there is nothing to reset because nothing is written early.
           write(3535,'(A3,I3,A4,I3)') 'it=',it,' k=',k
           call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))
          endif
-         if (krome_debug.eq.1) then
-          if (k.eq.1) then !only print values for first layer
-           write(4242,*) krome_get_photoBinJ()
-           write(5656,*) krome_get_photobinE_mid()
-           write(5959,*) krome_get_photobinE_delta()   
-          endif
-         endif 
+         
         endif
 
         num_den_pre(:) = num_den(k,:)  ! snapshot before KROME for tau_chem
@@ -17464,7 +14489,6 @@ C close/implicit-reopen cycle.
        if (it.eq.itmax) close(3535)
       endif
       !final output
-      if (krome_output.eq.1) then
         open(unit=77,file='krome_final_output.dat')
         write(77,'(A6,A9,A16)',Advance = 'No') 'Layer ','Time [s] '
      >,'Temperature [K] '
@@ -17476,7 +14500,6 @@ C close/implicit-reopen cycle.
           write(77,'(I3,3(999E17.8e3))') k,time,T(k),
      >    num_den(k,:)
         enddo
-      endif
 
 C Returning the krome values to MARCS
       if (krome_return == 1) then
@@ -17497,19 +14520,17 @@ C Returning the krome values to MARCS
       endif
 
       if (krome_photo_on.eq.1) then
-       if (krome_output.eq.1) then
         !if ((ITSTOP.eq..True.).or.(it.eq.ITMAX)) then !write out all of fluxrad at the end of the iteration
          open(unit=7070,file='krome_flux_rad.dat')
          write(7070,'(A6,A17,A15,A24)') 'Layer ','Wavelength Index '
-     >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'       
+     >          ,'Wavelength [A] ','Fluxrad [eV/s/hz/cm2/sr]'
          do k=1,ntau
           do j=1,nwreal
               write(7070,'(I3,2(999E17.8e3))') k,WLOS(j)
      >         ,FLUX_RAD(k,j)
          enddo
         enddo
-        close(7070) 
-        endif
+        close(7070)
        !endif
       endif
       return      

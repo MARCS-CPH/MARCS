@@ -61,7 +61,10 @@ cp ${in_dir}krome_flux_rad.dat $TMPDIR/
 cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
 cp -r $CWD/krome/ $TMPDIR/
 cp -r GGchem $TMPDIR/
-cd $TMPDIR 
+# GGCHEM (marcs.f) opens this with no path prefix, so it must be staged
+# at $TMPDIR's top level too, not just inside the copied GGchem/ subdir
+cp GGchem/marcs2ggchem_template.in $TMPDIR/
+cd $TMPDIR
 #pwd
 
 ### COPY INPUTFILES BEFORE RUN ###
