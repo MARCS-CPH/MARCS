@@ -36,12 +36,6 @@ C      STEFF=5770
 !     002=> full pf, Bashek et al.
 !     003=> full pf, Fischel et al., all possible ionisation states
 !  
-! JUMP can be:
-!     1-3 => subroutine MOL doesnt work => no presmo
-!     1 => Tsuji-routines, partryck for molecules, xmettryck for atoms
-!     2 => JFF routines after same principle as Tsuji jump=1 routines
-!     3 => JFF Gibbs minimising routines => GEM-package
-!     4 => ERC added GGCHEM code: Equilibrium chemistry down to 100 K
 !-----------------------------------------------------------------------
       program scmarcs
       
@@ -932,21 +926,7 @@ C        THIS IS CERTAINLY QUITE UNIMPORTANT FOR MOST MODELS.
 
       if(k.eq.1 .or. k.eq.jtau) write(6,2001) k,t(k),pe(k),ppel(k)
 2001  format(' in archiv; k,t,pe,ppel = ',i3,f8.3,2e12.3)
-****************18.12.04 Ch.H
-*
-* if JUMP >= 1 routine MOL dosn't work => no presmo
-*    JUMP=1: Tsuji-routins are working instaed of MOL => partryck for molecules
-*                                                xmettryck fot atoms
-*    JUMP=2: JFF routines after same principle as Tsuji jump=1 routines
-*    JUMP=3: JFF Gibs minimerings routines => call gem_package
-*    JUMP=4: Added GGchem code by ERC
-* ==>> more explanations in routine JON !!!
-*
-******
-
-C This following piece doesn't really make sense if JUMP .ne.0 !!!
-C -- but on the other hand probably it doesn't make harm, but be careful with the 
-C  meaning of presmp  -- study later!!! (UGJ 25/1/01):
+C be careful with the meaning of presmp -- study later!!! (UGJ 25/1/01):
 
       DO 101 I=1,33          !345
 C  also in Tsujis routine is the number of molecules called NMOL
@@ -3681,7 +3661,6 @@ C INITJN INITIATES THE JON BLOCK FROM LUN 9
 C
       ISAVE=IREAD
       IREAD=9              !unit=9 is jonabs.dat
-*      CALL DUMIN
       CALL INJON(IOUTS)
       IREAD=ISAVE
       RETURN
@@ -4389,28 +4368,6 @@ C
       HJONH=ANJON(1,2)/ANJON(1,1)
 C
 
-*********
-C 15.12.94 Ch.Helling
-C
-C JUMP is set in JONABS.DAT JUMP = 1 => MOLH = 1 :
-C                                       call only MOLEQ
-C                                       = only H2, H2+ as molecules cosidered
-C                                                                            
-C( gives the possibility to use only TSUJI-code instaed of MOL for the molecular
-C  equilibrium )
-C
-C                           Jump = 0 : call MOL
-C                                      = all molecules cosidered in old MARCS-routine
-C                                        MOL
-C                                        ( there are problems to calculate lower 
-C                                          temperatures )
-C
-C 25/1/01, UGJ:
-C JUMP = 2: JFF routine corresponding to Tsuji's method
-C JUMP = 3: JFF Gibs minimalisation method (892 molecules, ions and atoms).
-C JUMP = 4: Added GGchem code by ERC
-*********
-
 C     ADS: We use a simplified saha equation for planets, when we use metpe=2, better for convergence
       IF(METPE.EQ.2 .and. t.le.2000.0) then
 2421  format('teff,t,pe,ppel,pg = ',2f8.1,3e12.3)   
@@ -4418,8 +4375,6 @@ C     ADS: We use a simplified saha equation for planets, when we use metpe=2, b
       end if
 C     JUMP to no molecules, when temperature is highre than tmolim      
       IF(T.GT.TMOLIM)GO TO 42
-C      IF(JUMP.ge.1) MOLH=1
-* the former step is necessary because often is MOLH=0 on other places !
       IF(MOLH.LE.0) GO TO 45
 
 
@@ -5090,14 +5045,7 @@ C
 771      CONTINUE
 772   CONTINUE
 C Molecular partial pressures from the Marcs equilibrium
-C UGJ 14/11/98: Test with partial pressures from the two
-C routines show them almost identical for giants (for very cool
-C giants and dwarfs they are probably a bit different from 
-C one another). You can write both sets by deleting the first
-C "if(jump.ne.1)" loop. but be aware that the spectrum program
-C may have difficult finding P(ZrO), P6 and other part.pressures then.
-C     
-2101  CONTINUE     ! go here if jump>0 (i.e. not old marcs chem. equilibrium.
+2101  CONTINUE
 C here: JF's/Tsuji's molecular partial pressures from JANAF polynomial fits:
 
 C for Tsuji's eq names are not read in (MOL(J) as real*8...)
@@ -5344,7 +5292,7 @@ C --- Unit 90: One data row per atmospheric layer ---
       write(7,*)
       close(90)
 
-!------------ END OF  WRITING PP FOR JUMP = 4 -----------
+!------------ END OF GGCHEM PARTIAL-PRESSURE WRITE-OUT -----------
 
 2109  CONTINUE     ! go here when finished the partial pressure writing
 1905  FORMAT(I3,18(2X,A4))
@@ -6168,11 +6116,6 @@ C ON TOP OF PREVIOS ONES.
 C
 C IOUTS .EQ.0  NO PRINT OUT OF NEW JON-PARAMETERS
 C       .GT.0  PRINTOUT OF NEW JON-PARAMETERS
-C
-C ENTRY POINT 'MODMOL' ADDED 76.03.23  *NORD*
-C
-C MOLTYP.LE.0  GIVES FULL HANDLING OF MOLECULES
-C        GT.0  GIVES H-MOLECULES ONLY
 C
 
       COMMON /CI3/DUM(885),IDUM(215),IFISH
