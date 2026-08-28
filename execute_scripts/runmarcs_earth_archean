@@ -41,7 +41,7 @@ input_elabund=$CWD${data_folder}elabund_earth_archean.dat
 input_opac=$CWD${data_folder}mol_names_cool_75.dat
 input_spectrum=$CWD${data_folder}stellar_spectrum_solar_modern_7949.dat
 input_jonabs=$CWD${data_folder}jonabs.dat
-input_abundance=$CWD${data_folder}krome_init_abund_earth_archean_N2O2CO2CH4.dat
+input_abundance=$CWD${data_folder}krome_init_abund_earth_archean.dat
 input_cia=$CWD${data_folder}cia_pairs_earth_4pair.dat
 
 ### COPY INPUT FILES INTO TMP FOLDER ###
