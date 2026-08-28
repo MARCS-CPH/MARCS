@@ -33,7 +33,7 @@ cp "$0" $CWD/${out_dir}
 mkdir $TMPDIR
 mkdir $TMPDIR/data/
 
-input_parameters=$CWD${input_folder}marcs_K2_18b_Irr_dtinc_ramp_z200_v6_earthbiomass_cia_itemax10.input
+input_parameters=$CWD${input_folder}marcs_k2_18b_planet.input
 input_elabund=$CWD${data_folder}elabund_K2_18b_CNOS_z200.dat
 input_opac=$CWD${data_folder}mol_names_75_newstep51.dat
 input_spectrum=$CWD${data_folder}stellar_spectrum_K2_18_7949.dat
