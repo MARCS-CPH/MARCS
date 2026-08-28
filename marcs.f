@@ -110,7 +110,7 @@ C
       open(unit=16,file='arcivaaa.dat',status='old',readonly)
 
       read(5,'(5(7x,i3,5x))') itmax,nprint,newmod,noarch,jontyp
-      read(5,'(12x,i3,12x,a3)') molold,
+      read(5,'(7x,i3,12x,a3)') molold,
      *  pp_sph
 
       if(pp_sph.eq.'sph' .or. pp_sph.eq.'SPH') isph = 1
@@ -6002,10 +6002,10 @@ C I3 window started one column before the digits actually began.
 621   FORMAT(2(7X,F8.1),7X,6A4,6X,F8.1)
 631   FORMAT(7X,I3,12X,E8.1,7X,f8.0)
 632   FORMAT(7X,I3,12X,1pE8.1,7X,0pf8.1,7x,f8.1,7x,I3)
-63    FORMAT(12X,E8.1,12X,I3)
+63    FORMAT(7X,E8.1,12X,I3)
 633   FORMAT(7X,I3,12X,1pE8.1,3(7X,I3))
 634   FORMAT(2(7X,F8.1),2(7X,f8.4))
-635   FORMAT(12x,i3,12x,f7.5,8x,f7.5,8x,i3)
+635   FORMAT(7x,i3,12x,f7.5,8x,f7.5,8x,i3)
 64    FORMAT(/20X,'NCORE  =',I10/20X,'KDIFF  =',I10)
 65    FORMAT(20X,'M/MSUN =',F10.1)
 66    FORMAT(20X,'XMAX   =',1PE10.2)
@@ -6014,7 +6014,7 @@ C I3 window started one column before the digits actually began.
 69    FORMAT(20X,'FACPLY =',F10.3)
 1236  FORMAT(7X,I3,12X,I3,12X,E8.1,7X,E8.1)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
-1238  FORMAT(12X,I3,12X,I3)
+1238  FORMAT(7X,I3,12X,I3)
 1239  FORMAT(7X,I3)
 1240  FORMAT(7X,I3)
       END

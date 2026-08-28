@@ -1,5 +1,5 @@
-network=networks/non_eq/full_DMS_network_full_photo.dat
-project=DMS_full_photo
+network=networks/non_eq/full_network_v8.dat
+project=v8
 options=options_photochem
 
 if [ -d build_$project ] ; then #delete old build folder

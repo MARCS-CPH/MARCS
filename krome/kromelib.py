@@ -2426,5 +2426,11 @@ def get_quote(qall=False):
 def keyb_input(message):
 	try:
 		raw_input(message)
-	except:
-		input(message)
+	except NameError:
+		try:
+			input(message)
+		except EOFError:
+			# no interactive stdin (e.g. running from a non-interactive
+			# build script) -- just show the message and continue instead
+			# of hanging/crashing
+			print(message)

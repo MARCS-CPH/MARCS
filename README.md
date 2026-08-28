@@ -1,7 +1,9 @@
 # MARCS
 (A full list of all input parameters can be found in manuals/parameters_list.txt.
 For explanations of individual physics modules, see manuals/PHYSICS_OVERVIEW.md.
-For the list of atoms/molecules MARCS knows about, see manuals/at_and_mol_list.txt.)
+For the list of atoms/molecules MARCS knows about, see manuals/at_and_mol_list.txt.
+For day-to-day run mechanics and common errors/fixes -- e.g. an out-of-date
+input deck -- see manuals/TROUBLESHOOTING.md.)
 How to run a marcs model.  
 In order to run a marcs model from this repository for the first time, a few steps have to be taken.  
 ### Prepare input files

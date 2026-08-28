@@ -1,10 +1,10 @@
 -ATOL 1d-12
 -checkConserv 
--n /groups/astro/tbalduin/networks/full_network_v7_WIP_NOT_READY_YET_vulcan_DMS.dat
+-n networks/non_eq/full_network_v8.dat
 -noExample 
 -noSinkCheck 
 -options options_photochem
--project v7_DMS_N2Hfix
+-project v8
 -RTOL 1D-8
 -photoBins 7949
 -skipODEthermo 

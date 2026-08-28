@@ -1,10 +1,10 @@
 ITEMAX=150     NPRINT=  0     NEWMOD=  0     NOARCH=  0     JONTYP=3
-     MOLOLD=  1     PP/SPH=PP
+MOLOLD=  1     PP/SPH=PP
 TEFF  =5778    GRAV  =4.44    MODEL =                        M/MSN=1
 NOCONV= 26     XMAX  =1.0E+08 TAUM  =300.0
-     AMLOSS=1.5E-08      LINCIA=  0
+AMLOSS=1.5E-08      LINCIA=  0
 MIHAL = 40     KONSG =  0     KORT  =5       KPP   =10.0    TCONV =5.0 
-     nops  =  1     dpein =0.005   dtin  =0.005   METPE = 1
+nops  =  1     dpein =0.005   dtin  =0.005   METPE = 1
 PALFA =1.500   PBETA =0.000   PNY   =8.000   PY    =0.076    VFIX =0.000
 MYPNTS=  4     NCORE =  5     KDIFF =  3
 ABUNDF= 5
@@ -13,7 +13,7 @@ SURFAC= 0      TSURF =300.0   ALBEDO=0.07    NCH4  =0
 NONEQ = 0      PHOTO = 0
 INITAB= 0
 DTMIN =1.0E-16 DTMAX =1.0E+05 tMAX  =1.0E+08 DTINC =1.01
-     KDEBUG= 1      KROMER= 1
+KDEBUG= 1      KROMER= 1
 VIRGA = 0
 LOGTAU=-5.00   DIFFER=0.15
 LOGTAU=-3.50   DIFFER=0.15
