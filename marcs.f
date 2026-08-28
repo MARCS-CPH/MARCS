@@ -14255,10 +14255,10 @@ C     --- of reading a different build's species list/order.
         write(13,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ','Time [s] ',
      >'Timestep [s] ','Temperature [K] '
         do i=1,nsp
-         write(13,'(A8,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
+         write(13,'(A12,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
         enddo
          write(13,'(A,/)') ' '
-      endif 
+      endif
 
       !main loop (bottom-to-top so mixed abundances feed upward into next layer)
       do k=ntau,1,-1
@@ -14436,7 +14436,7 @@ C close/implicit-reopen cycle.
         write(77,'(A6,A9,A16)',Advance = 'No') 'Layer ','Time [s] '
      >,'Temperature [K] '
         do i=1,nsp
-         write(77,'(A8,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
+         write(77,'(A12,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
         enddo
          write(77,'(A,/)') ' '
         do k = 1,ntau
