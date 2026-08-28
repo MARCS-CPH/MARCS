@@ -1,0 +1,108 @@
+#!/bin/bash
+#SBATCH --job-name=archean
+#SBATCH --time=6:00:00
+#SBATCH --partition=astro2_short
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+module load astro gdb
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+# earth_archean benchmark: rerun of earth_archean_standard with KROME's
+# full_network_v8.dat (the most elaborate non-eq network available) and
+# TCONV raised from 0.1 to 1.0 -- the first attempt at 0.1 plateaued for
+# 10+ iterations around 0.7-0.8K at a single layer and was heading for
+# the time limit without converging; 1.0 converged cleanly in 11
+# iterations (final max correction 0.5K, "Successful termination of
+# execution!"). Build the binary with compile_KROME_archean.sh (then
+# make) before running this -- it targets full_network_v8.dat, matching
+# what actually produced benchmark_models/earth_archean's reference output.
+in_dir=./benchmark_models/earth_archean/
+out_dir=./benchmark_models/earth_archean/output/
+
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/input_files/
+data_folder=/data/
+
+mkdir -p ${out_dir}
+cp "$0" $CWD/${out_dir}
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+input_parameters=$CWD${input_folder}full_network_earth_archean_v8_tconv1.input
+input_elabund=$CWD${data_folder}elabund_earth_archean.dat
+input_opac=$CWD${data_folder}mol_names_cool_75.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_solar_modern_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+input_abundance=$CWD${data_folder}krome_init_abund_earth_archean_N2O2CO2CH4.dat
+input_cia=$CWD${data_folder}cia_pairs_earth_4pair.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+cp $input_abundance $TMPDIR/data/krome_init_abund.dat
+cp $input_cia $TMPDIR/data/cia_list.dat
+
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
+
+cp $CWD/GGchem/marcs2gg_partpp.dat $TMPDIR
+cp $CWD/GGchem/marcs2ggchem_template.in $TMPDIR
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+cp marcs $TMPDIR/marcs
+
+cp ${in_dir}krome_flux_rad.dat $TMPDIR/ 2>/dev/null
+
+cp $CWD/krome/MARCS_build/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+cp $input_cia $CWD/${out_dir}
+
+./marcs
+MARCS_EXIT=$?
+
+### COPY FILES AFTER RUN ###
+
+if [ -f arcivaab.dat ]; then cp arcivaab.dat  $CWD/${out_filename}.arciv; fi
+if [ -f mxmodel.dat ]; then cp mxmodel.dat    $CWD/${out_filename}.dat; fi
+if [ -f $TMPDIR/marcs2ggchem.in ]; then cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in; fi
+if [ -f $TMPDIR/ggchem_out.txt ]; then cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt; fi
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir} 2>/dev/null
+if [ -f $TMPDIR/spectrum.dat ]; then cp $TMPDIR/spectrum.dat $CWD/${out_dir}; fi
+
+if [ -f "$TMPDIR/krome_full_output.dat" ]; then cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat; fi
+if [ -f "$TMPDIR/krome_final_output.dat" ]; then cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat; fi
+if [ -f "$TMPDIR/krome_flux_rad.dat" ]; then cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat; fi
+if [ -f "$TMPDIR/full_output.dat" ]; then cp $TMPDIR/full_output.dat $CWD/${out_dir}/full_output.dat; fi
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR
+
+echo "marcs exited with status $MARCS_EXIT"
+exit $MARCS_EXIT

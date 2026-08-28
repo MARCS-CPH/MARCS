@@ -1,0 +1,57 @@
+# krome_init_abund.dat — Archean Earth (~2.5 Ga, pre-GOE) target
+#
+# Used when INITAB=1, exactly like krome_init_abund_earth_modern_N2O2CO2CH4.dat
+# (see that file's header for the mechanism: krome_init_abund_on forces
+# these 4 species' mixing ratios back to the listed values at EVERY layer,
+# EVERY outer iteration -- marcs.f:17220-17230 -- standing in for the
+# biological/geological fluxes that buffer them in the real atmosphere,
+# since gas-phase equilibrium/non-eq chemistry alone can't sustain them.
+#
+# IMPORTANT: this pinning is the dominant control on N2/O2/CO2/CH4 in this
+# model -- elemental abundances (elabund) matter for the FREE species
+# (O3, H2O, CO, OH, NOx, ...) that GGchem computes from the elemental
+# budget, but NOT for these 4, since their GGchem-computed values get
+# overwritten unconditionally every iteration regardless of elabund.
+# Confirmed empirically: test59 (elabund O 13.926->13.32, a 0.6 dex
+# elemental shift) moved bulk O2 by only ~0.01-0.05 (0.20-0.26 ->
+# 0.19-0.20), because O2 was pinned to 0.20946 throughout in both runs.
+#
+# --- Sources for the Archean targets below ---
+# Catling & Zahnle 2020, "The Archean atmosphere", Science Advances 6,
+# eaax1420 (https://doi.org/10.1126/sciadv.aax1420):
+#   - O2 < 1e-6 PAL (PAL = 0.20946) -- essentially anoxic, pre-GOE
+#     (GOE ~2.4 Ga; 2.5 Ga sits just before it)
+#   - N2 similar to today, or up to a few times lower
+#   - CO2 ~10-2500x modern; geological (paleosol/rainwater) constraints
+#     at ~2.5 Ga specifically: ~3-25 mbar (Catling & Zahnle's own
+#     compiled range); other paleosol methods (Kanzaki & Murakami 2015)
+#     give 85-510 PAL at 2.77 Ga -- wide spread, picked the ~2.5 Ga
+#     paleosol range as the anchor since it's the best-dated/-constrained
+#     Neoarchean point closest to pre-GOE.
+#   - CH4 ~100-1e4x modern (modern ~1.8 ppm); pCH4:pCO2 ~0.1 is the
+#     modeled warming optimum (Charnay et al.-type Archean climate runs)
+#     and also roughly the threshold above which organic haze forms --
+#     used as the CH4/CO2 ratio anchor rather than picking CH4 in
+#     isolation.
+#
+# --- Fixed bulk reservoir species (Archean, ~2.5 Ga, pre-GOE) ---
+N2        7.8084E-01   # kept at modern value ("similar to today" per Catling & Zahnle)
+O2        1.0000E-07   # deep anoxic, <1e-6 PAL (PAL O2 = 0.20946)
+CO2       1.0000E-02   # ~1%, ~10 mbar-equivalent, mid of the ~2.5 Ga paleosol range (3-25 mbar)
+CH4       1.0000E-03   # ~1000 ppm; pCH4:pCO2 = 0.1 (warming optimum / haze onset), within 100-1e4x modern envelope
+#
+# All other species (H2O, O3, N2O, CO, H2, SO2, H2S, O, H, OH, HO2, NO,
+# NO2, etc.) default to 1E-20 initial guess and evolve to whatever GGchem
+# equilibrium + KROME non-eq photochemistry + eddy mixing produce.
+#
+# CAVEAT: N2+O2+CO2+CH4 here sum to only ~0.791 (vs modern's ~0.991),
+# a ~20.9% gap where modern's O2 used to be. This run does NOT reduce
+# the pressure boundary condition (PPE) to compensate -- geological
+# pressure-proxy work (Som et al. 2012/2016) argues Archean total surface
+# pressure was itself LOWER than today (not that something else filled
+# the O2 gap at constant total pressure), which would be the physically
+# correct fix, but touching PPE risks reopening the pressure-boundary
+# fragility this codebase has hit before (TRYCK/PPE cap work). Left as a
+# known simplification for this first pass -- check post-run what GGchem
+# actually put in the gap (most likely H2O) before trusting absolute
+# humidity/pressure numbers from this run.

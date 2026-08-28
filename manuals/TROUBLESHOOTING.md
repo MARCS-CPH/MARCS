@@ -29,18 +29,19 @@ Every `execute_scripts/runmarcs_*` script follows the same shape:
    submitted from (`CWD=$(pwd)`), not to where the script file itself
    lives.
 
-### The 4 canonical benchmark models
+### The 5 canonical benchmark models
 
-`solar_type_star`, `k2_18b_star`, `k2_18b_planet`, `trappist1_star` each
-live in `benchmark_models/<name>/` — this is git-tracked *reference*
-data (restart archive, original output). Each has its own
-`benchmark_models/<name>/output/` subdirectory (gitignored) that a run
-writes fresh results into. **Never point a run's `out_dir` back at
-`benchmark_models/<name>/` itself** — only `benchmark_models/<name>/output/`.
-This split exists specifically because every one of these 4 launch
-scripts used to write output on top of (or into the same directory as)
-the tracked reference data, and it happened for real, more than once, in
-the session that wrote this document.
+`solar_type_star`, `k2_18b_star`, `k2_18b_planet`, `trappist1_star`,
+`earth_archean` each live in `benchmark_models/<name>/` — this is
+git-tracked *reference* data (restart archive, original output). Each
+has its own `benchmark_models/<name>/output/` subdirectory (gitignored)
+that a run writes fresh results into. **Never point a run's `out_dir`
+back at `benchmark_models/<name>/` itself** — only
+`benchmark_models/<name>/output/`. This split exists specifically
+because every one of these launch scripts used to write output on top
+of (or into the same directory as) the tracked reference data, and it
+happened for real, more than once, in the session that wrote this
+document.
 
 ### Running your own model
 
