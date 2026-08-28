@@ -1,4 +1,4 @@
-ITEMAX=250     NPRINT=  0     NEWMOD=  0     NOARCH=  0     JONTYP=3
+ITEMAX= 25     NPRINT=  0     NEWMOD=  0     NOARCH=  0     JONTYP=3
 MOLOLD=  1     PP/SPH=PP
 TEFF  =3450    GRAV  =4.60    MODEL =                        M/MSN= 1
 NOCONV= 16     XMAX  =1.0E+08 TAUM  =300.0
