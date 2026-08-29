@@ -12,5 +12,5 @@ abund_drift.in
 .false.               ! model_eqcond
 0                     ! model_dim  (0,1,2)
 .true.                ! model_pconst
-   864.972573551808                      ! Tmax [K]
-   53.7266439879278                         ! pmax [bar]
+   283.164243239616                      ! Tmax [K]
+   48.2035536936747                         ! pmax [bar]
