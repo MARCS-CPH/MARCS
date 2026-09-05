@@ -1,0 +1,107 @@
+#!/bin/bash
+#SBATCH --job-name=modern_earth_check5
+#SBATCH --time=1:00:00
+#SBATCH --partition=astro2_short
+#SBATCH --nodes=1
+#SBATCH --mem-per-cpu=30G
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mail-type=ALL
+
+module load astro gdb
+### INPUT AND TEMP FOLDERS ###
+CWD=$(pwd)
+TMPDIR=$(mktemp -p /dev/shm/ -u)
+
+# modern_earth quick restart check, 2026-09-05: verifies a short (ITEMAX=5)
+# restart off modern_earth's own canonical marcs_output.arciv (the
+# converged test85_earthnet_50iter_tconv2 state, full_network_earth
+# KROME network, TCONV=2.0K) still converges cleanly, before promoting
+# this folder into benchmark_models/. Carries krome_flux_rad.dat forward
+# from the canonical archive too, so this restart doesn't hit the same
+# radiation-field discontinuity that test84's restart did.
+in_dir=./benchmark_models/modern_earth/
+out_dir=./benchmark_models/modern_earth/output/
+
+in_filename=${in_dir}marcs_output
+out_filename=${out_dir}marcs_output
+
+input_folder=/benchmark_models/modern_earth/
+data_folder=/benchmark_models/modern_earth/
+
+mkdir -p ${out_dir}
+cp "$0" $CWD/${out_dir}
+mkdir $TMPDIR
+mkdir $TMPDIR/data/
+
+input_parameters=$CWD${input_folder}marcs_modern_earth_itmax5_check.input
+input_elabund=$CWD${data_folder}elabund_earth_modern.dat
+input_opac=$CWD${data_folder}mol_names_cool_75.dat
+input_spectrum=$CWD${data_folder}stellar_spectrum_solar_modern_7949.dat
+input_jonabs=$CWD${data_folder}jonabs.dat
+input_abundance=$CWD${data_folder}krome_init_abund_earth_modern_N2O2CO2CH4.dat
+input_cia=$CWD${data_folder}cia_pairs_earth_4pair.dat
+
+### COPY INPUT FILES INTO TMP FOLDER ###
+cp $input_parameters  $TMPDIR/mxms7.input
+cp $input_elabund $TMPDIR/data/elabund.dat
+cp $input_opac $TMPDIR/data/mol_names.dat
+cp $input_spectrum $TMPDIR/data/stellar_spectrum.dat
+cp $input_jonabs $TMPDIR/data/jonabs.dat
+cp $input_abundance $TMPDIR/data/krome_init_abund.dat
+cp $input_cia $TMPDIR/data/cia_list.dat
+
+cp ${in_filename}.arciv $TMPDIR/arcivaaa.dat
+
+cp $CWD/marcs2ggchem.in $TMPDIR/marcs2ggchem_template.in
+cp $CWD/GGchem/marcs2gg_partpp.dat $TMPDIR
+cp -r data/abinit_abmarcs.dat $TMPDIR/data
+cp -r data/dispol_* $TMPDIR/data
+cp -r data/DustChem* $TMPDIR/data
+cp -r data/nasa9.dat $TMPDIR/data
+
+cp *.inc $TMPDIR/
+cp *.dat $TMPDIR/
+cp marcs_earth $TMPDIR/marcs_earth
+
+cp ${in_dir}krome_flux_rad.dat $TMPDIR/ 2>/dev/null
+
+cp $CWD/krome/build_earth/*.dat $TMPDIR/
+cp -r $CWD/krome/ $TMPDIR/
+cp $TMPDIR/krome/build_earth/info.log $TMPDIR/krome/MARCS_build/info.log
+cp -r GGchem $TMPDIR/
+cd $TMPDIR
+
+### COPY INPUTFILES BEFORE RUN ###
+
+cp $input_parameters $CWD/${out_dir}
+cp $input_elabund $CWD/${out_dir}
+cp $input_jonabs $CWD/${out_dir}
+cp $input_opac $CWD/${out_dir}
+cp $input_spectrum $CWD/${out_dir}
+cp $input_cia $CWD/${out_dir}
+
+./marcs_earth
+MARCS_EXIT=$?
+
+### COPY FILES AFTER RUN ###
+
+if [ -f arcivaab.dat ]; then cp arcivaab.dat  $CWD/${out_filename}.arciv; fi
+if [ -f mxmodel.dat ]; then cp mxmodel.dat    $CWD/${out_filename}.dat; fi
+if [ -f $TMPDIR/marcs2ggchem.in ]; then cp $TMPDIR/marcs2ggchem.in $CWD/${out_dir}/marcs2ggchem.in; fi
+if [ -f $TMPDIR/ggchem_out.txt ]; then cp $TMPDIR/ggchem_out.txt $CWD/${out_dir}/ggchem_out.txt; fi
+cp $CWD/slurm-$SLURM_JOB_ID.out $CWD/${out_dir} 2>/dev/null
+if [ -f $TMPDIR/spectrum.dat ]; then cp $TMPDIR/spectrum.dat $CWD/${out_dir}; fi
+
+if [ -f "$TMPDIR/krome_full_output.dat" ]; then cp $TMPDIR/krome_full_output.dat $CWD/${out_dir}/krome_full_output.dat; fi
+if [ -f "$TMPDIR/krome_final_output.dat" ]; then cp $TMPDIR/krome_final_output.dat $CWD/${out_dir}/krome_final_output.dat; fi
+if [ -f "$TMPDIR/krome_flux_rad.dat" ]; then cp $TMPDIR/krome_flux_rad.dat $CWD/${out_dir}/krome_flux_rad.dat; fi
+if [ -f "$TMPDIR/full_output.dat" ]; then cp $TMPDIR/full_output.dat $CWD/${out_dir}/full_output.dat; fi
+if [ -f "KROME_ERROR_REPORT" ] ; then
+cp $TMPDIR/KROME_ERROR_REPORT $CWD/${out_dir}/KROME_ERROR_REPORT
+fi
+
+rm -rf $TMPDIR
+
+echo "marcs exited with status $MARCS_EXIT"
+exit $MARCS_EXIT

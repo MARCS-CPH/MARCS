@@ -1,0 +1,39 @@
+# krome_init_abund.dat — initial species mixing ratios for krome_solve
+#
+# Used when INITAB=1 in the MARCS input file.
+# Species names must match those in ./krome/build_DMS_v2/info.log exactly
+# (same case, no trailing spaces).
+# Species not listed here receive the default abundance (1E-20) as their
+# initial guess and then evolve freely via GGchem equilibrium + KROME
+# non-equilibrium chemistry (with eddy mixing) for the rest of the run.
+#
+# IMPORTANT: krome_init_abund_on applies this file's mixing ratios on
+# EVERY iteration, not just at t=0 (marcs.f ~line 16729-16735, outside the
+# first_call gate) -- any species listed here is force-reset every cycle,
+# which prevents it from ever developing altitude structure. Only list
+# species here that should behave as fixed, well-mixed bulk reservoirs.
+#
+# v2: adds CH4 to the fixed set (see
+# krome_init_abund_earth_modern_N2O2CO2only.dat for the first attempt with
+# only N2/O2/CO2 pinned). That run oscillated persistently and never
+# converged (T corrections cycling +-100K+ through iteration 100, final
+# pressure structure unphysical). CH4's real atmospheric abundance (~1.9
+# ppm) is sustained by biological production, same as O2 -- neither
+# equilibrium nor non-eq gas-phase chemistry in this network produces it
+# from N2/O2/CO2, so leaving it free let it collapse toward the 1E-20
+# floor (observed: log(CH4) crashed to -16 to -37 across the column vs.
+# an expected steady ~1.9ppm). Losing a real greenhouse gas entirely
+# mid-run is a plausible driver of the oscillation/instability. Testing
+# whether pinning CH4 alongside N2/O2/CO2 (still leaving O3 and everything
+# else free) resolves it.
+#
+# --- Fixed bulk reservoir species (modern Earth, NOAA/NASA reference) ---
+N2        7.8084E-01   # dominant background
+O2        2.0946E-01   # modern oxygen-rich atmosphere (post-GOE)
+CO2       4.2000E-04   # ~420 ppm, current
+CH4       1.9000E-06   # ~1900 ppb; biogenic source, not reproduced by
+                        # equilibrium/non-eq gas-phase chemistry alone
+#
+# All other species (H2O, O3, N2O, CO, H2, SO2, H2S, O, H, OH, HO2, NO,
+# NO2, etc.) default to 1E-20 initial guess and evolve to whatever GGchem
+# equilibrium + KROME non-eq photochemistry + eddy mixing produce.
