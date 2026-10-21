@@ -1,7 +1,7 @@
-75
-SO2  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/SO2_redo_100to1878K/
+74
+SO2  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/SO2/
 TiH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/TiH/
-CO2  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CO2_redo_100to4000K/
+CO2  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CO2/
 OH   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/OH/
 CrH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CrH/
 CH   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CH/
@@ -14,13 +14,13 @@ NO   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/NO/
 LiF  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/LiF/
 HCN  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/HCN/
 C3   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/C3/
-C2H2 /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/C2H2_redo_100to4000K/
+C2H2 /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/C2H2/
 MgH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/MgH/
 TiO  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/TiO_aiso/
 CaH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CaH/
 SiO  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/SiO/
 LiCl /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/LiCl/
-PH3  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/PH3_redo_100to2741K/
+PH3  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/PH3/
 H2   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/H2/
 C2   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/C2/
 KCl  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/KCl/
@@ -33,18 +33,18 @@ FeH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/FeH/
 BeH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/BeH/
 MgF  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/MgF/
 CaF  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CaF/
-CH4  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CH4_redo_100to2741K/
-CO   /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CO_redo_100to4000K/
+CH4  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CH4/
+CO   /lustre/astro/ROLLOUT/uffegj/former-students/aaron/opac/output/marcs_exomol_legacy/CO_exomol_KHM/
 CN   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CN/
 H2CO /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/H2CO/
-NH3  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/NH3_redo_100to1554K/
+NH3  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/NH3/
 AlO  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/AlO/
 VO   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/VO/
 SiH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/SiH/
 PN   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/PN/
 CS   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CS/
 KF   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/KF/
-H2O  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/H2O_redo_100to4000K/
+H2O  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/H2O/
 PS   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/PS/
 SN   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/NS/
 AlH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/AlH/
@@ -71,12 +71,5 @@ S    /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/atoms/S_VALD/
 Ti   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/atoms/Ti_VALD/
 V    /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/atoms/V_VALD/
 Zr   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/atoms/Zr_VALD/
-O2   /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/O2_new_HITRAN_100to4000K/
-O3   /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/O3_new_HITRAN_100to3311K/
-CH3SCH3 /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CH3SCH3_UVplusIR_flat/
-OCS  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/OCS_new_100to5000K/
-N2O  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/N2O_new_100to5000K/
-CH3  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/CH3_new_100to2000K/
-SO3  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/SO3_new_100to1000K/
-H2O2 /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/H2O2_new_100to2000K/
-HNO3 /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/HNO3_new_100to500K/
+O2   /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/O2/
+O3   /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/O3/

@@ -29,10 +29,10 @@ Every `execute_scripts/runmarcs_*` script follows the same shape:
    submitted from (`CWD=$(pwd)`), not to where the script file itself
    lives.
 
-### The 5 canonical benchmark models
+### The canonical benchmark models
 
-`solar_type_star`, `k2_18b_star`, `k2_18b_planet`, `trappist1_star`,
-`earth_archean` each live in `benchmark_models/<name>/` — this is
+`solar_type_star`, `k2_18b_star`, `k2_18b_planet`, `trappist1_star`
+each live in `benchmark_models/<name>/` — this is
 git-tracked *reference* data (restart archive, original output). Each
 has its own `benchmark_models/<name>/output/` subdirectory (gitignored)
 that a run writes fresh results into. **Never point a run's `out_dir`

@@ -24,7 +24,7 @@ Convection related input parameters:
           data/cia_pairs_all.dat. Zero I/O and zero effect on a run unless explicitly set to 1.)
 - MIHAL (Parameter that sets the lowest layer for which radiative equilibrium will be used. For Layers below flux constancy will be assumed.)
 - KONSG (For 0, no real impact on the simulation. For 1, radius and gravity can get varied. Usual value is 0)
-- KORT (Used to change between different ways of how the maximum temperature change is applied. For 0, temperature limitation is ignored. For 1 ... For 2 ... For 4 and 5, maximum change is equal to exactly KPP. For 6, its similar to 4 and 5 with some additional calculations. )
+- KORT (Used to change between different ways of how the maximum temperature change is applied. For 0, temperature limitation is ignored. For 1 ... For 2 ... For 4 and 5, maximum change is equal to exactly KPP. For 6, its similar to 4 and 5 with some additional calculations. For 7, same as 6 but its correction floor resets whenever chemistry recalculates -- meant for ABUNDF=ITEMAX.)
 - KPP (input-deck label only -- the actual Fortran variable it's read into is TDIFF, not any variable named KPP. Genuinely live: caps the per-iteration temperature-correction step size in the period-2 limit-cycle damper. Maximum temperature change allowed. Expects a, at maximum 3 digit, integer. Usually one should choose a single digit integer.)
 - TCONV (Convergence temperature. If the wanted change by MARCS is below this temperature, the simulation is converged)
 - dpein (Determines the derivate stepsize in solve for the electron pressure. Keep low.)
@@ -40,7 +40,7 @@ Convection related input parameters:
 - KDIFF (Genuinely live, despite older docs calling it "probably deprecated" -- feeds a real calculation, TAURAT=10.**(0.1*KDIFF-0.01), which affects spherical-mode ray tracing (via /CSPHER/ storage-association with TLIM). Ignore in PP case.)
 
 
-- ABUNDF (Integer number that determines how often are abundances updated. Setting it to a number X means only every X-th iteration updates the abundances. Useful for models that oscillate and speeds up convergence.)
+- ABUNDF (Integer number that determines how often are abundances updated. Setting it to a number X means only every X-th iteration updates the abundances. Useful for models that oscillate and speeds up convergence. Special case: ABUNDF=ITEMAX only calculates abundances at the beginning and when the RT is converging.)
 
 Irradiation related input parameters:
 
@@ -61,7 +61,18 @@ Surface related input parameters:
 
 VIRGA related input parameters:
 
-- VIRGA (Switch to turn on (1) or off (0) the VIRGA cloud-opacity coupling, via a python3 subprocess call. Confirmed live but missing from earlier versions of this doc -- add here rather than assume it doesn't need documenting.)
+- VIRGA (Switch to turn on (1) or off (0) the VIRGA cloud-opacity coupling, via a python3 subprocess call. Confirmed live but missing from earlier versions of this doc -- add here rather than assume it doesn't need documenting. Read on the same line as CNDNSA/CLOUDS/LATENT below, all three only meaningful when VIRGA=1.)
+- CNDNSA (Live: depletes gas-phase elemental abundances by what virga
+          condenses, via a second GGChem pass whose result (ppallmol/
+          ppallat/ggmu/ggrho/ro/ppel/etc) now feeds KROME/opacity/the
+          rest of the model for this cycle. Pre-depletion seed values
+          kept in ppallmol_cond/ppallat_cond; see cndnsa_diag.dat.)
+- CLOUDS (Governs creation of x_virga/s_virga, virga's cloud opacity --
+          not yet merged into OPAC's X(K)/S(K), so currently has no
+          effect on the model either way.)
+- LATENT (Live: adds a cloud-condensation heat term FFL(k) into the
+          flux-constancy/Stromgren equations in SOLVE, alongside the
+          existing convective flux FFC(k). See ffl_diag.dat.)
 
 The noneq input parameters are:
  - NONEQ (Basic on/off switch for non equilibrium chemistry. Expects a numeric value of 0 (off) or 1 (on))
@@ -70,6 +81,13 @@ The noneq input parameters are:
  - phSCAL(Factor that scales the inensity of the radiation that the photo chemistry works with. Quick and easy parameter
           to either increase or decrease the impact of the photo chemistry. Expects a Value in the format of X.XE+/-XX)
  - INITAB(Flag to turn on or off the use of initial abundances for the KROME runs)
+ - INITMD (Init Mode for KROME's non-eq chemistry, read right after INITAB=
+           on the same line. Default 0: resets to GGchem/init every
+           chemistry call. 1: resets once, then each call continues from
+           the last state (needs krome_solve's own MIXRESCALE/MIXAPPLY
+           machinery to behave). Formerly the namelist variable `initmd`
+           in &outlist -- moved here 2026-10-20 to sit with the rest of
+           the noneq-chemistry switches instead of a separate namelist.)
  - DTMIN (Starting timstep for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - DTMAX (Maximal timestep size for KROME in seconds. Expects a Value in the format of X.XE+/-XX)
  - tMAX  (Final time the network will be solved for in seconds. Expects a Value in the format of X.XE+/-XX)
@@ -96,10 +114,20 @@ The noneq input parameters are:
            is exactly a "debug the non-eq chemistry in isolation, disconnected
            from the rest of the code" switch. 0 is off (isolated/no feedback),
            1 is on (results used).)
- - conv_crit (Controls per-layer KROME chemistry integration length. A value of exactly 0 makes
-              integration always run for the full tMAX. Any nonzero value uses the default
-              min(vert_mix_time, tMAX) instead. Useful for direct input-file control over
-              integration length independent of the vertical mixing timescale.)
+ - CNVCRI (conv_crit in the code. Controls per-layer KROME chemistry integration
+           length. 0 = always run full tMAX. Nonzero = min(vert_mix_time, tMAX),
+           plus this is the early-exit convergence magnitude threshold (see
+           CNVRAT below).)
+ - CNVRAT (conv_rate in the code; read right after CNVCRI= on the same line.
+           Rate-of-change threshold [1/s] alongside CNVCRI's magnitude check;
+           default 0 disables it. Exit also needs 3 consecutive passes. Formerly
+           the namelist variable `conv_rate` in &outlist -- moved here
+           2026-10-20 to sit with the rest of the noneq convergence criteria.)
+ - MIXING (mixing_on in the code; read right after CNVRAT= on the same line.
+           Switch for krome_solve's vertical eddy-mixing pass (DECOUPLE/
+           MIXRESCALE). 0 (default, blank-safe) = off, 1 = on. Only
+           meaningful when NONEQ=1. Replaces the old hardcoded
+           mixing_enabled compile-time constant -- 2026-10-21.)
 
 Optical depth related input parameters:
 

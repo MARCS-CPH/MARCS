@@ -1,11 +1,12 @@
 -ATOL 1d-12
 -checkConserv 
--n networks/non_eq/full_network_v8.dat
+-mxstep 50000
+-n networks/non_eq/full_network_carbon_burial.dat
 -noExample 
 -noSinkCheck 
--options options_photochem
--project v8
+-options options_photochem_highres
+-project carbon_burial_highres
 -RTOL 1D-8
--photoBins 7949
+-photoBins 39740
 -skipODEthermo 
 -useN 

@@ -25,7 +25,10 @@ def lognormal(N, rg, sig, r_array):
     # want final output to be shape (nz, cond, nbins) so that we can integrate over
     # the size distribution for each layer and then the condensate species separately
     prefactor = N[:,np.newaxis] / (r_array[np.newaxis, np.newaxis, :] * np.log(sig) * np.sqrt(2 * np.pi))
-    exponent = - (np.log(r_array[np.newaxis, np.newaxis, :] / rg[:,np.newaxis]) / (np.sqrt(2) * np.log(sig)))**2
+    # N is already 0 wherever rg==0 (cloud-free layers), so this placeholder
+    # never reaches the output -- it just avoids a literal divide-by-zero.
+    rg_safe = np.where(rg > 0, rg, 1.0)
+    exponent = - (np.log(r_array[np.newaxis, np.newaxis, :] / rg_safe[:,np.newaxis]) / (np.sqrt(2) * np.log(sig)))**2
     distribution = prefactor * np.exp(exponent)
     return distribution
 
@@ -162,11 +165,13 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     pp = np.zeros((n_layers, len(molecules)))
     n_c = np.zeros((n_layers, len(molecules)))
     rg = np.zeros((n_layers, len(molecules)))
+    mmr_c_all = np.zeros((n_layers, len(molecules)))
     for i, igas in enumerate(molecules):
         mass_igas = Formula(igas).mass                      #amu
         cgs_mass_H = Formula("H").mass*u.u.to(u.g)          #g
 
         mmr_c = all_out['condensate_mmr'][:,i]
+        mmr_c_all[:,i] = mmr_c
         mmr_tot = all_out['cond_plus_gas_mmr'][:,i]
         rho_p = all_out['condensate_density'][i]            # g/cm^3
         rg[:,i] = all_out['mean_particle_r'][:,i]*1e-4       #microns -> cm
@@ -264,6 +269,41 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
                 file.write(f"{waveno:.6e} {P[ip]*1e6:.6e} "
                            f"{kappa_abs_out[ip, iw]:.6e} "
                            f"{kappa_sca_out[ip, iw]:.6e}\n")
+
+    # Condensate mass-mixing-ratio per layer, for marcs.f's CNDNSA
+    # elemental-depletion calc (OSTABLOOK) -- same ntau-padding as kappa above.
+    if n_layers == ntau - 1:
+        mmr_c_out = np.vstack([mmr_c_all, mmr_c_all[-1:]])
+    else:
+        mmr_c_out = mmr_c_all
+
+    mmr_path = f'{input_dir}/virga2marcs_mmr.dat'
+    with open(mmr_path, 'w') as file:
+        file.write("Condensate mmr_c (mass mixing ratio, dimensionless)\n")
+        for i, igas in enumerate(molecules):
+            file.write(f"{igas}\n")
+            for ip in range(ntau):
+                file.write(f"{mmr_c_out[ip, i]:.6e}\n")
+
+    # Sedimentation mass flux (g/cm^2/s), for marcs.f's LATENT heat term
+    # -- fsed * mmr_c * rho_gas * w_convect, using virga's own internal
+    # convective velocity scale (kz/mixing_length), the same ingredient
+    # mean_particle_r itself was solved from (vfall(r)=w_convect).
+    w_convect = all_out['kz'] / all_out['mixing_length']
+    fsed = all_out['fsed']
+    sedflux_all = fsed * mmr_c_all * (rho_gas * w_convect)[:, np.newaxis]
+    if n_layers == ntau - 1:
+        sedflux_out = np.vstack([sedflux_all, sedflux_all[-1:]])
+    else:
+        sedflux_out = sedflux_all
+
+    sedflux_path = f'{input_dir}/virga2marcs_sedflux.dat'
+    with open(sedflux_path, 'w') as file:
+        file.write("Condensate sedimentation mass flux (g/cm^2/s)\n")
+        for i, igas in enumerate(molecules):
+            file.write(f"{igas}\n")
+            for ip in range(ntau):
+                file.write(f"{sedflux_out[ip, i]:.6e}\n")
 
     return output_path
 

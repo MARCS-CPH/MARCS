@@ -75,6 +75,10 @@ C      STEFF=5770
       common /coutlist/pplist(843)
       common /clevprint/ prj2(ndp),masslinf
       common /cpecap/ pecap
+C krome_solve_params: initmd/conv_rate are read in MAINB (INITMD=/
+C CNVRAT=, alongside INITAB=/CNVCRI=) but used only by krome_solve --
+C this common just shares the values through to there.
+      common /krome_solve_params/ initmd, conv_rate
       common/cabinit/abinit(natms),kelem(natms),nelem
       character atnames*2, molnames*8, molnames2*4
       common /ggchemresults/
@@ -89,18 +93,22 @@ C      STEFF=5770
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
-      common /virga/ ivirga_on
+      integer :: cndnsa, clouds, latent
+      common /virga/ ivirga_on, cndnsa, clouds, latent
       common /conv_help/ abund_freq,icalc_abund
       common /onemor_it/ onemor
-C    
+      integer :: force_abund_next
+      common /force_abund/ force_abund_next
+C
 
 ! Initiation
       onemor = 0
+      force_abund_next = 0
       larciv = 0
       call gettime(0)
       
@@ -3521,6 +3529,22 @@ C
      >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
      >               xtemplimlow,xtemplimup,molactive(543),
      >               atactive(22)
+C LATENT: condensate gas/condensed-phase reference enthalpies (J/mol)
+C and molar mass (g/mol), read from nasa9.dat below when latent=1.
+C Up to 3 condensed-phase entries per condensate (e.g. solid+liquid),
+C each with its own valid T-range -- picked by local layer T later.
+        integer :: ivirga_on, cndnsa, clouds, latent
+        common /virga/ ivirga_on, cndnsa, clouds, latent
+        integer, parameter :: n_phase_max = 3
+        character(len=50) latent_condensates(nr_cond)
+        integer :: latent_cidx
+        logical :: latent_phase_match, exp_mismatch
+        common /latent_thermo/ cond_heatf_gas(nr_cond),
+     >    cond_molmass_gas(nr_cond), cond_n_phases(nr_cond),
+     >    cond_heatf_phase(nr_cond,n_phase_max),
+     >    cond_T_lo_phase(nr_cond,n_phase_max),
+     >    cond_T_hi_phase(nr_cond,n_phase_max)
+        integer :: cond_n_phases
 
 
 C       From nasa9.dat, temperature limits, sets default values
@@ -3549,6 +3573,20 @@ C      Set temperature exponents (for nasa-9 format):
         molactive(:)=.FALSE.
         atactive(:)=.FALSE.
 
+        if (latent.eq.1) then
+          cond_heatf_gas = 0.d0
+          cond_molmass_gas = 0.d0
+          cond_n_phases = 0
+          cond_heatf_phase = 0.d0
+          cond_T_lo_phase = 0.d0
+          cond_T_hi_phase = 0.d0
+          open(unit=23962, file='virga_condensates.dat', status='old')
+          do i=1,nr_cond
+            read(23962,'(A)') latent_condensates(i)
+          enddo
+          close(23962)
+        endif
+
 C       read comments
         open(8897, file='data/nasa9.dat',status='old')
         do i=1,58
@@ -3557,9 +3595,16 @@ C       read comments
 
 c       Iteration over the content blocks
         N_matched = 0
-        rloop: do 
+        rloop: do
           read(8897, '(A10,A56)',end=3923) spname, comments
-          read(8897, '(I2,A8,5(A2,F6.2),I2,F13.5,F13.5)') nT, id, 
+C         "END PRODUCTS" is a section divider, not EOF -- gas mixtures
+C         like "Air" follow it, which aren't single species and would
+C         misalign every subsequent header/data pair if read as one.
+          if (trim(spname).eq.'END PRODUC') goto 3923
+C         nT: number of temperature sub-ranges this species' polynomial
+C         fit is split into (most species have 1-3; a few, like liquid
+C         sulfur, need more -- see the i.le.3 storage guard below).
+          read(8897, '(I2,A8,5(A2,F6.2),I2,F13.5,F13.5)') nT, id,
      &                               el(1), st(1),el(2),st(2),el(3),
      &                               st(3),el(4),st(4), el(5),st(5), 
      &                               type, xm, heatf
@@ -3585,15 +3630,34 @@ C         GGchem matching here
                   molactive(ggi)=.TRUE.
                   exit molloop
                end if
-            end do molloop   
-          endif    
-C         
-          if (type.NE.0) goto 3923 ! Done with the readin   
+            end do molloop
+          endif
+C
+C         LATENT: does this entry match a condensate's gas phase
+C         (exact name) or one of its condensed phases (name+"(...)")?
+          latent_cidx = 0
+          latent_phase_match = .False.
+          if (latent.eq.1) then
+            do i=1,nr_cond
+              if (trim(spname).eq.trim(latent_condensates(i))) then
+                cond_heatf_gas(i) = heatf
+                cond_molmass_gas(i) = xm
+                exit
+              else if (index(spname,trim(latent_condensates(i))//'(')
+     >                 .eq.1) then
+                latent_cidx = i
+                latent_phase_match = .True.
+                exit
+              endif
+            enddo
+          endif
+C
+          if (type.NE.0 .and. latent.ne.1) goto 3923 ! Done with the readin
 
-          if(nT.GT.3) then 
-            print*, 'error readin thermo data: nT>3'
-            STOP
-          end if
+C         nT>3 is rare but real further into nasa9.dat (e.g. S(L), W(cr))
+C         -- xmoltha/xattha only have room for 3 intervals, so storage
+C         below is bounds-guarded by i.le.3 instead of refusing to read
+C         the whole entry (LATENT only ever needs interval 1 anyway).
 
           do i=1,nT
             read(8897, '(2(F11.3),I1,8(F5.1),F15.3)') tlow,tup,ncoeff,
@@ -3602,24 +3666,46 @@ C
             read(8897, '(5(D16.8))') ai(1),ai(2),ai(3),ai(4),ai(5)
             read(8897, '(5(D16.8))') ai(6),ai(7),dump,b1,b2
 
+            exp_mismatch = .False.
             do j=1,7
-               if(abs(ci(j)-thexp(j)).GT. 0.1d0) then 
-                  print*, 'error readin thermo data, exp mismatch'
-                  STOP
+               if(abs(ci(j)-thexp(j)).GT. 0.1d0) then
+                  exp_mismatch = .True.
+                  exit
                endif
             end do
+C           Entries using a reduced/non-standard polynomial basis (a
+C           real, if uncommon, case further into nasa9.dat -- e.g.
+C           P4O10(cr)) can't be stored in this fixed 7-term layout.
+C           Skip just this interval's data rather than crash the whole
+C           run over an entry that's very likely irrelevant anyway.
+            if (exp_mismatch) go to 3924
 
-            if (species_found) then
+C           LATENT: only the first interval's own [tlow,tup] is kept --
+C           a condensed phase's heatf/molar-mass-adjacent entries don't
+C           need the full multi-range polynomial, just where it's valid.
+            if (latent_phase_match .and. i.eq.1 .and.
+     >          cond_n_phases(latent_cidx).lt.n_phase_max) then
+              cond_n_phases(latent_cidx) = cond_n_phases(latent_cidx)+1
+              cond_heatf_phase(latent_cidx,
+     >          cond_n_phases(latent_cidx)) = heatf
+              cond_T_lo_phase(latent_cidx,
+     >          cond_n_phases(latent_cidx)) = tlow
+              cond_T_hi_phase(latent_cidx,
+     >          cond_n_phases(latent_cidx)) = tup
+            endif
+
+            if (species_found .and. i.le.3) then
                 if (is_atom) then
                    xattha(ggindex,i,:)=ai(:)
                    if(i.eq.1) xatthTlim(ggindex,1)=tlow
-                   xatthTlim(ggindex,i+1)=tup 
+                   xatthTlim(ggindex,i+1)=tup
                 else
                    xmoltha(ggindex,i,:)=ai(:)
                    if(i.eq.1) xmolthTlim(ggindex,1)=tlow
-                   xmolthTlim(ggindex,i+1)=tup 
+                   xmolthTlim(ggindex,i+1)=tup
                 end if
             end if
+3924        continue
           end do
         end do rloop
 3923    continue
@@ -3627,7 +3713,25 @@ C
         close(8897)
 C        print*, N_matched
 
-        contains 
+        if (latent.eq.1) then
+          open(unit=253, file='latent_thermo_diag.dat',
+     >      status='replace')
+          do i=1,nr_cond
+            write(253,*) 'Condensate: ', trim(latent_condensates(i))
+            write(253,*) 'gas heatf [J/mol]: ', cond_heatf_gas(i)
+            write(253,*) 'gas molar mass [g/mol]: ',
+     >        cond_molmass_gas(i)
+            write(253,*) 'n_phases found: ', cond_n_phases(i)
+            do j=1,cond_n_phases(i)
+              write(253,*) '  phase ',j,' heatf [J/mol]: ',
+     >          cond_heatf_phase(i,j),' T_lo: ',cond_T_lo_phase(i,j),
+     >          ' T_hi: ',cond_T_hi_phase(i,j)
+            enddo
+          enddo
+          close(253)
+        endif
+
+        contains
         function upper(strIn) result(strOut)
         ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
         ! Original author: Clive Page
@@ -4663,6 +4767,13 @@ C      REAL*8 ROSSO,PTAUO
       DIMENSION WAVFLX(10)
       COMMON /COPINF/ SUMOP(maxosmol,NDP),SUMKAP(maxosmol,NDP)
       COMMON /UTPUT/IREAD,IWRIT
+C PTOT-WRITEBACK-FIX: krome_ptot_out is only meaningful when krome
+C actually ran (OSTABLOOK sets it to the ptot krome divided by) -- makes
+C the species abundances written alongside it (from krome's num_den)
+C consistent with the pressure krome actually used, instead of the
+C later, fully-T-corrected PG that can differ by up to ~25% at depth.
+      real*8 :: krome_ptot_out
+      common /krome_ptot_out/ krome_ptot_out(ndp)
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      * DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON /CLEVETAT/GEFF(NDP),PPRG(NDP),AMLOSS
@@ -4747,11 +4858,12 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      &     ,pp24(ndp),pp54(ndp),pp24m(ndp),pp54m(ndp)
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_initabund/ krome_init_abund_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /virga/ ivirga_on
+      common /krome_solve_params/ initmd, conv_rate
       integer krome_on,krome_photo_on,krome_debug
       integer krome_return,krome_init_abund_on,ivirga_on
       real*8 dt_start,dt_max,dt_inc,krome_tmax
@@ -4917,8 +5029,9 @@ C        CONVERT TO 'PHYSICAL FLUX'
         else
           write(7,*) '  Initial abundances: from GGchem'
         end if
-        write(7,5320) conv_crit
-5320     format('  Convergence criterion: ',1pe10.3)
+        write(7,5320) conv_crit, conv_rate, initmd
+5320     format('  Convergence criterion: ',1pe10.3,
+     &    '  conv_rate=',1pe10.3,'  initmd=',i2)
         write(7,5330) dt_start,dt_max,krome_tmax,dt_inc
 5330     format('  Time integration: dt_start=',1pe9.2,
      &    '  dt_max=',1pe9.2,'  t_max=',1pe9.2,'  dt_inc=',0pf5.2)
@@ -5102,12 +5215,17 @@ C --- Unit 90: Model atmosphere P/T table (same layout as marcs_output.dat) ---
       WRITE(90,207)
       WRITE(90,208)
       DO I=1,JTAU
+        if (krome_on.eq.1) then
+          ptot_col = krome_ptot_out(I)
+        else
+          ptot_col = PG(I)
+        endif
         if(metpe.eq.1) then
           WRITE(90,209) I,TAU(I),TAUS(I),Z(I),T(I),PE(I),
-     &        PG(I),PRAD(I),PTURB(I),XKAPR(I),I
+     &        ptot_col,PRAD(I),PTURB(I),XKAPR(I),I
         else
           WRITE(90,209) I,TAU(I),TAUS(I),Z(I),T(I),PPEL(I),
-     &        PG(I),PRAD(I),PE(I),XKAPR(I),I
+     &        ptot_col,PRAD(I),PE(I),XKAPR(I),I
         end if
       END DO
 
@@ -5802,13 +5920,15 @@ C
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /ch4/ nch4
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
+      common /krome_solve_params/ initmd, conv_rate
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /conv_help/ abund_freq,icalc_abund
-      common /virga/ ivirga_on
+      integer :: ivirga_on, cndnsa, clouds, latent
+      common /virga/ ivirga_on, cndnsa, clouds, latent
       DATA TSUN,GSUN,RSUN/5800.,4.44,7E10/
       character(len=200) :: spectrum_file
       character(len=200) :: readin_line
@@ -5911,9 +6031,9 @@ C
       print*, "Modelling a rocky planet with a surface temperature of ", 
      * tbottom, " and a surface albedo of ", reflect
       end if
-      read(5, 1236) krome_on, krome_photo_on, krome_photo_scale, 
-     > conv_crit
-      read(5, 1240) krome_init_abund_on
+      read(5, 1236) krome_on, krome_photo_on, krome_photo_scale,
+     > conv_crit, conv_rate, mixing_on
+      read(5, 1240) krome_init_abund_on, initmd
 
       read(5, 1237) dt_start, dt_max, krome_tmax, dt_inc
       read(5, 1238) krome_debug,krome_return
@@ -5925,19 +6045,33 @@ C
          print*, "Photorates included"
          print*, "with photo chemistry scaled by", krome_photo_scale
         endif
+        if (mixing_on.eq.1) then
+         print*, "Vertical mixing (eddy diffusion) is turned on"
+        else
+         print*, "Vertical mixing (eddy diffusion) is turned off"
+        endif
       else
-      print*, "Non-equilibrium Chemistry is turned off"      
+      print*, "Non-equilibrium Chemistry is turned off"
       endif
       if (krome_init_abund_on.eq.1) then
         print*, "Initial abund. mode on: Reading krome_init_abund.dat"
       else
         print*, "Initial abund. mode off: using GGchem abundances"
       endif
-      read(5, 1239) ivirga_on
+      read(5, 1239) ivirga_on, cndnsa, clouds, latent
       if (ivirga_on.eq.1) then
        print*, "Virga cloud model is turned on"
       else
        print*, "Virga cloud model is turned off"
+      endif
+      if (ivirga_on.eq.1 .and. cndnsa.eq.1) then
+       print*, "Condensate elemental depletion (CNDNSA) is turned on"
+      endif
+      if (ivirga_on.eq.1 .and. clouds.eq.1) then
+       print*, "Cloud opacity (CLOUDS, x_virga/s_virga) is turned on"
+      endif
+      if (ivirga_on.eq.1 .and. latent.eq.1) then
+       print*, "Cloud latent heat (LATENT) is turned on"
       endif
       FLUX=STEFAN*TEFF**4/PI
       GRAV=10.**G
@@ -6012,11 +6146,11 @@ C I3 window started one column before the digits actually began.
 67    FORMAT(20X,'TAUM   =',F10.2)
 68    FORMAT(20X,'METBL  =',I10)
 69    FORMAT(20X,'FACPLY =',F10.3)
-1236  FORMAT(7X,I3,12X,I3,12X,E8.1,7X,E8.1)
+1236  FORMAT(7X,I3,12X,I3,12X,E8.1,7X,E8.1,7X,E8.1,7X,I3)
 1237  FORMAT(7X,E8.1,7X,E8.1,7X,E8.1,7X,F8.2)
 1238  FORMAT(7X,I3,12X,I3)
-1239  FORMAT(7X,I3)
-1240  FORMAT(7X,I3)
+1239  FORMAT(7X,I3,12X,I3,12X,I3,12X,I3)
+1240  FORMAT(7X,I3,12X,I3)
       END
 C
       SUBROUTINE MATINV(A,N)
@@ -8113,6 +8247,11 @@ C Kjell
 C
       DIMENSION PGH(4),ROH(4),TH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
       COMMON /CMETPE/ PPEL(NDP), METPE
+      COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
+     & VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),STATEC_RO(NDP),
+     & NTAU,ITER
+      real*8 mu_metpe(ndp)
+      common /cmuk/ mu_metpe
       common /cu2warning/nu2warning
       nu2warning = 0
 C
@@ -8125,6 +8264,27 @@ C
       PINV=1./(2.*DELPE)
       TINV=1./(2.*DELT)
 C     
+      if (METPE .EQ. 2 .and. T.lt.2000.) then
+C METPE=2, cool layer: use PG=PP(k) directly (JON's fake-Saha PG(PE)
+C collapsed on tiny real PPEL, RO off by ~140 orders of magnitude); RO follows analytically from RO=PG*mu/(kB*T) at fixed mu_metpe.
+        PG=PP(k)
+        P=PRAD+PG
+        call calc_adiaindex(k, PG, T, gamma, xmmw)
+        cp = gamma/(gamma-1)*xk_boltz/mu_metpe(k)
+        cv = cp/gamma
+        RO=PG*mu_metpe(k)/(xk_boltz*T)
+        DROT=-RO/T
+        DROP=RO/PG
+        DPT=0.D0
+        DPP=1.D0
+        DPGT=0.D0
+        DPGP=1.D0
+        HJALP=DROT-DROP*DPT/DPP
+        TGRAD=-P*HJALP/(CP*RO*RO)
+        Q=-T/RO*(DROT-DROP*DPGT/DPGP)
+        U2=CP*DPP/(CV*DROP)
+
+      else
       CALL JON(T,PE,1,PG,RO,EPP,0)
       P=PRAD+PG
 C
@@ -8144,39 +8304,6 @@ C
       CALL JON(TP,PE,1,PGH(4),ROH(4),EP(4),0)
       PRAH(4)=PRAD*(1.+4.*DERET)
       TH(4)=TP
-
-      if (METPE .EQ. 2 .and. T.lt.2000.) then
-        call calc_adiaindex(k, PG, T, gamma, xmmw)
-        cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
-        cv = cp/gamma
-
-C       Squared soundspeed
-        xcs2inv = xmmw*xm_p/xk_boltz
-        RO=pg/T*xcs2inv
-
-        ROH(1)=PGH(1)/TH(1)*xcs2inv 
-        ROH(2)=PGH(2)/TH(2)*xcs2inv  
-        ROH(3)=PGH(3)/TH(3)*xcs2inv  
-        ROH(4)=PGH(4)/TH(4)*xcs2inv   
-C
-        DO I=1,4
-          PH(I)=PRAH(I)+PGH(I)
-        end do
-C
-        DROT=(ROH(4)-ROH(3))*TINV
-        DROP=(ROH(2)-ROH(1))*PINV
-        DHP=(HH(2)-HH(1))*PINV
-        DPT=(PH(4)-PH(3))*TINV
-        DPP=(PH(2)-PH(1))*PINV
-        DPGT=(PGH(4)-PGH(3))*TINV
-        DPGP=(PGH(2)-PGH(1))*PINV
-C
-        HJALP=DROT-DROP*DPT/DPP
-        TGRAD=-P*HJALP/(CP*RO*RO)
-        Q=-T/RO*(DROT-DROP*DPGT/DPGP)
-        U2=CP*DPP/(CV*DROP)
-
-      else
 C     Case, where METPE not 2, normal stellar marcs
 C
         DO1 I=1,4
@@ -8232,16 +8359,38 @@ C
 C
       DIMENSION PGH(4),ROH(4),TH(4),EH(4),HH(4),PH(4),EP(4),PRAH(4)
       COMMON /CMETPE/ PPEL(NDP), METPE
+      COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
+     & VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),STATEC_RO(NDP),
+     & NTAU,ITER
+      real*8 mu_metpe(ndp)
+      common /cmuk/ mu_metpe
 C
       xk_boltz=1.380649d-16
-      xm_p=1.66053906660d-24 
+      xm_p=1.66053906660d-24
       DEREP=0.01
       DERET=0.001
       DELPE=DEREP*PE
       DELT=DERET*T
       PINV=1./(2.*DELPE)
       TINV=1./(2.*DELT)
-C     
+C
+      if (METPE .EQ. 2 .and. T.lt.2000.) then
+C METPE=2, cool layer: same fix as TERMO -- PG is the real total
+C pressure (already solved for by TRYCK), RO/derivatives follow
+C analytically from RO=PG*mu/(kB*T), no JON/finite-difference calls.
+        PG=PP(k)
+        P=PRAD+PG
+        call calc_adiaindex(k, PG, T, gamma, xmmw)
+        cp = gamma/(gamma-1)*xk_boltz/mu_metpe(k)
+        cv = cp/gamma
+        RO=PG*mu_metpe(k)/(xk_boltz*T)
+        DROT=-RO/T
+        DROP=RO/PG
+        DPT=0.D0
+        DPP=1.D0
+        DPGT=0.D0
+        DPGP=1.D0
+      else
       CALL JON(T,PE,1,PG,RO,EPP,0)
       P=PRAD+PG
 C
@@ -8261,34 +8410,8 @@ C
       CALL JON(TP,PE,1,PGH(4),ROH(4),EP(4),0)
       PRAH(4)=PRAD*(1.+4.*DERET)
       TH(4)=TP
-
-      if (METPE.EQ.2 .and. T.lt.2000.) then
-        call calc_adiaindex(k, PG, T, gamma, xmmw)
-        cp = gamma/(gamma-1)*xk_boltz/(xmmw*xm_p)
-        cv = cp/gamma
-C       Squared soundspeed
-        xcs2inv = xmmw*xm_p/xk_boltz
-        RO=pg/T*xcs2inv
-
-        ROH(1)=PGH(1)/TH(1)*xcs2inv 
-        ROH(2)=PGH(2)/TH(2)*xcs2inv  
-        ROH(3)=PGH(3)/TH(3)*xcs2inv  
-        ROH(4)=PGH(4)/TH(4)*xcs2inv  
-C
-        DO I=1,4
-          PH(I)=PRAH(I)+PGH(I)
-        end do
-C
-        DROT=(ROH(4)-ROH(3))*TINV
-        DROP=(ROH(2)-ROH(1))*PINV
-        DHP=(HH(2)-HH(1))*PINV
-        DPT=(PH(4)-PH(3))*TINV
-        DPP=(PH(2)-PH(1))*PINV
-        DPGT=(PGH(4)-PGH(3))*TINV
-        DPGP=(PGH(2)-PGH(1))*PINV
-      else
 C     Case, where METPE=2, normal stellar marcs
-     
+
         DO1 I=1,4
         EH(I)=3.*PRAH(I)/ROH(I)+EP(I)
         PH(I)=PRAH(I)+PGH(I)
@@ -8342,7 +8465,7 @@ C     from init_thermo
      >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
      >               xtemplimlow,xtemplimup,molactive(543),
      >               atactive(22)
-        common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+        common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
         common /noneq_initabund/ krome_init_abund_on
         cpRsum=0.0d0
         psum=0.0d0
@@ -8546,6 +8669,25 @@ C STATE VARIABLES
      *NTAU,ITER
       common /ckdtpe/dpex,kdtpe
       common /dpeset/ dpein,dtin, pe_corr(ndp)
+C LATENT: cloud condensation heat flux, added into RT(K) below only
+C when latent=1 -- see OSTABLOOK for how these commons are filled.
+      integer :: cndnsa, clouds, latent
+      integer, parameter :: n_phase_max = 3
+      integer :: cond_n_phases
+      common /latent_thermo/ cond_heatf_gas(nr_cond),
+     >    cond_molmass_gas(nr_cond), cond_n_phases(nr_cond),
+     >    cond_heatf_phase(nr_cond,n_phase_max),
+     >    cond_T_lo_phase(nr_cond,n_phase_max),
+     >    cond_T_hi_phase(nr_cond,n_phase_max)
+      real*8 :: sedflux_in(ndp,nr_cond)
+      common /latent_sedflux/ sedflux_in
+      integer :: force_abund_next
+      common /force_abund/ force_abund_next
+      real*8 :: FFL(ndp), L_cond
+      integer :: i_cond, j_phase
+      integer :: nchk
+      logical :: t_bad
+      real*8 :: tpe_incr
 C
 C DIMENSIONS
       DIMENSION PTAU(NDP),ROSSP(NDP),SUMW(NDP),ROSST(NDP),ROSSPE(NDP)
@@ -8642,14 +8784,14 @@ C SPACE ALLOCATION
       character*8 file_id
       common /ctcorlast/tcorlast 
       DATA IVERS,IEDIT/21,1/
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
-      common /virga/ ivirga_on
-      common /conv_help/ abund_freq, icalc_abund  
+      common /virga/ ivirga_on, cndnsa, clouds, latent
+      common /conv_help/ abund_freq, icalc_abund
       common /onemor_it/ onemor
       
       if (krome_on.EQ.1) then
@@ -8728,7 +8870,13 @@ C
       if (it.eq.itmax) then !last iteration, need to calculate abundances
        icalc_abund=1
       endif
-C     
+C the previous iteration's Newton correction was rejected -- force a
+C fresh chemistry/virga recompute now rather than reuse frozen inputs.
+      if (force_abund_next.eq.1) then
+       icalc_abund=1
+       force_abund_next=0
+      endif
+C
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUA
 C LEAVING THE EXPLICIT TEMPERATURE DEPENDANCE OF FLUX AND RADIATION PRES
 C IN THE MATRICES TTT AND PRT.
@@ -9054,11 +9202,17 @@ C RADIATIVE EQUILIBRIUM
             RT(K)=RT(K)-Y*(XJ(K)-BPLAN(K))
             TJ2(K)=Y
             TJ1(K)=0.
-            TTT(K,K)=TTT(K,K)-Y*DBPL(K)+Y*(XJ(K)-BPLAN(K))*XT(K)/X(K)
+C JACREG 2026-10-02: clip the destabilizing term2 so it can never
+C exceed the always-stabilizing term1, fixing a single saturated CO2 line flipping TTT(K,K) negative and causing a layer 6-9 T-zigzag.
+            RGT1=-Y*DBPL(K)
+            RGT2=Y*(XJ(K)-BPLAN(K))*XT(K)/X(K)
+            RGT2=MAX(RGT2,-RGT1)
+            TTT(K,K)=TTT(K,K)+RGT1+RGT2
             if (x(k)==0.) then
                   print*, "X is zero at k ", k
             end if
-            TPE(K,K)=TPE(K,K)+Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)
+            tpe_incr = Y*(XJ(K)-BPLAN(K))*XPE(K)/X(K)
+            TPE(K,K)=TPE(K,K)+tpe_incr
       end if
       GO TO 146
 145   CONTINUE
@@ -9069,8 +9223,10 @@ C FLUX CONSTANCY
       TJ2(K)=FKB*Y
       TTT(K,K-1)=TTT(K,K-1)-Y*(XK(K)-XK(K-1))*(XT(K-1)+ST(K-1))/XSA
       TTT(K,K)=TTT(K,K)-Y*(XK(K)-XK(K-1))*(XT(K)+ST(K))/XSA
-      TPE(K,K-1)=TPE(K,K-1)-Y*(XK(K)-XK(K-1))*(XPE(K-1)+SPE(K-1))/XSA
-      TPE(K,K)=TPE(K,K)-Y*(XK(K)-XK(K-1))*(XPE(K)+SPE(K))/XSA
+      tpe_incr = Y*(XK(K)-XK(K-1))*(XPE(K-1)+SPE(K-1))/XSA
+      TPE(K,K-1)=TPE(K,K-1)-tpe_incr
+      tpe_incr = Y*(XK(K)-XK(K-1))*(XPE(K)+SPE(K))/XSA
+      TPE(K,K)=TPE(K,K)-tpe_incr
 
 146   CONTINUE
 C
@@ -9246,6 +9402,39 @@ C VFIX OPTION
 231   VV(K)=VFIX*1.E5
 230   CONTINUE
 C
+C LATENT: cloud condensation heat flux FFL(k) = sum over condensates of
+C L(T(k)) * sedflux_in(k,i), L = (gas - phase heatf)/molmass, phase
+C picked by which [Tmin,Tmax] window T(k) falls in (see OSTABLOOK/
+C init_thermo). Left at 0 where latent=0 or no phase matches.
+      FFL = 0.d0
+      if (latent.eq.1) then
+        do k=1,ntau
+          do i_cond=1,nr_cond
+            do j_phase=1,cond_n_phases(i_cond)
+              if (TT(k).ge.cond_T_lo_phase(i_cond,j_phase) .and.
+     >            TT(k).le.cond_T_hi_phase(i_cond,j_phase)) then
+                L_cond = (cond_heatf_gas(i_cond)
+     >            - cond_heatf_phase(i_cond,j_phase))
+     >            / cond_molmass_gas(i_cond) * 1.d7
+                FFL(k) = FFL(k) + L_cond * sedflux_in(k,i_cond)
+                exit
+              endif
+            enddo
+          enddo
+        enddo
+        if (it.eq.1) then
+          open(unit=255, file='ffl_diag.dat', status='replace')
+        else
+          open(unit=255, file='ffl_diag.dat', status='old',
+     >      position='append')
+        endif
+        write(255,*) 'iteration ', it
+        write(255,*) 'layer  TT[K]  FFC[erg/cm2/s]  FFL[erg/cm2/s]'
+        do k=1,ntau
+          write(255,*) k, TT(k), FFC(k), FFL(k)
+        enddo
+        close(255)
+      endif
 
 C TAU LOOP
       DO 200 K=1,NTAU
@@ -9456,10 +9645,12 @@ CC    TTT IS ALREADY INITIATED
       IF(K.GT.MIHAL) GO TO 261
 C STRMGREN CONDITION
       RT(K)=RT(K)+(FFC(K+1)-FFC(K))
+      if (latent.eq.1) RT(K)=RT(K)+(FFL(K+1)-FFL(K))
       GO TO 262
 261   CONTINUE
 C FLUXCONSTANCY
       RT(K)=RT(K)+FLUX-FFC(K)
+      if (latent.eq.1) RT(K)=RT(K)-FFL(K)
 262   CONTINUE
 
 C END OF TAU LOOP
@@ -9697,6 +9888,38 @@ C SOLVE FOR TEMPERATURE CORRECTION
       T(I)=T(I)+TTT(I,J)*RT(J)
 399   CONTINUE
 400   CONTINUE
+C SAFETY GUARD: reject the whole Newton correction if the linear solve
+C produced a non-finite or absurd result (e.g. ALGEBN/MATINV
+C catastrophic cancellation) -- stall this iteration rather than
+C propagate garbage into TT(k)/PPE(k)/FFC(k)/VV(k)/PPR(k)/PP(k). All
+C five corrections share the same failed solve, so if any one of them
+C is bad the whole set is suspect and gets zeroed together.
+      t_bad = .false.
+      do nchk=1,ntau
+        if (T(nchk).ne.T(nchk) .or. abs(T(nchk)).gt.1.d4 .or.
+     >      PE(nchk).ne.PE(nchk) .or. abs(PE(nchk)).gt.1.d10 .or.
+     >      FC(nchk).ne.FC(nchk) .or. abs(FC(nchk)).gt.1.d10 .or.
+     >      V(nchk).ne.V(nchk) .or. abs(V(nchk)).gt.1.d10 .or.
+     >      PR(nchk).ne.PR(nchk) .or. abs(PR(nchk)).gt.1.d10 .or.
+     >      P(nchk).ne.P(nchk) .or. abs(P(nchk)).gt.1.d10) then
+          t_bad = .true.
+          exit
+        endif
+      enddo
+      if (t_bad) then
+        write(*,*) 'WARNING: Newton correction rejected at',
+     >    ' iteration ',it,' -- linear solve produced a',
+     >    ' non-finite/absurd correction at layer ',nchk,
+     >    ' (T=',T(nchk),' PE=',PE(nchk),' FC=',FC(nchk),
+     >    ' V=',V(nchk),' PR=',PR(nchk),' P=',P(nchk),
+     >    '). Applying zero correction this iteration.'
+        T = 0.d0
+        PE = 0.d0
+        FC = 0.d0
+        V = 0.d0
+        PR = 0.d0
+        P = 0.d0
+      endif
 C
 C
 999   FORMAT(I3,1P5E10.3)
@@ -9743,12 +9966,18 @@ C large corrections keep landing on the same layer or move around.
                      tcormxend = 0.
          end if
       END IF
-      IF(TCORMX.LE. TCONV )  THEN 
+      IF(TCORMX.LE. TCONV )  THEN
          ITSTOP=.TRUE.
       END IF
       IF(TCORMX.GT.TCONV )  THEN !catch cases where in the onemor iteration TCORMX can become larger than TCONV
          ITSTOP=.FALSE.
       ENDIF
+C A rejected correction means "unknown", not "zero" -- never let it
+C look converged, and force a fresh chemistry recompute next iteration.
+      if (t_bad) then
+        ITSTOP=.FALSE.
+        force_abund_next = 1
+      endif
 
       PRINT406, TCORMXM,IT,KTCORMX,LOG10(TAU(KTCORMX))
       inquire(file="tcormx.dat", exist=exist)
@@ -10432,14 +10661,19 @@ C
       COMMON /STATEC/PPR(NDP),PPT(NDP),PP(NDP),GG(NDP),ZZ(NDP),DD(NDP),
      & VV(NDP),FFC(NDP),PPE(NDP),TT(NDP),TAULN(NDP),RO(NDP),
      & NTAU,ITER
-      COMMON /TAUC/TAU(NDP),DLNTAU(NDP),JTAU 
+      COMMON /TAUC/TAU(NDP),DLNTAU(NDP),JTAU
       COMMON /CG/GRAV,KONSG
       COMMON /ROSSC/ROSS(NDP),CROSS(NDP)
       COMMON /CROSSOS/ ROSSO(NDP),PTAUO(NDP)
       COMMON /CI8/PGC,RHOC,EC
       COMMON /CSPHER/TAURAT,RADIUS,RR(NDP),NCORE
       COMMON /CMOLRAT/ FOLD(NDP,8),MOLOLD,KL
+      COMMON /CMETPE/ PPEL(NDP), METPE
+      COMMON /CIT/IT,ITMAX
       DATA EPS,RELT,RELPE,PEDEF/1.E-3,1.E-3,1.E-3,1./
+      real*8 :: pe_save(NDP)
+      logical :: pe_save_init = .False.
+      save pe_save
 C
 C START
 C     CALL MSLEFT(MSA)
@@ -10501,6 +10735,27 @@ C TAU LOOP
       DEDLNP=-(PGPE*PG/PP(1)+.5*DLNTAU(2)*GRAV*TAU(1)/(PP(1)*ROSS(1))*
      & (PGPE*PG/PP(1)+ROSSPE))
       DO 110 K=2,NTAU
+      IF (METPE.EQ.2 .AND. TT(K).LE.2000.D0) THEN
+C METPE=2, cool layer: Pe is decoupled from opacity here (BISTAB-SCAN,
+C 2026-09-24: a 12-dex Pe scan moved ROSSOP by zero), so use PPEL directly and Newton-solve PP(K), the real unknown, with an exact ROSS(K) derivative.
+        PPE(K)=PPEL(K)
+        KL=K
+        ROSS(K)=CROSS(K)*ROSSOP(TT(K),PPE(K),k)
+        NABSKO=NABSKO+1
+        DLNPP=0.D0
+        DO ITRP=1,50
+          PP(K)=PP(K-1)*EXP(DLNPP)
+          ERROR=(.5*DLNTAU(K)*GRAV*(TAU(K-1)/(PP(K-1)*ROSS(K-1))+
+     &      TAU(K)/(PP(K)*ROSS(K)))-DLNPP)
+          DERRDP=-.5*DLNTAU(K)*GRAV*TAU(K)/(PP(K)*ROSS(K))-1.D0
+          DSTEP=-ERROR/DERRDP
+          DLNPP=DLNPP+DSTEP
+          IF (ABS(DSTEP).LT.1.D-10) EXIT
+        ENDDO
+        PP(K)=PP(K-1)*EXP(DLNPP)
+        DP=GRAV*TAU(K)/(PP(K)*ROSS(K))
+        DPE=0.D0
+      ELSE
       PPE(K)=PPE(K-1)*EXP(DPE*DLNTAU(K))
       NABSKO=0
 C
@@ -10543,6 +10798,7 @@ C END TAU LOOP
       PP(K)=PGC+PPT(K)+PPR(K)
       DP=GRAV*TAU(K)/(PGC*ROSS(K))
       DPE=log(PPE(K)/PPE(K-1))/DLNTAU(K)
+      ENDIF
 
 110   CONTINUE
 
@@ -12683,6 +12939,8 @@ C APPROXIMATION ON THE FIRST CALL) TO AVOID DIVIDING BY ZERO.
       ELSE
         DX=-F/DFDX
       END IF
+C NOTE: the one-sided clamp below only catches DX.GT.2 -- a large
+C negative DX passes through unclamped (pre-existing, left as-is).
 C
 C TRY TO AVOID OVERFLOW WHEN A JUMP IN TEMPERATURE IS PRESENT
       IF (DX.GT.2.) DX=2.
@@ -12755,6 +13013,14 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /cabink/abink(ndp,nspec)
       common /ch4/ nch4
       dimension ptot(ndp),pp_sum(ndp),pg(ndp)
+C PTOT-WRITEBACK-FIX: ptot(k) here is the ONLY pressure krome_solve ever
+C sees -- every pinned species' num_den is seeded directly from it. Save
+C it so LISTMO can write the self-consistent value for unit 90 only; PG
+C itself is untouched everywhere else.
+      real*8 :: krome_ptot_out
+      common /krome_ptot_out/ krome_ptot_out(ndp)
+      real*8 mu_metpe(ndp)
+      common /cmuk/ mu_metpe
       dimension trpe(ndp), trphe(ndp),akapmax(ndp)
       dimension pe_gem(ndp),ptot1(ndp),dptot(ndp)
      &  ,pe1(ndp),dptot2(ndp),dpe2(ndp),dpe(ndp)
@@ -12796,13 +13062,21 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /krome_not_nums/ krome_not_pp, krome_not_count
       common /krome_not_cname/ krome_not_cnames
       common /dpeset/ dpein,dtin, pe_corr(ndp)
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_initabund/ krome_init_abund_on
       character*20 file_id, file_name
       dimension nmid(20)
       data nmid/3,4,16,29,33,34,37,39,44,53,59,62,8*1/
-      common /virga/ ivirga_on
+      integer :: ivirga_on, cndnsa, clouds, latent
+      common /virga/ ivirga_on, cndnsa, clouds, latent
       common /virgaopac/ x_virga(ndp,nwreal), s_virga(ndp,nwreal)
+      common /virga_depl/ abundforgg_depleted(natms,ndp),
+     > elem_depletion(natms,ndp), ppallmol_cond(ndp,543),
+     > ppallat_cond(ndp,22)
+      common/cabinit/abinit(natms),kelem(natms),nelem
+      character*4 abcname
+      common/cabnames/abcname(natms)
+      common /nat_const/ avogadro, atomic_mass(natms), mean_mass_per_H
       common /eddy_diff/K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
       COMMON /CG/GRAV,KONSG
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
@@ -12812,15 +13086,75 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
 
       character(len=50) condensates(nr_cond)
       real*8 :: cond_pp_init(nr_cond)
+      integer :: cond_molidx(nr_cond)
       character(len=100) dummy_header
       real*8 :: dummy_wn, dummy_P
       integer abund_freq,icalc_abund
       integer virga_ios
       character(len=200) virga_dummy_line
+C CNDNSA depletion locals
+      character(len=20) stoich_name, elem_sym_tmp, mmr_name
+      real*8 :: stoich_molmass, mmr_c_in(ndp,nr_cond), f_gas_val
+      real*8 :: sedflux_in(ndp,nr_cond)
+C Shared with SOLVE, which computes FFL(k) from this + /latent_thermo/.
+      common /latent_sedflux/ sedflux_in
+      integer :: n_elem_this, ie, eindex, elem_count_tmp
+C Known element symbols (atomic masses, g/mol) for nat_const's
+C atomic_mass(natms) -- matched by name since abinit/abcname indices
+C are whatever a given elabund_*.dat file assigns, not fixed by Z.
+C Covers every element seen across all elabund*.dat files in this repo
+C (swept 2026-10-20) plus D (deuterium, tracked in several Earth/Mars/
+C K2-18b decks) -- if a future deck uses one not in this list, the loop
+C below prints a warning instead of silently leaving its mass at zero.
+      character*4 mass_sym(48)
+      real*8 mass_val(48)
+      logical found_mass
+      data mass_sym /'H','He','Li','Be','B','C','N','O','F','Ne',
+     > 'Na','Mg','Al','Si','P','S','Cl','Ar','K','Ca','Ti','V','Cr',
+     > 'Mn','Fe','Co','Ni','Cu','Zn','Ga','Br','Kr','Rb','Sr','Zr',
+     > 'Nb','Mo','Cs','Ba','Hf','Ta','W','Hg','Pb','I','Xe','U','D'/
+      data mass_val /1.008d0,4.003d0,6.94d0,9.012d0,10.81d0,12.011d0,
+     > 14.007d0,15.999d0,18.998d0,20.180d0,22.990d0,24.305d0,26.982d0,
+     > 28.085d0,30.974d0,32.06d0,35.45d0,39.948d0,39.098d0,40.078d0,
+     > 47.867d0,50.942d0,51.996d0,54.938d0,55.845d0,58.933d0,58.693d0,
+     > 63.546d0,65.38d0,69.723d0,79.904d0,83.798d0,85.468d0,87.62d0,
+     > 91.224d0,92.906d0,95.95d0,132.905d0,137.327d0,178.49d0,
+     > 180.948d0,183.84d0,200.592d0,207.2d0,126.904d0,131.293d0,
+     > 238.029d0,2.014d0/
       if (first) then
       TOSREAD = 0.
       TPART = 0.
       call_counter = 0
+      avogadro = 6.02214076d23
+      atomic_mass = 0.d0
+C Bounded by nelem, not natms -- common-block storage beyond nelem is
+C zero-initialized (null bytes), which len_trim does not treat as
+C blank, so natms would have warned on every unused slot.
+      do n=1,nelem
+        if (len_trim(abcname(n)).eq.0) cycle
+        found_mass = .False.
+        do j=1,48
+          if (trim(abcname(n)).eq.trim(mass_sym(j))) then
+            atomic_mass(n) = mass_val(j)
+            found_mass = .True.
+            exit
+          endif
+        enddo
+        if (.not.found_mass) then
+          write(*,*) 'WARNING: no atomic mass known for element ',
+     >      trim(abcname(n)),' (abinit index ',n,') -- nat_const',
+     >      ' atomic_mass left at 0, add it to mass_sym/mass_val',
+     >      ' in OSTABLOOK if this element matters for CNDNSA.'
+        endif
+      enddo
+C Mean atomic mass per H nucleus, from the bulk (undepleted) composition
+C -- a single run constant, used to turn condensate mass fractions into
+C number densities relative to N_H for the CNDNSA depletion calc.
+      mean_mass_per_H = 0.d0
+      do n=1,natms
+        mean_mass_per_H = mean_mass_per_H
+     >    + 10.d0**(abinit(n)-12.d0) * atomic_mass(n)
+      enddo
       end if
       do it=1,ntau
          do jv=1,nwtot
@@ -12836,20 +13170,31 @@ C CALCULATE THE PARTIAL PRESSURE
       
       do k=1,ntau
         ptot(k)=pp(k)-ppr(k)-ppt(k)+pe_corr(k)
-       
+        krome_ptot_out(k) = ptot(k)
       end do
 
       if (icalc_abund .eq. 1) then
+C Reset to the full (undepleted) abundance every cycle -- virga_depl
+C only overwrites specific elements below, once virga has run.
+      do k=1,ntau
+        do n=1,natms
+          abundforgg_depleted(n,k) = abinit(n)
+        end do
+      end do
       DO  K=1,NTAU
-        KL=K         
+        KL=K
 
-C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------  
+C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
           
 ! use here ggrho(k) from GGchem instead ro(k) from jon and skip calling
 ! jon here
             call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
             ggmu(k) = ggmuk
+C           METPE=2 default mu (mass/particle, grams): GGchem equilibrium.
+C           Overwritten with the true non-eq value in krome_solve when
+C           krome_on=1 (this call always runs first, before krome_solve).
+            mu_metpe(k) = ggmuk * 1.66053906660d-24
             ggrho(k) = ggrhok
             ppsum(k) = ppsumk
             ppappsum(k) = ppappsumk
@@ -12869,23 +13214,6 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             rSi(k) = rSigg
             rHe(k) = rHegg
             ro_dt(k) = ggrhok
-      enddo
-      !calculate the pressure scale height and Kzz profile for virga and vertical mixing timescale for photochemistry
-      h1mbar=0
-      p1mbar=1d99
-      amu=1.66053906660e-24
-      do k=1,ntau
-        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
-        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
-        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
-          p1mbar = p1mbar_diff
-          h1mbar = H_p(k)
-        end if
-      end do
-      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
-       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
-     >       *h1mbar/(620e5)*(teff_real/1450)**4 
-       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
       enddo
 
       if (ivirga_on.eq.1) then
@@ -12907,6 +13235,7 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
             write(*,*) 'match found for ', trim(condensates(i)),
      >        ' at index ', molnames_index
             cond_pp_init(i) = ppallmol(ntau,molnames_index)
+            cond_molidx(i) = molnames_index
        exit
        endif
        !double check to also check for krome species that are not in molnames.dat but are in virga_condensates.dat
@@ -12965,6 +13294,7 @@ C     assuming the two grids already line up.
 
       call system('python3 call_virga.py') !runs virga on the written-out PT/condensate profile
 
+      if (clouds.eq.1) then
       open(unit=248, file='virga2marcs.dat', status='old')!read out from virga
       read(248,*) dummy_header
       x_virga = 0.
@@ -12984,7 +13314,200 @@ C     assuming the two grids already line up.
       enddo
       close(248)
       endif
-C     Header Pressure WAbs. Coeff Sca. Coeff      
+C TODO: under-relax x_virga/s_virga here (SAVE'd old values, blend
+C weight ~0.4) to damp cloud on/off flips -- deferred until OPAC merges them (~line 7392).
+
+      if (latent.eq.1) then
+C Per-condensate sedimentation mass flux from virga (g/cm^2/s), for
+C the LATENT heat term -- not yet used in FFL, just read + dumped here.
+      open(unit=253, file='virga2marcs_sedflux.dat', status='old')
+      read(253,*) dummy_header
+      do i=1,nr_cond
+        read(253,'(A)') mmr_name
+        if (trim(mmr_name).ne.trim(condensates(i))) then
+          write(*,*) 'virga2marcs_sedflux.dat order mismatch: ',
+     >      'expected ',trim(condensates(i)),' got ',trim(mmr_name)
+          stop 'check virga2marcs_sedflux.dat against'//
+     >      ' virga_condensates.dat'
+        endif
+        do k=1,ntau
+          read(253,*,iostat=virga_ios) sedflux_in(k,i)
+          if (virga_ios.ne.0) then
+            write(*,*) 'error reading virga2marcs_sedflux.dat for ',
+     >        trim(condensates(i)),' depth',k,' of',ntau
+            stop 'virga2marcs_sedflux.dat is malformed or truncated'
+          endif
+        enddo
+      enddo
+      close(253)
+
+      open(unit=254, file='sedflux_diag.dat', status='replace')
+      write(254,*) 'layer T[K] ptot[dyn/cm2]'
+      do i=1,nr_cond
+        write(254,*) 'Condensate: ', trim(condensates(i))
+        write(254,*) 'layer  sedflux[g/cm2/s]'
+        do k=1,ntau
+          write(254,*) k, sedflux_in(k,i)
+        enddo
+      enddo
+      close(254)
+      endif
+
+      if (cndnsa.eq.1) then
+C Per-layer condensate mass-mixing-ratio from virga (the only new
+C per-run number this needs -- virga already computes it).
+      open(unit=251, file='virga2marcs_mmr.dat', status='old')
+      read(251,*) dummy_header
+      do i=1,nr_cond
+        read(251,'(A)') mmr_name
+        if (trim(mmr_name).ne.trim(condensates(i))) then
+          write(*,*) 'virga2marcs_mmr.dat order mismatch: expected ',
+     >      trim(condensates(i)),' got ',trim(mmr_name)
+          stop 'check virga2marcs_mmr.dat against virga_condensates.dat'
+        endif
+        do k=1,ntau
+          read(251,*,iostat=virga_ios) mmr_c_in(k,i)
+          if (virga_ios.ne.0) then
+            write(*,*) 'error reading virga2marcs_mmr.dat for ',
+     >        trim(condensates(i)),' depth',k,' of',ntau
+            stop 'virga2marcs_mmr.dat is malformed or truncated'
+          endif
+        enddo
+      enddo
+      close(251)
+
+C Static per-condensate molar mass + elemental stoichiometry.
+      elem_depletion = 0.d0
+      open(unit=250, file='virga_condensate_stoich.dat',status='old')
+      do i=1,nr_cond
+        read(250,*) stoich_name, stoich_molmass, n_elem_this
+        if (trim(stoich_name).ne.trim(condensates(i))) then
+          write(*,*) 'virga_condensate_stoich.dat order mismatch:',
+     >      ' expected ',trim(condensates(i)),' got ',
+     >      trim(stoich_name)
+          stop 'check virga_condensate_stoich.dat against'//
+     >     ' virga_condensates.dat'
+        endif
+        do ie=1,n_elem_this
+          read(250,*) elem_sym_tmp, elem_count_tmp
+          eindex=0
+          do n=1,natms
+            if (trim(abcname(n)).eq.trim(elem_sym_tmp)) then
+              eindex=n
+              exit
+            endif
+          enddo
+          if (eindex.eq.0) then
+            write(*,*) 'depletion element not in abcname: ',
+     >        trim(elem_sym_tmp)
+            stop 'check virga_condensate_stoich.dat against abcname'
+          endif
+C moles of element eindex removed per mole of total gas, layer k
+          do k=1,ntau
+            elem_depletion(eindex,k) = elem_depletion(eindex,k)
+     >        + elem_count_tmp * mmr_c_in(k,i) * avogadro
+     >          / stoich_molmass
+          enddo
+        enddo
+      enddo
+      close(250)
+
+C f_gas(n,k) and the depleted elemental abundance GGCHEM will read.
+      do k=1,ntau
+        do n=1,natms
+          if (atomic_mass(n).le.0.d0) cycle
+          f_gas_val = 1.d0 - elem_depletion(n,k) * xmh
+     >      * mean_mass_per_H / 10.d0**(abinit(n)-12.d0)
+          f_gas_val = max(f_gas_val, 1.d-10)
+          abundforgg_depleted(n,k) = abinit(n) + log10(f_gas_val)
+        enddo
+      enddo
+
+C ------------ SECOND GGCHEM PASS, DEPLETED ABUNDANCES ------------
+C Live: ppallmol_cond/ppallat_cond keep the pre-depletion (seed) values
+C for diagnostics, then GGCHEM is called again with abundforgg_depleted
+C and its full set of outputs (ppel/ggmu/ggrho/ro/ppallmol/ppallat/etc,
+C same copy-out as the seed pass above) is kept -- so KROME/opacity/the
+C rest of the model now see the depleted chemistry for this cycle.
+      DO K=1,NTAU
+        KL=K
+        ppallmol_cond(k,:) = ppallmol(k,:)
+        ppallat_cond(k,:) = ppallat(k,:)
+            call GGCHEM(k,t(k),ptot(k),.True.)
+            ppel(k) = ppelGG
+            ggmu(k) = ggmuk
+            mu_metpe(k) = ggmuk * 1.66053906660d-24
+            ggrho(k) = ggrhok
+            ppsum(k) = ppsumk
+            ppappsum(k) = ppappsumk
+            ppnonappsum(k) = ppnonappsumk
+            ppat1sum(k) = ppat1sumk
+            ppat2sum(k) = ppat2sumk
+            ppmolsum(k) = ppmolsumk
+            ppgs(k) = ppgsk
+            tg(k) = tgk
+            pges(k) = pgesk
+            ro(k) = ggrho(k)
+            f1_dt(k) = f1gg
+            f5_dt(k) = f5gg
+            rC(k) = rCgg
+            rMg(k) = rMggg
+            rAl(k) = rAlgg
+            rSi(k) = rSigg
+            rHe(k) = rHegg
+            ro_dt(k) = ggrhok
+      enddo
+
+C Diagnostic dump: per-layer f_gas/abundance shift for every depleted
+C element, plus the condensate's own gas partial pressure before/after
+C depletion (ppallmol_cond is now the pre-depletion seed value, and
+C live ppallmol is the post-depletion value actually used downstream).
+      open(unit=252, file='cndnsa_diag.dat', status='replace')
+      write(252,*) 'layer T[K] ptot[dyn/cm2]'
+      do n=1,natms
+        if (maxval(elem_depletion(n,:)).gt.0.d0) then
+          write(252,*) 'Element: ', trim(abcname(n))
+          write(252,*) 'layer  f_gas  abinit  abundforgg_depleted'
+          do k=1,ntau
+            f_gas_val = 1.d0 - elem_depletion(n,k) * xmh
+     >        * mean_mass_per_H / 10.d0**(abinit(n)-12.d0)
+            write(252,*) k, max(f_gas_val,1.d-10), abinit(n),
+     >        abundforgg_depleted(n,k)
+          enddo
+        endif
+      enddo
+      do i=1,nr_cond
+        write(252,*) 'Condensate: ', trim(condensates(i))
+        write(252,*) 'layer  ppallmol_seed  ppallmol_depleted'
+        do k=1,ntau
+          write(252,*) k, ppallmol(k,cond_molidx(i)),
+     >      ppallmol_cond(k,cond_molidx(i))
+        enddo
+      enddo
+      close(252)
+C ------------ DEPLETED RECALC DONE ------------
+      endif
+      endif
+C Pressure scale height / Kzz / vertical mixing timescale, for virga and
+C photochemistry -- computed here (after the optional depleted recalc)
+C so it reflects the most up-to-date ggmu, not the undepleted seed pass.
+      h1mbar=0
+      p1mbar=1d99
+      amu=1.66053906660e-24
+      do k=1,ntau
+        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
+        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
+        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
+          p1mbar = p1mbar_diff
+          h1mbar = H_p(k)
+        end if
+      end do
+      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
+       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
+     >       *h1mbar/(620e5)*(teff_real/1450)**4
+       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
+      enddo
+C     Header Pressure WAbs. Coeff Sca. Coeff
 C     Updating stuff for ggchem
       DO K=1,NTAU
         partpp(k,0) = ppallat(k,1)
@@ -13606,15 +14129,19 @@ c and total molecular pressure.
      *  summ(ndp),nel
       common/cabinit/abinit(natms),kelem(natms),nelem
       common/cabnames/abcname(natms)
+      common /virga_depl/ abundforgg_depleted(natms,ndp),
+     > elem_depletion(natms,ndp)
       logical ggchem_mol(maxosmol), ggchem_index_read
       integer ggchem_index(maxosmol), molno
       character(len=20) molnames_new(maxosmol)
-      common /molupdate/ molnames_new, 
+      common /molupdate/ molnames_new,
      * ggchem_index,
      * molno, ggchem_mol, ggchem_index_read
       bar=1.Q+6
+C abundforgg_depleted(n,k) defaults to abinit(n) every cycle (OSTABLOOK)
+C and only differs where CNDNSA=1 has actually applied depletion.
       do n=1, 48
-            abundforgg(n) = abinit(n)
+            abundforgg(n) = abundforgg_depleted(n,k)
       end do
       
       
@@ -13972,6 +14499,37 @@ C      implicit none
       integer,dimension(75,2) :: index_mol2!indices of mol specs, first index marcs, second index krome        
       integer,dimension(1000) :: index_not !indices of species NOT found in marcs mols and atoms, only krome index needed
       integer:: M_index
+C BURIED: generic one-way gas-phase sink for any "<name>_BURIED"
+C species detected in the network (e.g. C_BURIED), so a future network can add more with no Fortran changes.
+      integer,parameter :: n_buried_max = 10
+      integer :: n_buried_species
+      integer :: buried_idx(n_buried_max)
+      integer :: i_bur             ! loop index over buried species
+      real*8 :: mass(nsp)          ! per-species mass [g], krome_get_mass() order
+      real*8 :: n_tot_ne, mass_tot_ne  ! non-eq total number/mass density [layer]
+C AQUA_TRANSFER: generic ocean-atmosphere two-film exchange for any
+C "<name>_AQUA" species, paired with its atmospheric counterpart by name; physical params come from data/aqua_species_params.dat.
+      integer,parameter :: n_aqua_max = 10
+      integer :: n_aqua_pairs
+      integer :: aqua_idx(n_aqua_max), aqua_atm_idx(n_aqua_max)
+      character(len=20) :: aqua_base_name
+      real*8 :: aqua_H298(n_aqua_max), aqua_dHR(n_aqua_max)
+      real*8 :: aqua_sc(n_aqua_max,4), aqua_mld_m(n_aqua_max)
+      logical, save :: aqua_params_read = .False.
+      integer :: p, ilentmp
+      real*8 :: aqua_TC, aqua_scv, aqua_kw_cmhr, aqua_ktrans, aqua_H
+      real*8 :: aqua_dz, aqua_mld_cm, aqua_nwater, aqua_nwater_eq
+      real*8 :: aqua_flux, aqua_dn
+      real*8, parameter :: aqua_U10 = 7.5D0  ! m/s, representative
+                                              ! global-mean ocean wind
+      real*8, parameter :: aqua_xkb = 1.380649D-16  ! erg/K
+      real*8 :: mu_metpe(ndp)
+      common /cmuk/ mu_metpe       ! METPE=2: mean mass PER PARTICLE [g]
+                                    ! (i.e. RO=n_tot*mu_metpe directly, no mp
+                                    ! factor needed). Set from GGchem
+                                    ! equilibrium by default, overwritten here
+                                    ! with the true non-eq value when
+                                    ! krome_on=1 -- shared with TRYCK/TERMO.
       integer:: atom_counter,mol_counter,mol2_counter,not_counter !counters for different kinds of species
       logical:: not_found
       logical:: first_call = .True.
@@ -13979,9 +14537,12 @@ C      implicit none
       integer:: krome_photo_on
       real*8, save :: init_mix_rat(nsp)
       logical, save :: init_abund_mask(nsp)
+      integer, save :: init_pin_nlayers(nsp)
+      real*8 :: accounted_sum, notfound_sum, remaining_budget
       character(len=100) :: abund_line
       character(len=20)  :: spec_read
       real*8 :: abun_read
+      integer :: pin_read, ios_pin
       integer :: ios_ab
       real*8::Tgas,dt,num_den(ntau,nsp)
       real*8::R, R_cgs,Na, Pcon(ntau), T(ntau), ptot(ndp)
@@ -13992,6 +14553,7 @@ C      implicit none
       real*8::ss_time(ntau)
       real*8::krome_tmax
       real*8::conv_crit
+      real*8::conv_rate
       logical::use_conv = .True.
       logical::is_conv
       logical::unlimited_evolve
@@ -14008,13 +14570,46 @@ C      implicit none
       common /krome_not_nums/ krome_not_pp, krome_not_count
       common /krome_not_cname/ krome_not_cnames
       real*8 :: krome_photo_scale
-      real*8 :: num_den_save(ndp,nsp) 
+      real*8 :: num_den_save(ndp,nsp)
       real*8 :: num_den_diff(nsp)
+      real*8 :: msum_chk            ! MIXRESCALE: sum of non-M, non-buried
+                                     ! num_den(k,:)
+      real*8 :: rescale_factor      ! MIXRESCALE: target(k)/msum_chk
+      logical :: is_buried_sp       ! MIXRESCALE: per-species buried check
+      real*8 :: rate_diff(nsp)      ! num_den_diff normalized by dt, for the
+                                     ! rate-of-change convergence criterion
+      real*8 :: max_rate
+      integer :: conv_streak        ! consecutive passing convergence checks
       real*8 :: num_den_pre(nsp)    ! abundances before KROME, for tau_chem
+      real*8 :: num_den_premix(ntau,nsp) ! DECOUPLE: every layer's full
+                                     ! species state right after its own
+                                     ! chemistry+AQUA, before ANY layer's
+                                     ! mixing has run this call -- the one
+                                     ! shared snapshot every layer's flux
+                                     ! is computed from, so the result no
+                                     ! longer depends on loop order.
+      real*8 :: time_premix(ntau)   ! this layer's own chemistry-loop
+                                     ! "time" at the point num_den_premix
+                                     ! was taken (the plain scalar "time"
+                                     ! only holds the LAST layer processed
+                                     ! by the time the mixing pass runs).
+      logical :: do_mix(ntau,nsp)   ! DECOUPLE: mixing eligibility
+                                     ! (tau_chem_i vs vert_mix_time(k)) --
+                                     ! a purely per-layer-k decision with
+                                     ! no cross-layer dependency, decided
+                                     ! here while this layer's own
+                                     ! num_den_pre/time are in scope, then
+                                     ! applied later in a separate pass.
+      logical :: mixing_enabled     ! now driven by the MIXING= input flag
+                                     ! (mixing_on, /noneq/ common) instead
+                                     ! of a hardcoded compile-time switch.
       real*8 :: tau_chem_i          ! chemical timescale for species i [s]
       real*8 :: dz_k                ! vertical layer spacing [cm]
       real*8 :: flux_up             ! upward eddy flux [cm^-2 s^-1]
       real*8 :: delta_n_mix         ! abundance transferred upward [cm^-3]
+      real*8 :: mix_frac            ! time/vert_mix_time(k), capped at 1
+                                     ! [dimensionless] -- replaces the old
+                                     ! flat 50% stability clamp
       real*8 :: dt_max_loc, dt_inc_loc ! per-layer working copies; dt_max/dt_inc
                                         ! (common block) are never written to,
                                         ! so a retry on one layer can't leak
@@ -14022,7 +14617,7 @@ C      implicit none
       logical :: extend_time           ! true when time>tmax but we're resuming
                                         ! with a larger tmax instead of exiting
       save num_den_save
-      integer ,parameter:: output_freq=100
+      integer ,parameter:: output_freq=10
       integer :: it,itmax
       logical :: ITSTOP
       common/cos/wnos(nwl),conos(ndp,nwl),wlos(nwl),wlstep(nwl),
@@ -14039,24 +14634,30 @@ C      implicit none
      >                ,idmarcspres(32),idggchempres(32)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale
+      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+      integer initmd
+      common /krome_solve_params/ initmd, conv_rate
+      logical:: initmd_init_done = .False.
+      real*8 :: mdens_true, mdens_scale
+      integer, save :: idx_ch4_d=-1,idx_oh_d=-1,idx_o_d=-1,idx_h2o_d=-1
       call krome_init() !init krome (mandatory)
+      mixing_enabled = (mixing_on.eq.1)
 
       R = 8.31446261815324 !Gas constant in m^3 Pa K^-1 mol^-1
       R_cgs = 8.31446261815324E-3
       Na = 6.02214076D23 !Avogadros number in mol^-1
       default_abun=1D-20 !default abundance in relative terms for species not found in MARCS/GGchem
-      if (conv_crit.ge.0) then !quick trick to turn off convergence check if conv_crit is zero or positive
+      if (conv_crit.eq.0) then !conv_crit=0 is the sentinel to turn off convergence checking
         use_conv=.False.
       endif
 C conv_crit=0 EXACTLY is a further sentinel on top of the trick above:
-C it not only disables the convergence check (already true for any
-C conv_crit>=0) but also switches the per-layer tmax below from
+C it not only disables the convergence check (already true for
+C conv_crit=0) but also switches the per-layer tmax below from
 C MIN(vert_mix_time,krome_tmax) to just krome_tmax (input tMAX) alone,
 C ignoring vert_mix_time entirely, so integration length is set
 C directly and predictably via the input file instead of being
@@ -14107,12 +14708,22 @@ C     --- of reading a different build's species list/order.
         write(*,*) 'The following',nsp,
      >   'species are found in your krome build'
         write(*,*) chem_spec(1:nsp)
+C ITER-CHEM-DIAG 2026-10-13: locate CH4/OH/O/H2O indices once, for the
+C per-iteration diagnostic write below.
+      do i=1,nsp
+        if (trim(chem_spec(i)).eq.'CH4') idx_ch4_d=i
+        if (trim(chem_spec(i)).eq.'OH') idx_oh_d=i
+        if (trim(chem_spec(i)).eq.'O') idx_o_d=i
+        if (trim(chem_spec(i)).eq.'H2O') idx_h2o_d=i
+      enddo
       !check if species is in atomnames, molnames, molnames2 and safe indices
       !check also if species not in MARCS database
       atom_counter=0
       mol_counter=0
       mol2_counter=0
       not_counter=0
+      n_buried_species=0
+      n_aqua_pairs=0
       do i=1,krome_nmols
        not_found=.True.
        do k=1,22 !number of atoms
@@ -14142,6 +14753,35 @@ C     --- of reading a different build's species list/order.
          cycle
         endif
        enddo
+       ilentmp = len_trim(chem_spec(i))
+       if (ilentmp.gt.7) then
+        if (chem_spec(i)(ilentmp-6:ilentmp).eq.'_BURIED') then
+         n_buried_species = min(n_buried_species+1,n_buried_max)
+         buried_idx(n_buried_species) = i
+         not_found=.False.
+         cycle
+        endif
+       endif
+       if (ilentmp.gt.5) then
+        if (chem_spec(i)(ilentmp-4:ilentmp).eq.'_AQUA') then
+         aqua_base_name = chem_spec(i)(1:ilentmp-5)
+         do j=1,nsp
+           if (trim(chem_spec(j)).eq.trim(aqua_base_name)) then
+             n_aqua_pairs = n_aqua_pairs + 1
+             aqua_idx(n_aqua_pairs) = i
+             aqua_atm_idx(n_aqua_pairs) = j
+             exit
+           endif
+         enddo
+         if (n_aqua_pairs.eq.0 .or. aqua_idx(n_aqua_pairs).ne.i) then
+           write(*,*) 'WARNING: AQUA species ',trim(chem_spec(i)),
+     >       ' has no matching atmospheric species ',
+     >       trim(aqua_base_name),' -- ignored'
+         endif
+         not_found=.False.
+         cycle
+        endif
+       endif
        if (trim(chem_spec(i)).eq.'M') then
         M_counter=1
         M_index = i
@@ -14169,6 +14809,13 @@ C     --- of reading a different build's species list/order.
       do i=1,not_counter
         krome_not_cnames(i) = chem_spec(index_not(i))
       enddo
+      if (n_buried_species.gt.0) then
+        write(*,*) 'BURIED: found',n_buried_species,
+     >    '"_BURIED" sink species:'
+        do i=1,n_buried_species
+          write(*,*) '  ',trim(chem_spec(buried_idx(i)))
+        enddo
+      endif
 
       if (krome_photo_on.eq.1) then !initializing of photobins
          J_to_eV_conv=6.242E18!Joule to eV
@@ -14185,10 +14832,18 @@ C     --- of reading a different build's species list/order.
          open(unit=3535,file='krome_bins_rates.dat')
        endif
       endif
-      
+C ITER-CHEM-DIAG 2026-10-13: per-iteration CH4/OH/O/H2O num_den across
+C all layers, appended every outer T-iteration (no it<=100 cap unlike
+C krome_bins_rates.dat), to compare "good" vs "bad" T-correction
+C iterations after the fact instead of only ever seeing the last one.
+      if (krome_debug.eq.1) then
+        open(unit=4141,file='iteration_chem_diag.dat')
+      endif
+
       if (krome_init_abund_on.eq.1) then
         init_mix_rat(:) = default_abun
         init_abund_mask(:) = .False.
+        init_pin_nlayers(:) = -1
         open(unit=88, file='./data/krome_init_abund.dat',
      >       status='old', action='read')
         do
@@ -14198,10 +14853,16 @@ C     --- of reading a different build's species list/order.
           if (abund_line(1:1).eq.'#') cycle
           read(abund_line,*,iostat=ios_ab) spec_read, abun_read
           if (ios_ab /= 0) cycle
+C         Optional 3rd column: pin depth in layers from the bottom.
+C         Absent/<0/>=ntau -> pin every layer (legacy 2-column behavior).
+          pin_read = -1
+          read(abund_line,*,iostat=ios_pin) spec_read, abun_read,
+     >      pin_read
           do i=1,nsp
             if (trim(spec_read).eq.trim(chem_spec(i))) then
               init_mix_rat(i) = abun_read
               init_abund_mask(i) = .True.
+              init_pin_nlayers(i) = pin_read
               exit
             endif
           enddo
@@ -14209,13 +14870,43 @@ C     --- of reading a different build's species list/order.
         close(88)
         write(*,*) 'krome_init_abund.dat: loaded initial mixing ratios'
       endif
+      if (n_aqua_pairs.gt.0 .and. .not.aqua_params_read) then
+        open(unit=89, file='./data/aqua_species_params.dat',
+     >       status='old', action='read')
+        do
+          read(89,'(A)',iostat=ios_ab) abund_line
+          if (ios_ab /= 0) exit
+          if (len_trim(abund_line).eq.0) cycle
+          if (abund_line(1:1).eq.'#') cycle
+          do p=1,n_aqua_pairs
+            if (index(abund_line,
+     >          trim(chem_spec(aqua_atm_idx(p)))//' ').eq.1) then
+              read(abund_line,*,iostat=ios_ab) spec_read,
+     >          aqua_H298(p), aqua_dHR(p), aqua_sc(p,1),
+     >          aqua_sc(p,2), aqua_sc(p,3), aqua_sc(p,4), aqua_mld_m(p)
+              exit
+            endif
+          enddo
+        enddo
+        close(89)
+        aqua_params_read = .True.
+        write(*,*) 'aqua_species_params.dat: loaded',n_aqua_pairs,
+     >    ' AQUA species pair(s)'
+        do p=1,n_aqua_pairs
+          write(*,*) '  ',trim(chem_spec(aqua_atm_idx(p))),' <-> ',
+     >      trim(chem_spec(aqua_idx(p))),' H298=',aqua_H298(p),
+     >      ' MLD_m=',aqua_mld_m(p)
+        enddo
+      endif
       first_call=.False.
       endif
       do k = 1,ntau
         Pcon(k) = 0.1*Na/(R*T(k))*1E-6
       enddo
 
-      ! GGchem abundances: always convert equilibrium partial pressures to number densities
+      ! INITMD=0: reset every call (default). INITMD=1: reset once only.
+      if (initmd.eq.0 .or. .not.initmd_init_done) then
+      ! GGchem abundances: convert equilibrium partial pressures to number densities
       do k=1,ntau
         num_den_mol(k,:)=ppallmol(k,:)*Pcon(k)
         num_den_at(k,:)=ppallat(k,:)*Pcon(k)
@@ -14236,18 +14927,59 @@ C     --- of reading a different build's species list/order.
         if (M_counter.eq.1) num_den(k,M_index) = ptot(k)*Pcon(k)
         mix_rat(k,:) = num_den(k,:)/(ptot(k)*Pcon(k))
       enddo
+      initmd_init_done = .True.
+      else
+      ! INITMD=1 continuation: reuse previous call's mixing ratios,
+      ! rescaled by how much M changed since then (caught N2 exceeding 1 without this).
+      do k=1,ntau
+        mdens_true = ptot(k)*Pcon(k)
+        mdens_scale = 1.0
+        if (M_counter.eq.1 .and. num_den_save(k,M_index).gt.0.0) then
+          mdens_scale = mdens_true/num_den_save(k,M_index)
+        endif
+        if (abs(mdens_scale-1.0).gt.0.01) then
+          write(*,*) 'INITMD mass-conservation rescale at layer',k,
+     >     ': factor=',mdens_scale
+        endif
+        num_den(k,:) = num_den_save(k,:)*mdens_scale
+        if (M_counter.eq.1) num_den(k,M_index) = mdens_true
+        mix_rat(k,:) = num_den(k,:)/mdens_true
+      enddo
+      endif
 
-      ! Initial abundance mode: overwrite GGchem values only for species in the file
+      ! Initial abundance mode: overwrite listed species, restricted to
+      ! each one's own pin depth. Outside the INITMD branch -- reapplies every call, regardless of INITMD (see 2026-10-09 discussion on this).
       if (krome_init_abund_on.eq.1) then
-        do k=1,ntau
-          do i=1,nsp
-            if (init_abund_mask(i)) then
-              num_den(k,i) = init_mix_rat(i) * (ptot(k)*Pcon(k))
+        do i=1,nsp
+          if (init_abund_mask(i)) then
+            if (init_pin_nlayers(i).lt.0 .or.
+     >          init_pin_nlayers(i).ge.ntau) then
+              k_pin_lo = 1
+            else
+              k_pin_lo = ntau - init_pin_nlayers(i) + 1
             endif
-          enddo
-          !if (M_counter.eq.1) num_den(k,M_index) = ptot(k)*Pcon(k)
-          !mix_rat(k,:) = num_den(k,:) / (ptot(k)*Pcon(k))
+            do k=k_pin_lo,ntau
+              num_den(k,i) = init_mix_rat(i) * (ptot(k)*Pcon(k))
+            enddo
+          endif
         enddo
+      endif
+C PIN-DIAG 2026-10-09: dump num_den right after pinning, before any
+C krome() call, to check the true pre-integration state (same column
+C layout as krome_full_output.dat, dt column repurposed to hold "it").
+      if (krome_debug.eq.1) then
+        open(unit=7171,file='pin_diag.dat')
+        write(7171,'(A6,A9,A13,A16)',Advance = 'No') 'Layer ',
+     >'Time [s] ','Timestep [s] ','Temperature [K] '
+        do i=1,nsp
+         write(7171,'(A12,A9)',Advance = 'No') chem_spec(i),' [cm^-3] '
+        enddo
+        write(7171,'(A,/)') ' '
+        do k=ntau,1,-1
+          write(7171,'(I3,4(999E17.8e3))') k,0.d0,dble(it),T(k),
+     >      num_den(k,:)
+        enddo
+        close(7171)
       endif
       !write header of full output file
       if (krome_debug.eq.1) then
@@ -14263,18 +14995,14 @@ C     --- of reading a different build's species list/order.
       !main loop (bottom-to-top so mixed abundances feed upward into next layer)
       do k=ntau,1,-1
         if (unlimited_evolve) then
-C conv_crit=0: ignore vert_mix_time entirely and use krome_tmax (input
-C tMAX) directly as the target time. vert_mix_time was found
-C (2026-08-11) to run into the millions of seconds for some layers,
-C which with a fixed DTMAX step ceiling drove step counts into the
-C hundreds of thousands per layer and made a single outer iteration
-C impractically slow. Using krome_tmax alone gives direct, predictable
-C control over integration length via the input file.
+C conv_crit=0: use krome_tmax directly, ignoring vert_mix_time (found
+C 2026-08-11 to reach millions of seconds for some layers, making a single outer iteration impractically slow with a fixed DTMAX ceiling).
           tmax= krome_tmax
         else
           tmax= min(vert_mix_time(k),krome_tmax) !setting maximum time to be the minimum of the user defined and the vertical mixing timescale for that layer
         endif
         is_conv = .False.
+        conv_streak = 0
         dt_max_loc = dt_max !seed local working copies from the (read-only) common block
         dt_inc_loc = dt_inc
         istep = 1
@@ -14285,17 +15013,8 @@ C control over integration length via the input file.
         if (krome_photo_on.eq.1) then
          call krome_set_photoBinJ(FLUX_RAD_eV(:))
          call krome_photoBin_scale(krome_photo_scale)
-C krome_bins_rates.dat (unit 3535) is diagnostic-only -- krome_explore_flux
-C dumps per-reaction rates/fluxes but never feeds back into num_den or any
-C physics state, so skipping it on non-final iterations changes nothing
-C about the run itself. Previously this wrote every iteration and relied
-C on REWIND(3535) to overwrite the file back to just the last sweep, but
-C REWIND was found 2026-08-17 to be silently defeated by -ipo (confirmed
-C via a matched ITEMAX=3 test), letting every iteration's dump accumulate
-C forever (3+GB for a 99-iteration run instead of the intended ~10MB).
-C Writing only on the final iteration sidesteps the REWIND/-ipo interaction
-C entirely -- there is nothing to reset because nothing is written early.
-         if (krome_debug.eq.1 .and. it.eq.itmax) then
+
+         if (krome_debug.eq.1 .and. it.le.100) then
           write(3535,'(A3,I3,A4,I3)') 'it=',it,' k=',k
           call krome_explore_flux(num_den(k,:),T(k),3535,FLUX_RAD_eV(k))
          endif
@@ -14318,9 +15037,12 @@ C entirely -- there is nothing to reset because nothing is written early.
          end if
          dt = min(dt*dt_inc_loc,dt_max_loc)
        if (use_conv.eqv..True.) then
-         if (dt.ge.dt_max_loc) then !break loop if convergence is reached and timestep on max timestep length
+C Checked every step (not just at dt_max): magnitude (conv_crit) +
+C rate (conv_rate, optional) + 3 consecutive passes to exit.
+         if (istep.ge.2) then
             num_den_tot=0.0
             num_den_diff(:)=0.0
+            rate_diff(:)=0.0
             do j=1,nsp
             num_den_tot=num_den_tot+
      >       num_den_cont(istep,j)
@@ -14333,20 +15055,25 @@ C entirely -- there is nothing to reset because nothing is written early.
             num_den_diff(j) = abs(num_den_cont(istep,j)-
      >       num_den_cont(istep-1,j))
             num_den_diff(j) = num_den_diff(j)/conv_denominator
+            rate_diff(j) = num_den_diff(j)/dt
             enddo
             max_diff = maxval(num_den_diff(:))
-            if ((max_diff).ge.conv_crit) then                    
-             is_conv=.False.
-            endif
+            max_rate = maxval(rate_diff(:))
+            if (max_diff.ge.conv_crit) is_conv=.False.
+            if (conv_rate.gt.0.0 .and. max_rate.ge.conv_rate)
+     >       is_conv=.False.
             if (is_conv.eqv..True.) then
-             exit
+              conv_streak = conv_streak + 1
+            else
+              conv_streak = 0
             endif
-            if (is_conv.eq..True.) then
+            is_conv = (conv_streak.ge.3)
+            if (is_conv.eqv..True.) then
               if (krome_debug.eq.1) then
                   write(13,'(I3,4(999E17.8e3))') k,time,dt,T(k),
-     >            num_den(k,:)        
+     >            num_den(k,:)
               endif
-              exit   
+              exit
             endif
           endif
          endif
@@ -14381,13 +15108,47 @@ C                avoids redoing the whole dt_start->dt_max ramp from scratch.
          time = time + dt !increase time
          istep = istep + 1 !increase timestep
         end do
-C ------ UPWARD EDDY MIXING (Eq. 2 term 1, Bangera et al. 2025) ------
+C ------ AQUA_TRANSFER: ocean-atmosphere two-film exchange ------
+C Bottom layer only: exchange each <name>_AQUA<->  <name> pair via Fung et al. (2022) Eq. (1)-(2), generalized via data/aqua_species_params.dat.
+      if (k.eq.ntau .and. n_aqua_pairs.gt.0 .and. time.ge.tmax) then
+        aqua_TC = T(k) - 273.15D0
+        do p = 1, n_aqua_pairs
+          aqua_scv = aqua_sc(p,1) - aqua_sc(p,2)*aqua_TC
+     >      + aqua_sc(p,3)*aqua_TC**2 - aqua_sc(p,4)*aqua_TC**3
+          aqua_kw_cmhr = (0.222D0*aqua_U10**2 + 0.333D0*aqua_U10)
+     >      * (aqua_scv/600.0D0)**(-0.5D0)
+          aqua_ktrans = aqua_kw_cmhr/3600.0D0
+          aqua_H = aqua_H298(p)*exp(aqua_dHR(p)
+     >      *(1.0D0/T(k) - 1.0D0/298.0D0))
+          aqua_dz = H_p(k)*log(ptot(k)/ptot(k-1))
+          aqua_mld_cm = aqua_mld_m(p)*100.0D0
+          aqua_nwater = num_den(k,aqua_idx(p))*aqua_dz/aqua_mld_cm
+          aqua_nwater_eq = num_den(k,aqua_atm_idx(p))*aqua_H*aqua_xkb
+     >      *T(k)*Na/(1.01325D6*1000.0D0)
+          aqua_flux = aqua_ktrans*(aqua_nwater - aqua_nwater_eq)
+          aqua_dn = aqua_flux/aqua_dz*time
+          if (aqua_dn.gt.0.0D0) then
+            aqua_dn = min(aqua_dn, 0.5D0*num_den(k,aqua_idx(p)))
+          else
+            aqua_dn = max(aqua_dn,
+     >        -0.5D0*num_den(k,aqua_atm_idx(p)))
+          endif
+          num_den(k,aqua_atm_idx(p)) = num_den(k,aqua_atm_idx(p))
+     >      + aqua_dn
+          num_den(k,aqua_idx(p)) = num_den(k,aqua_idx(p)) - aqua_dn
+        enddo
+      endif
+C ------ END AQUA_TRANSFER ------
+C ------ UPWARD EDDY MIXING DECISION (Eq. 2 term 1, Bangera et al. 2025) ------
 C       Phi = -K_zz * (dn_i/dz + n_i/H_p), Bangera et al. 2025
 C       Applied per species when tau_chem > tau_mix.
-
+C
+      do_mix(k,:) = .False.
       if (k .gt. 1 .and. time .ge. tmax) then
-        dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
         do i = 1, nsp
+C         M is the bath density, not transported -- was wrongly read
+C         as "infinite timescale" -> always mixed -> halved M every layer boundary every call (found 2026-09-24).
+          if (i .eq. M_index) cycle
 C         Chemical timescale: n_i / |dn_i/dt_net| from KROME integration
           if (abs(num_den(k,i) - num_den_pre(i)) .gt. 0.0d0) then
             tau_chem_i = abs(num_den(k,i))
@@ -14395,41 +15156,86 @@ C         Chemical timescale: n_i / |dn_i/dt_net| from KROME integration
           else
             tau_chem_i = 1.0d30
           end if
-          if (tau_chem_i .gt. vert_mix_time(k)) then
-C           Phi = -K_zz * (dn_i/dz + n_i/H_p); Phi>0 means upward (k->k-1)
-            flux_up = -K_zz(k) * (
-     >          (num_den(k-1,i) - num_den(k,i)) / dz_k
-     >        +  num_den(k,i) / H_p(k))
-C           Amount transferred upward over the chemistry time step
-            delta_n_mix = flux_up * time / dz_k
-C           Stability guard: at most 50% of either layer per step
-            if (delta_n_mix .gt. 0.0d0) then
-              delta_n_mix = min(delta_n_mix, 0.5d0 * num_den(k,i))
-            else
-              delta_n_mix = max(delta_n_mix, -0.5d0 * num_den(k-1,i))
-            end if
-C           Conserving transport: layer k loses, layer k-1 gains
-            num_den(k,i)   = num_den(k,i)   - delta_n_mix
-            num_den(k-1,i) = num_den(k-1,i) + delta_n_mix
-          end if
+          do_mix(k,i) = (tau_chem_i .gt. vert_mix_time(k))
         end do
       end if
-C ------ END EDDY MIXING ------
+      num_den_premix(k,:) = num_den(k,:)
+      time_premix(k) = time
+C ------ END EDDY MIXING DECISION ------
       end do
+C ------ MIXAPPLY: decoupled mixing application pass ------
+C Applies do_mix using the frozen num_den_premix snapshot for both
+C neighbors (order-independent); updates accumulate onto the live num_den array since each layer is touched twice (as k and as k-1).
+      if (mixing_enabled) then
+      do k = 2, ntau
+        dz_k = H_p(k) * log(ptot(k) / ptot(k-1))
+        do i = 1, nsp
+          if (.not. do_mix(k,i)) cycle
+C MIXFORM 2026-10-07: reformulated in mixing-ratio terms f_i=n_i/M
+C (Bangera et al. 2025 Eq. 2 term 1, restoring a dropped (1/T)dT/dz piece) -- also makes a well-mixed species exactly zero-flux by construction.
+          flux_up = -K_zz(k) * num_den_premix(k,M_index) * (
+     >        num_den_premix(k-1,i)/num_den_premix(k-1,M_index)
+     >      - num_den_premix(k,i)/num_den_premix(k,M_index) ) / dz_k
+C         Amount transferred upward over the chemistry time step
+          delta_n_mix = flux_up * time_premix(k) / dz_k
+C         Stability guard: at most 50% of either layer per step
+          if (delta_n_mix .gt. 0.0d0) then
+            delta_n_mix = min(delta_n_mix, 0.5d0 * num_den_premix(k,i))
+          else
+            delta_n_mix = max(delta_n_mix,
+     >        -0.5d0 * num_den_premix(k-1,i))
+          end if
+C         Conserving transport: layer k loses, layer k-1 gains
+          num_den(k,i)   = num_den(k,i)   - delta_n_mix
+          num_den(k-1,i) = num_den(k-1,i) + delta_n_mix
+        end do
+      end do
+      end if
+C ------ END MIXAPPLY ------
+C MIXRESCALE 2026-10-08: replaces MASSRENORM/CORRECTED (2026-10-06).
+C Rescales real species back onto the hydrostatic target (one factor per layer, preserving relative shares) instead of redefining M to match their post-mixing drift.
+      if (M_counter.eq.1) then
+        do k=1,ntau
+          msum_chk = sum(num_den(k,:)) - num_den(k,M_index)
+          do i_bur=1,n_buried_species
+            msum_chk = msum_chk - num_den(k,buried_idx(i_bur))
+          enddo
+          rescale_factor = (ptot(k)*Pcon(k)) / msum_chk
+          do i=1,nsp
+            if (i.eq.M_index) cycle
+            is_buried_sp = .False.
+            do i_bur=1,n_buried_species
+              if (i.eq.buried_idx(i_bur)) is_buried_sp = .True.
+            enddo
+            if (is_buried_sp) cycle
+            num_den(k,i) = num_den(k,i) * rescale_factor
+          enddo
+        end do
+      endif
+C Non-eq mean mass/particle for METPE=2 (mu_metpe, common /cmuk/):
+C overwrite OSTABLOOK's GGchem-equilibrium default with the true, fully-settled value. M and any "<name>_BURIED" species are excluded.
+      if (krome_on.eq.1) then
+        mass(:) = krome_get_mass()
+        do k=1,ntau
+          n_tot_ne = sum(num_den(k,:))
+          mass_tot_ne = sum(num_den(k,:)*mass(:))
+          if (M_counter.eq.1) then
+            n_tot_ne = n_tot_ne - num_den(k,M_index)
+            mass_tot_ne = mass_tot_ne - num_den(k,M_index)*mass(M_index)
+          endif
+          do i_bur=1,n_buried_species
+            n_tot_ne = n_tot_ne - num_den(k,buried_idx(i_bur))
+            mass_tot_ne = mass_tot_ne
+     >        - num_den(k,buried_idx(i_bur))*mass(buried_idx(i_bur))
+          enddo
+          if (n_tot_ne.gt.0.0) mu_metpe(k) = mass_tot_ne/n_tot_ne
+        enddo
+      endif
       if (krome_debug.eq.1) then
-C Only close on the final outer iteration -- this used to close
-C unconditionally every call, but open(unit=3535,...) above only
-C executes once (inside the first_call gate). From iteration 2 onward
-C every write(3535,...) therefore hit a closed unit, which Fortran
-C silently reconnects to an implicit default file (fort.3535,
-C truncated fresh each time), so krome_bins_rates.dat itself froze
-C forever at iteration 1's (radiatively unconverged, near-zero) rates
-C while the real per-iteration data silently went to fort.3535 in
-C $TMPDIR and was never copied out. Confirmed 2026-08-12: test58's
-C tmpdir_listing.txt shows a fort.3535 the same size as the frozen
-C krome_bins_rates.dat, i.e. exactly one lost sweep per premature
-C close/implicit-reopen cycle.
+C Only close on the final outer iteration: closing every call (unit
+C 3535 opens once, in first_call) made Fortran silently reopen it as fort.3535, freezing krome_bins_rates.dat at iteration 1 (confirmed 2026-08-12).
        if (it.eq.itmax) close(3535)
+       if (it.eq.itmax) close(4141)
       endif
       !final output
         open(unit=77,file='krome_final_output.dat')
@@ -14443,6 +15249,16 @@ C close/implicit-reopen cycle.
           write(77,'(I3,3(999E17.8e3))') k,time,T(k),
      >    num_den(k,:)
         enddo
+
+C ITER-CHEM-DIAG 2026-10-13: append this iteration's CH4/OH/O/H2O
+C across all layers (unit 4141 opened once in first_call, see above).
+      if (krome_debug.eq.1 .and. idx_ch4_d.gt.0) then
+        do k=1,ntau
+          write(4141,'(I4,I4,4E17.8e3)') it,k,
+     >      num_den(k,idx_ch4_d),num_den(k,idx_oh_d),
+     >      num_den(k,idx_o_d),num_den(k,idx_h2o_d)
+        enddo
+      endif
 
 C Returning the krome values to MARCS
       if (krome_return == 1) then

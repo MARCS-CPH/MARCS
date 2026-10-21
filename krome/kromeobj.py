@@ -95,6 +95,7 @@ class krome:
 	coolingQuench = -1e0 #if coolingQuench is negative cooling quench is not enabled, otherwise this is Tcrit
 	dustArraySize = dustTypesSize = photoBins = 0
 	maxord = 0 #default solver maximum order (0=automatic)
+	mxstep = 0 #default max internal DLSODES steps per call (0=LSODE default of 500)
 	dustTypes = []
 	specs = []
 	reacts = []
@@ -289,6 +290,7 @@ class krome:
 		self.parser.add_argument("-listAutomatics", action="store_true", help="list all the automatic reactions available.")
 		self.parser.add_argument("-listSWRI", action="store_true", help="list all the photo reactions available in the SWRI database.")
 		self.parser.add_argument("-maxord", help="max order of the BDF solver. Default (and maximum values) is 5.")
+		self.parser.add_argument("-mxstep", help="max number of internal DLSODES steps allowed per krome() call (IWORK(6)). Default is LSODE's built-in 500.")
 		self.parser.add_argument("-mergeTlimits", action="store_true", help="use the same reaction index for equivalent\
 			reactions (same reactants and products) that have different temperature limits")
 		self.parser.add_argument("-n", help="reaction network file", metavar='FILENAME')
@@ -1549,6 +1551,11 @@ class krome:
 			self.maxord = min(max(1,int(args.maxord)),5)
 			print("Reading option -maxord (maxord="+str(self.maxord)+")")
 
+		#mxstep
+		if args.mxstep:
+			self.mxstep = int(args.mxstep)
+			print("Reading option -mxstep (mxstep="+str(self.mxstep)+")")
+
 		#reducer
 		if args.reducer:
 			self.reducer = True
@@ -1785,6 +1792,8 @@ class krome:
 			'_2D':0e0,
 			'_SING':0e0,
 			'_TRIP':0e0,
+			'_BURIED':0e0,
+			'_AQUA':0e0,
 			'l_':0e0,
 			'c_':0e0,
 			'CR':0e0,
@@ -8074,6 +8083,9 @@ class krome:
 			elif srow == "#KROME_maxord" and self.maxord != 0:
 				fout.write("iopt = 1 !activate optional inputs\n")
 				fout.write("IWORK(5) = "+str(self.maxord)+" !maximum integration order\n")
+			elif srow == "#KROME_mxstep" and self.mxstep != 0:
+				fout.write("iopt = 1 !activate optional inputs\n")
+				fout.write("IWORK(6) = "+str(self.mxstep)+" !max internal steps per call\n")
 			elif srow == "#KROME_MF":
 				fout.write("MF = "+str(self.solver_MF)+"\n")
 			elif srow == "#KROME_compute_electrons" and hasElectrons and self.useComputeElectrons:

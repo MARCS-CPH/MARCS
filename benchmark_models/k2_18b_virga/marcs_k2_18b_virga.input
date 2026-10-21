@@ -1,25 +1,22 @@
-ITEMAX=100     NPRINT=  0     NEWMOD=  0     NOARCH=  0     JONTYP=3
+ITEMAX= 30     NPRINT=  0     NEWMOD=  0     NOARCH=  0     JONTYP=3
 MOLOLD=  1     PP/SPH=PP
-TEFF  =30      GRAV  =3.00    MODEL =                        M/MSN=0.1
-NOCONV= 1      XMAX  =1.0E+08 TAUM  =300.0
-AMLOSS=1.5E-08      LINCIA=  1
-MIHAL = 100    KONSG =  0     KORT  =6       KPP   =10.0    TCONV =1.0
-nops  =  1     dpein =0.0005  dtin  =0.0005  METPE = 2
-PALFA =0.1     PBETA =0.000   PNY   =4.000   PY    =0.125    VFIX =0.000
+TEFF  =60      GRAV  =2.95    MODEL =                       M/MSN = 1
+NOCONV= 16     XMAX  =1.0E+08 TAUM  =300.0
+AMLOSS=1.5E-08      LINCIA=  0
+MIHAL = 72     KONSG =  0     KORT  =5       KPP   = 50.0   TCONV = 1
+nops  =  1     dpein =0.005   dtin  =0.005   METPE = 2
+PALFA =1.500   PBETA =0.000   PNY   =8.000   PY    =0.076    VFIX =0.000
 MYPNTS=  4     NCORE =  5     KDIFF =  3
 ABUNDF= 5
-IRRAD = 1      STEFF =5778.   RSTAR =1.00    SMAJOR=1.      FACTOR=4.0     SPECTR=1       SPECSC=8.2E-1
-SURFAC= 1      TSURF =288.0   ALBEDO=0.34    NCH4  =0
-NONEQ = 1      PHOTO = 1      phSCAL=1.0E+0  CNVCRI=1.0E-8
-INITAB= 1
-DTMIN =1.0E-01 DTMAX =1.0E+02 tMAX  =1.0E+03 DTINC =1.01
-KDEBUG= 0      KROMER= 1
-VIRGA = 0
-LOGTAU=-8.81   DIFFER=0.1
-LOGTAU=-7.21   DIFFER=0.05
-LOGTAU=-4.21   DIFFER=0.1
-LOGTAU=-1.91
-
+IRRAD = 1      STEFF =3450.   RSTAR =0.468   SMAJOR=0.159   FACTOR=4.0     SPECTR=1       SPECSC=1.0E+0
+SURFAC= 0      TSURF =300.0   ALBEDO=0.07    NCH4  =0
+NONEQ = 0      PHOTO = 0      phSCAL=1.0E+0  CNVCRI=1.0E-8
+INITAB= 0
+DTMIN =1.0E-16 DTMAX =1.0E+05 tMAX  =1.0E+08 DTINC =1.01
+KDEBUG= 1      KROMER= 1
+VIRGA = 1      CNDNSA=  1     CLOUDS=  1     LATENT=  1
+LOGTAU=-5.00   DIFFER=0.1
+LOGTAU= 2.30
  &abundances  zscale=    1.00000
  &end
    20

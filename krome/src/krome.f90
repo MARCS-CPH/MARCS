@@ -93,6 +93,7 @@ contains
     iopt = 0
 
 #KROME_maxord
+#KROME_mxstep
 
     !MF=
     !  = 222 internal-generated JAC and sparsity

@@ -20,6 +20,40 @@
       INTEGER NWL
       PARAMETER (NWL=80000)
 
+* Max number of points in any single "WAVELENGTH SETS" block read by
+* VAAGL from an .input file. Sizes the XLA/XLA3 arrays in COMMON /CA5/
+* (marcs.f, ABSKO/DETABS) and the equivalently-sized local XLA/XLA3
+* buffer INABS fills per-set to write/read the ABKOF opacity-table
+* scratch file. THESE ARE NOT AUTO-SIZED TO THE INPUT FILE -- a set
+* with more than maxwlset points silently reads/writes past the end of
+* those fixed arrays rather than raising any error (traced 2026-09-14:
+* produces a garbage/occasionally-Infinity Rosseland weight for the
+* affected indices, corrupting the Rosseland mean for every layer).
+* INITAB checks NL(1)/NL(2) against this and STOPs with a clear message
+* if exceeded, rather than letting it corrupt silently -- if you hit
+* that STOP, raise this number to fit your largest wavelength set and
+* recompile (make) before rerunning.
+* In practice only the Rosseland set (set 1, NL(1)) is at real risk of
+* exceeding this: the general/detailed set (set 2 onward) is chopped by
+* SETDIS into sub-sets of at most LMAX=15 points each (marcs.f, call
+* site in INITAB uses LMAX=15), so it self-limits regardless of the
+* total general-set size in the .input file. The Rosseland set gets no
+* such chunking. Default (100) covers every Rosseland set in
+* input_files/ as of 2026-09-14 (stellar: 20, earth: 28, warm_planet:
+* 33) with headroom for future ones.
+* Also sizes XLR/ABSKA/SPRIDA in LISTMO and ABSKTR/SPRTR in ARCHIV
+* (marcs.f) -- same disease, found 2026-09-14 right after the ABSKO/
+* DETABS/INABS fix above: ARCHIV writes, and LISTMO reads back, NLP=
+* NL(1)+1 elements of the Rosseland wavelength/opacity arrays when
+* saving/listing a converged model, and those were ALSO hardcoded to
+* 20 regardless of the actual Rosseland set size, corrupting memory
+* the same way (confirmed: two independent converged runs using a
+* 28/31-point Rosseland set crashed here, one with a Fortran I/O
+* error, one with a segfault -- same root cause, different memory-
+* layout manifestation) right after otherwise-successful convergence.
+      INTEGER MAXWLSET
+      PARAMETER (MAXWLSET=100)
+
 * number of wavelengths after MARCS opacity sampling
       INTEGER NWREAL
       parameter (NWREAL=7949)

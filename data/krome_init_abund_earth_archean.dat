@@ -2,19 +2,20 @@
 #
 # Used when INITAB=1, exactly like krome_init_abund_earth_modern_N2O2CO2CH4.dat
 # (see that file's header for the mechanism: krome_init_abund_on forces
-# these 4 species' mixing ratios back to the listed values at EVERY layer,
-# EVERY outer iteration -- marcs.f:17220-17230 -- standing in for the
-# biological/geological fluxes that buffer them in the real atmosphere,
+# these species' mixing ratios back to the listed values at EVERY layer,
+# EVERY outer iteration -- marcs.f INITAB overwrite loop -- standing in for
+# the biological/geological fluxes that buffer them in the real atmosphere,
 # since gas-phase equilibrium/non-eq chemistry alone can't sustain them.
 #
-# IMPORTANT: this pinning is the dominant control on N2/O2/CO2/CH4 in this
-# model -- elemental abundances (elabund) matter for the FREE species
-# (O3, H2O, CO, OH, NOx, ...) that GGchem computes from the elemental
-# budget, but NOT for these 4, since their GGchem-computed values get
-# overwritten unconditionally every iteration regardless of elabund.
-# Confirmed empirically: test59 (elabund O 13.926->13.32, a 0.6 dex
-# elemental shift) moved bulk O2 by only ~0.01-0.05 (0.20-0.26 ->
-# 0.19-0.20), because O2 was pinned to 0.20946 throughout in both runs.
+# IMPORTANT: this pinning is the dominant control on N2/O2/CO2/CH4 (and, as
+# of 2026-09-13, H2O) in this model -- elemental abundances (elabund)
+# matter for the remaining FREE species (O3, CO, OH, NOx, ...) that GGchem
+# computes from the elemental budget, but NOT for these 5, since their
+# GGchem-computed values get overwritten unconditionally every iteration
+# regardless of elabund. Confirmed empirically: test59 (elabund O
+# 13.926->13.32, a 0.6 dex elemental shift) moved bulk O2 by only
+# ~0.01-0.05 (0.20-0.26 -> 0.19-0.20), because O2 was pinned to 0.20946
+# throughout in both runs.
 #
 # --- Sources for the Archean targets below ---
 # Catling & Zahnle 2020, "The Archean atmosphere", Science Advances 6,
@@ -35,23 +36,55 @@
 #     isolation.
 #
 # --- Fixed bulk reservoir species (Archean, ~2.5 Ga, pre-GOE) ---
-N2        7.8084E-01   # kept at modern value ("similar to today" per Catling & Zahnle)
+# 2026-10-08: N2 set to the REMAINDER (1 - O2 - CO2 - CH4 - H2O) instead
+# of the modern value, so these 5 pinned species sum to exactly 1 --
+# closing the ~20.9% gap this file used to leave open (see former
+# CAVEAT below, kept for history). PTARGET-DIAG (boundary_layer_mass_
+# balance_issue investigation) confirmed msum/target was flatlining at
+# ~0.7918 every call because nothing was filling that gap now that
+# GAPFILL (unstable, reverted) is gone -- N2 is the obvious sink since
+# Catling & Zahnle 2020 only constrain it to "similar to today, or up
+# to a few times lower," i.e. this absorption is within the cited
+# uncertainty, unlike O2/CO2/CH4 which have their own dedicated proxy
+# constraints.
+N2        9.8900E-01   # = 1 - (O2+CO2+CH4+H2O), was 7.8084E-01 (modern value)
 O2        1.0000E-07   # deep anoxic, <1e-6 PAL (PAL O2 = 0.20946)
 CO2       1.0000E-02   # ~1%, ~10 mbar-equivalent, mid of the ~2.5 Ga paleosol range (3-25 mbar)
 CH4       1.0000E-03   # ~1000 ppm; pCH4:pCO2 = 0.1 (warming optimum / haze onset), within 100-1e4x modern envelope
+H2O       3.0000E-06   # 2026-09-13: dry cold-trap value (~3 ppm, modern stratospheric H2O),
+#                        NOT a surface humidity value. Without condensation/cold-trap physics,
+#                        GGchem was instead filling H2O in to make up the ~21% gap left by
+#                        pinning O2 far below modern (see CAVEAT below) -- found post-run to
+#                        reach ~2.9% VMR at the top of the atmosphere (layer 1) vs ~0.17% at
+#                        the surface (layer 100), backwards from real Earth and almost
+#                        certainly driving unrealistic H2O-photolysis-sourced OH production
+#                        (H2O2/OH/HNO3/HNO2 were seen swinging 3-8x between chemistry
+#                        updates). Pinning to the dry upper-atmosphere value everywhere is a
+#                        compromise -- it removes the runaway high-altitude H2O but also
+#                        removes any realistic surface humidity, since one INITAB value can't
+#                        represent both a moist surface and a dry, cold-trapped upper
+#                        atmosphere at once.
 #
-# All other species (H2O, O3, N2O, CO, H2, SO2, H2S, O, H, OH, HO2, NO,
+# All other species (O3, N2O, CO, H2, SO2, H2S, O, H, OH, HO2, NO,
 # NO2, etc.) default to 1E-20 initial guess and evolve to whatever GGchem
 # equilibrium + KROME non-eq photochemistry + eddy mixing produce.
 #
-# CAVEAT: N2+O2+CO2+CH4 here sum to only ~0.791 (vs modern's ~0.991),
-# a ~20.9% gap where modern's O2 used to be. This run does NOT reduce
-# the pressure boundary condition (PPE) to compensate -- geological
-# pressure-proxy work (Som et al. 2012/2016) argues Archean total surface
-# pressure was itself LOWER than today (not that something else filled
-# the O2 gap at constant total pressure), which would be the physically
-# correct fix, but touching PPE risks reopening the pressure-boundary
-# fragility this codebase has hit before (TRYCK/PPE cap work). Left as a
-# known simplification for this first pass -- check post-run what GGchem
-# actually put in the gap (most likely H2O) before trusting absolute
-# humidity/pressure numbers from this run.
+# FORMER CAVEAT (resolved 2026-10-08, kept for history): this file used
+# to pin N2 at the modern value, leaving N2+O2+CO2+CH4+H2O summing to
+# only ~0.791 (vs modern's ~0.991) -- a ~20.9% gap where modern's O2
+# used to be. The original plan was for GGchem's own equilibrium
+# allocation among the "free" species (O3, CO, H2, etc.) to fill that
+# gap -- but PTARGET-DIAG confirmed it never did (msum/target flatlined
+# at ~0.7918 every call, every layer, no matter how many iterations
+# ran), and GAPFILL (the mechanism built specifically to redistribute
+# that gap to the free species) turned out to be numerically unstable
+# (T-correction blowups, 2026-10-08) and was reverted. N2 now absorbs
+# the remainder directly instead, per the note above. Geological
+# pressure-proxy work (Som et al. 2012/2016) arguing Archean total
+# surface pressure was itself LOWER than today remains a more
+# physically-motivated alternative fix (reduce PPE instead of inflating
+# N2), not yet attempted here due to PPE's own fragility history
+# (TRYCK/PPE cap work). See also the parallel elabund investigation
+# (standalone GGchem) aimed at finding an elemental budget that
+# reproduces a more realistic archean bulk composition independent of
+# this pinning file's choices.

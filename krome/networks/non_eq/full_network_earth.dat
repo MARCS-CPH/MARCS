@@ -463,6 +463,31 @@
 459,CH3SCH2,O2,,HCHO,CH3SO,,7.16e-14*(Tgas/298)**(-0.37)*exp(-3.4e4/Tgas)
 460,CH3SCH2,O2,,HCHO,CH2S,OH,2.03e-11*(Tgas/298)**(-1.97)*exp(-4.5e4/Tgas)
 461,CH3SCH2,,,CH2S,CH3,,4.40e13*exp(-1.38e5/Tgas)
+
+#################################################
+# Atomic carbon sinks (C + OH, C + NO), forward part
+# Added 2026-09-19: full_network_earth.dat previously had NO reaction
+# anywhere with atomic C as a reactant -- only production channels
+# (CO2/CO/CS/C2/CH/CN photodissociation), confirmed via exact-token
+# search of the network file. This only became visible as a problem
+# once a run used both archean-level CO2 (reaction 6, CO2->C+O2,
+# @xsecFile=LEIDEN) and a long enough chemistry integration window
+# (~1e5 yr) for that slow photodissociation source to matter -- no
+# prior full_network_earth.dat run had both conditions at once.
+# Forward rates from VULCAN's Earth/oxidising-atmosphere networks
+# (github.com/exoclime/VULCAN, thermo/NCHO_earth_photo_network.txt and
+# NCHO_photo_oxidising_network.txt): C+OH->CO+H (KIDA-sourced,
+# essentially barrierless) and C+NO->O+CN (near gas-kinetic, validated
+# 200-5000K, directly covering this project's archean temperature
+# range). C+O2->CO+O was considered and rejected -- its only sourced
+# rate (1991DEA/DAV) has a real ~2010K barrier and is only validated
+# 1500-4200K, well outside our ~200-400K regime; extrapolated down
+# there it is negligibly slow anyway. Reverse rates (detailed-balance,
+# BURCAT-derived) are appended at the very end of the file, in the
+# reverse part.
+#################################################
+474,C,OH,,CO,H,,1.05e-12*(Tgas/300)**0.5
+475,C,NO,,O,CN,,3.45e-10*(Tgas/300)**(-0.32)
 462,CH3SOCH3,NO,,CH3SCH3,NO2,,9.00e-21*pct**(0)/exp(-2.2567013100000004*(log(Tgas)-1)+0.02141778558*Tgas/2+-4.594213875e-05*Tgas**2/6+4.214029593e-08*Tgas**3/12+-1.435665126e-11*Tgas**4/20--15063.091209999999/Tgas+6.830770019999999)
 463,HNO3,CH3SCH2,,CH3SCH3,NO3,,1.79e-13*exp(4407/Tgas)*pct**(0)/exp(-1.6400448500000007*(log(Tgas)-1)+0.01285942372*Tgas/2+-3.581168707e-05*Tgas**2/6+4.0738833329999994e-08*Tgas**3/12+-1.6201954519999996e-11*Tgas**4/20--8975.443099999999/Tgas+8.33853603)
 464,CH3SCH2,H2O,,CH3SCH3,OH,,7.68e-12*exp(-1389/Tgas)*pct**(0)/exp(-0.9530921300000008*(log(Tgas)-1)+0.00469758687*Tgas/2+-1.4608951929999998e-05*Tgas**2/6+1.703502106e-08*Tgas**3/12+-6.787155320000001e-12*Tgas**4/20--17405.267509999998/Tgas+5.011750697000001)
@@ -475,3 +500,20 @@
 471,C2H5SH,CH3SCH2,,C4H10S2,H,,7.85e-11*exp(-7.16/Tgas)*pct**(0)/exp(6.901358770000001*(log(Tgas)-1)+0.00922699198*Tgas/2+7.29924674e-05*Tgas**2/6+-9.66898919e-08*Tgas**3/12+3.79521471e-11*Tgas**4/20--21676.180849999997/Tgas+10.30299506)
 472,HCHO,CH3SO,,CH3SCH2,O2,,7.16e-14*(Tgas/298)**(-0.37)*exp(-3.4e4/Tgas)*pct**(0)/exp(1.72576382*(log(Tgas)-1)+-0.01861421147*Tgas/2+5.0114120989999996e-05*Tgas**2/6+-5.3533970010000003e-08*Tgas**3/12+2.007631073e-11*Tgas**4/20-4769.0160989999995/Tgas+-6.670593309999999)
 473,HCHO,CH2S,OH,CH3SCH2,O2,,2.03e-11*(Tgas/298)**(-1.97)*exp(-4.5e4/Tgas)*pct**(1)/exp(0.7460526199999995*(log(Tgas)-1)+-0.015721712449999998*Tgas/2+6.997346419999994e-06*Tgas**2/6+2.9342862999999937e-10*Tgas**3/12+-7.824911500000023e-13*Tgas**4/20-8266.93662/Tgas+-9.589603606999999)
+
+#################################################
+# Atomic carbon sinks (C + OH, C + NO), reverse part
+# Reverse of reactions 474/475 (see the forward part, after reaction
+# 461, for full sourcing). Auto-derived via detailed balance from
+# BURCAT thermo data (python_scripts/calc_auto_reverse_rates.py,
+# ground-state entries for C/OH/O -- each had a second, excited-state
+# BURCAT entry, C triplet / OH A 2Sigma+ / O singlet, confirmed via
+# networks/../burcat_therm.dat headers and not used). Both forward and
+# reverse rates checked numerically sane across 200-400K -- forward
+# stays 1e-13 to 1e-10 cm3/s, reverse is vanishingly small (1e-180 to
+# 1e-25) since both reactions are strongly exothermic, i.e. these act
+# as effectively one-way sinks at these temperatures, not a stiffness
+# risk.
+#################################################
+476,CO,H,,C,OH,,1.05e-12*(Tgas/300)**0.5*pct**(0)/exp(-0.46669024000000014*(log(Tgas)-1)+0.00211225058*Tgas/2+-4.33361826e-06*Tgas**2/6+5.51840379e-09*Tgas**3/12+-2.53414095e-12*Tgas**4/20--77682.00536/Tgas+-1.3655835729999997)
+477,O,CN,,C,NO,,3.45e-10*(Tgas/300)**(-0.32)*pct**(0)/exp(0.007989330000000905*(log(Tgas)-1)+0.0007290843830000002*Tgas/2+-2.9974604600000015e-06*Tgas**2/6+3.639721892e-09*Tgas**3/12+-1.429928567e-12*Tgas**4/20--14457.118039999994/Tgas+-0.7775978299999999)

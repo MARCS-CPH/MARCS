@@ -39,3 +39,42 @@ Part of the noneq input block (see parameters_list.txt). A value of exactly
 full `tMAX`, instead of the default `min(vert_mix_time, tMAX)`. Any nonzero
 value keeps the default behavior. This gives direct input-file control over
 integration length independent of the vertical mixing timescale.
+
+## Known physics gaps
+
+### No water-vapor cold trap (missing condensation) -- VIRGA should fix this
+The current non-eq columns hold H2O at an essentially **flat mixing ratio
+across the whole depth grid**, regardless of local temperature -- e.g. a
+modern-Earth test column showed ~2.54e-3 (2540 ppm) from a 230 K upper
+layer down to the 288 K surface, with no falloff at all in between. Real
+atmospheres don't do this: water vapor condenses out once it hits its local
+saturation vapor pressure, which collapses sharply at low T (the "cold
+trap") -- it's why Earth's real stratosphere is desiccated to a few ppm
+despite a humid surface. There's currently no condensation physics coupled
+into the non-eq column to enforce this, so GGchem/KROME just carries
+whatever H2O partial pressure comes out of equilibrium chemistry at every
+layer, uncapped by saturation.
+
+This isn't a cosmetic issue -- it directly distorts the chemistry. **O(1D) +
+H2O -> 2OH** is the dominant real-world tropospheric OH source, and it's a
+fast, nearly gas-kinetic reaction. With H2O artificially high at every
+altitude (including cold layers where it should be nearly absent), OH comes
+out 10-75x too high in number density and 3-5 orders of magnitude too high
+in mixing ratio through most of the column (found while investigating why
+DMS never accumulates to a realistic level in the Earth-modern DMSP/DMS
+tests -- see krome/networks/non_eq/full_network_DMS_v2_airsea.dat and
+python_scripts/DMS_airsea_flux_calc.py). At the layers where OH is worst,
+the OH + DMS abstraction channel alone destroys DMS 2-15x faster than it
+can be produced -- a downstream symptom of this upstream H2O problem, and a
+concrete illustration of how far this can propagate: anything that reacts
+with OH (which is most of the network) inherits some of this distortion.
+
+The in-progress VIRGA coupling (`virga/`, `call_virga.py`,
+`virga2marcs_script.py`, invoked from marcs.f when `VIRGA=1`) is aimed at
+exactly this gap -- `virga/virga_condensates.dat` already lists `H2O` as a
+condensate species. Once wired in for the non-eq column (it's currently
+used for cloud opacity, not yet feeding a depleted H2O profile back into
+the KROME chemistry), it should let water actually condense out with
+altitude/falling temperature instead of sitting at a fixed mixing ratio,
+which should bring OH (and everything downstream of it) much closer to
+realistic values.

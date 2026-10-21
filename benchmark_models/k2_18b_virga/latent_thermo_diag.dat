@@ -1,0 +1,8 @@
+ Condensate: H2O
+ gas heatf [J/mol]:   -241826.000000000     
+ gas molar mass [g/mol]:    18.0152800000000     
+ n_phases found:            2
+   phase            1  heatf [J/mol]:   -299108.000000000       T_lo: 
+   200.000000000000       T_hi:    273.150000000000     
+   phase            2  heatf [J/mol]:   -285830.000000000       T_lo: 
+   273.150000000000       T_hi:    600.000000000000     
