@@ -3952,7 +3952,7 @@ C and other routines from gem_init by common CI5.
       !adds to the abundances of all elements but H and He log(zscale).
       print*, "Metallicity is ", zscale, " time(s) solar."
       metal_z=zscale !write out metallicity for use in other routines, e.g. VIRGA
-      write(7,*) 'This model has the elemental abundances ',
+      write(7,'(1X,2A)') 'This model has the elemental abundances ',
      >  'of the general type ', trim(head_elabund)
       do i=1, nelem
       if (i>2) then
