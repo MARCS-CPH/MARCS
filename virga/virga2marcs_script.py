@@ -80,12 +80,15 @@ def read_in_mie_h5(file_path):
 def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     """
     Read marcs2virga.dat + marcs_wnos.dat (both written by marcs.f's
-    OSTABLOOK), run virga, and write virga2marcs.dat in the exact format
-    and on the exact wavenumber grid marcs.f reads back: one header line,
-    then "wavenumber(1/cm) pressure(dyn/cm^2) kappa_abs(cm^2/g)
-    kappa_sca(cm^2/g)" rows, nwtot wavelengths x ntau depths, ordered
-    wavelength-major (all depths for wavelength 1, then all depths for
-    wavelength 2, ...).
+    OSTABLOOK), run virga, and write one unified virga_output.dat that
+    marcs.f reads back in a single pass, instead of three separate
+    files. Everything virga computes gets written out -- condensate mmr
+    (qc), total vapor+condensate mmr (qt, for CNDNSA's depletion to
+    carry forward correctly above the cloud per Ackerman & Marley 2001
+    eq. 7), sedimentation flux (for LATENT), and the regridded opacity
+    table (for CLOUDS) -- same as the old three-file version computed
+    and wrote all of this unconditionally regardless of which marcs.f
+    flags were on.
 
     Paths are relative to `input_dir` so this can be run from the SLURM
     job's scratch directory where marcs.f writes its files.
@@ -166,6 +169,7 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     n_c = np.zeros((n_layers, len(molecules)))
     rg = np.zeros((n_layers, len(molecules)))
     mmr_c_all = np.zeros((n_layers, len(molecules)))
+    mmr_t_all = np.zeros((n_layers, len(molecules)))
     for i, igas in enumerate(molecules):
         mass_igas = Formula(igas).mass                      #amu
         cgs_mass_H = Formula("H").mass*u.u.to(u.g)          #g
@@ -173,6 +177,7 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
         mmr_c = all_out['condensate_mmr'][:,i]
         mmr_c_all[:,i] = mmr_c
         mmr_tot = all_out['cond_plus_gas_mmr'][:,i]
+        mmr_t_all[:,i] = mmr_tot
         rho_p = all_out['condensate_density'][i]            # g/cm^3
         rg[:,i] = all_out['mean_particle_r'][:,i]*1e-4       #microns -> cm
 
@@ -250,60 +255,55 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     # virga gave back n_layers=ntau-1 layer-averaged values, so pad the
     # deepest layer by repeating the last one -- an approximation, not a
     # physically distinct extra layer.
-    if n_layers == ntau - 1:
-        kappa_abs_out = np.vstack([kappa_abs_regridded, kappa_abs_regridded[-1:]])
-        kappa_sca_out = np.vstack([kappa_sca_regridded, kappa_sca_regridded[-1:]])
-    elif n_layers == ntau:
-        kappa_abs_out = kappa_abs_regridded
-        kappa_sca_out = kappa_sca_regridded
-    else:
-        raise ValueError(f"virga returned {n_layers} layers, expected "
-                          f"{ntau} or {ntau-1} for ntau={ntau} input rows")
+    def pad(arr):
+        if n_layers == ntau - 1:
+            return np.vstack([arr, arr[-1:]])
+        elif n_layers == ntau:
+            return arr
+        else:
+            raise ValueError(f"virga returned {n_layers} layers, expected "
+                              f"{ntau} or {ntau-1} for ntau={ntau} input rows")
 
-    output_path = f'{input_dir}/virga2marcs.dat'
+    kappa_abs_out = pad(kappa_abs_regridded)
+    kappa_sca_out = pad(kappa_sca_regridded)
+    mmr_c_out = pad(mmr_c_all)
+    mmr_t_out = pad(mmr_t_all)
+
+    w_convect = all_out['kz'] / all_out['mixing_length']
+    fsed = all_out['fsed']
+    sedflux_all = fsed * mmr_c_all * (rho_gas * w_convect)[:, np.newaxis]
+    sedflux_out = pad(sedflux_all)
+
+    # One unified file, three fixed sections, always all written (same
+    # as the old three-file version always computed and wrote all of
+    # this regardless of which marcs.f flags were on).
+    output_path = f'{input_dir}/virga_output.dat'
     with open(output_path, 'w') as file:
-        file.write("Wavenumber (1/cm) Pressure (dyn/cm^2) kappa_abs (cm^2/g) kappa_sca (cm^2/g)\n")
+        file.write("Virga unified output: CNDNSA (qc,qt), LATENT"
+                    " (sedflux), CLOUDS (opacity) sections\n")
+
+        file.write(" # Begin CNDNSA\n")
+        for i, igas in enumerate(molecules):
+            file.write(f"{igas}\n")
+            for ip in range(ntau):
+                file.write(f"{mmr_c_out[ip,i]:.6e} {mmr_t_out[ip,i]:.6e}\n")
+        file.write(" # End CNDNSA\n")
+
+        file.write(" # Begin LATENT\n")
+        for i, igas in enumerate(molecules):
+            file.write(f"{igas}\n")
+            for ip in range(ntau):
+                file.write(f"{sedflux_out[ip,i]:.6e}\n")
+        file.write(" # End LATENT\n")
+
+        file.write(" # Begin CLOUDS\n")
         for iw in range(nwtot):
             waveno = marcs_wnos[iw]
             for ip in range(ntau):
                 file.write(f"{waveno:.6e} {P[ip]*1e6:.6e} "
                            f"{kappa_abs_out[ip, iw]:.6e} "
                            f"{kappa_sca_out[ip, iw]:.6e}\n")
-
-    # Condensate mass-mixing-ratio per layer, for marcs.f's CNDNSA
-    # elemental-depletion calc (OSTABLOOK) -- same ntau-padding as kappa above.
-    if n_layers == ntau - 1:
-        mmr_c_out = np.vstack([mmr_c_all, mmr_c_all[-1:]])
-    else:
-        mmr_c_out = mmr_c_all
-
-    mmr_path = f'{input_dir}/virga2marcs_mmr.dat'
-    with open(mmr_path, 'w') as file:
-        file.write("Condensate mmr_c (mass mixing ratio, dimensionless)\n")
-        for i, igas in enumerate(molecules):
-            file.write(f"{igas}\n")
-            for ip in range(ntau):
-                file.write(f"{mmr_c_out[ip, i]:.6e}\n")
-
-    # Sedimentation mass flux (g/cm^2/s), for marcs.f's LATENT heat term
-    # -- fsed * mmr_c * rho_gas * w_convect, using virga's own internal
-    # convective velocity scale (kz/mixing_length), the same ingredient
-    # mean_particle_r itself was solved from (vfall(r)=w_convect).
-    w_convect = all_out['kz'] / all_out['mixing_length']
-    fsed = all_out['fsed']
-    sedflux_all = fsed * mmr_c_all * (rho_gas * w_convect)[:, np.newaxis]
-    if n_layers == ntau - 1:
-        sedflux_out = np.vstack([sedflux_all, sedflux_all[-1:]])
-    else:
-        sedflux_out = sedflux_all
-
-    sedflux_path = f'{input_dir}/virga2marcs_sedflux.dat'
-    with open(sedflux_path, 'w') as file:
-        file.write("Condensate sedimentation mass flux (g/cm^2/s)\n")
-        for i, igas in enumerate(molecules):
-            file.write(f"{igas}\n")
-            for ip in range(ntau):
-                file.write(f"{sedflux_out[ip, i]:.6e}\n")
+        file.write(" # End CLOUDS\n")
 
     return output_path
 

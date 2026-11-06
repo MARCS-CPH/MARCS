@@ -288,7 +288,8 @@ C      PARAMETER (KFADIM=4000,IFADIM=1000)
       COMMON/CA2/ABKOF(40000),KOMPLA(2000),KOMPR,KOMPS,NKOMP
       COMMON/CA3/ILOGTA(30),NULL
       COMMON/CA4/AFAK(KFADIM),NOFAK(IFADIM),NPLATS(IFADIM)
-      COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),XLA(20),XLA3(20),RO,
+      COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),
+     &           XLA(MAXWLSET),XLA3(MAXWLSET),RO,
      &           SUMABS,SUMSCA,VIKTR,ISET,NLB
       COMMON/CFIL/IRESET(10),ISLASK,IREAT
       COMMON/COUTR/NTO,NTPO(10)
@@ -813,7 +814,8 @@ C
 C
       CHARACTER*1  DAY(10)
       CHARACTER*10 DAG,KLOCK
-      DIMENSION ABSKA(NDP),SPRIDA(NDP),ABSKTR(20),SPRTR(20)
+      DIMENSION ABSKA(NDP),SPRIDA(NDP)
+      DIMENSION ABSKTR(MAXWLSET),SPRTR(MAXWLSET)
       DIMENSION PRESMP(33)     !345??? was 33 ??? (UGJ/Sep.10.98)
       EQUIVALENCE (DAG,DAY(3))
 C
@@ -1502,7 +1504,8 @@ C
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
       COMMON/CA2/RCA2DUM(40000),ICA2DUM(2002),NKOMP
-      COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),XLA(20),XLA3(20),RO,
+      COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),
+     *           XLA(MAXWLSET),XLA3(MAXWLSET),RO,
      *SUMABS,SUMSCA,VIKTR,ISET,NLB
       COMMON/UTPUT/IREAD,IWRIT
       COMMON /CARC4/ PROV(30),NPROVA,NPROVS,NPROV
@@ -2077,6 +2080,7 @@ C
 
       SUBROUTINE INABS(IOUTS)
       implicit real*8 (a-h,o-z)
+      include 'parameter.inc'
 C
 C        THIS ROUTINE  READS ABSORPTION COEFFICIENT TABLES AND INTER/EXTRA-
 C        POLATES THEM TO OUR WAVELENGTHS GIVEN IN XL. THE INTERPOLATION IS
@@ -2162,7 +2166,7 @@ C               PONENT BEING CONSIDERED.
 C
 C
       DIMENSION IDISKV(40),XLATB(40),XTET(30),NTAET(30),XKAP(40,30),
-     *XLA3(20),XLA(20),XTETP(30)
+     *XLA3(MAXWLSET),XLA(MAXWLSET),XTETP(30)
       COMMON/CARC4/PROV(30),NDUM(3)
       COMMON /CHAR/ ABNAME(30),SOURCE(30)
       COMMON/UTPUT/IREAD,IWRIT
@@ -4753,8 +4757,8 @@ C
      *PE(NDP),PG(NDP),PRAD(NDP),PTURB(NDP),XKAPR(NDP),RO(NDP),
      *CP(NDP),CV(NDP),AGRAD(NDP),Q(NDP),U(NDP),V(NDP),ANCONV(NDP),
      *PRESMO(33,NDP),FCONV(NDP),RR(NDP),EMU(NDP),HNIC(NDP)
-     *,NJ(16),XLR(20),IEL(16),PROV(20,20),PALL(NDP)
-     *,ABSKA(20),SPRIDA(20),XLB(500),PEP(16)
+     *,NJ(16),XLR(MAXWLSET),IEL(16),PROV(20,MAXWLSET),PALL(NDP)
+     *,ABSKA(MAXWLSET),SPRIDA(MAXWLSET),XLB(500),PEP(16)
      *,ABNAME(30),SOURCE(30),ABSKTR(NDP),SPRTR(NDP)
 C     *,ABNAME(30),SOURCE(30),ABSKTR(NDP),SPRTR(NDP),DUMMY(11*NDP+2)
       DIMENSION W(500),UW(12),BW(21),VW(25),SUMPMOL(NDP)
@@ -7420,7 +7424,12 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       JMEM=JMEM1
       IMEM=IMEM1
       JMEM1=JMEM1+1
-      IF (IMEM.GT.10 .OR. JMEM1.GE.20) 
+C JMEM1 indexes XL(200,10) (COMMON/CXLSET/) -- check against that real
+C capacity, not a hardcoded 20 unrelated to it (found 2026-10-22: with
+C a wide enough temperature/wavelength range, legitimate searches need
+C to probe past position 19 in the Rosseland set well before XL's
+C actual 200-point capacity is reached).
+      IF (IMEM.GT.10 .OR. JMEM1.GT.200)
      *                STOP ' WNOS(1) < last continuums point '
       DO8 K=1,JTAU
       ABSK(K)=ABSK1(K)
@@ -7435,7 +7444,7 @@ C   ******** HERE WE ASSUME THAT THE FIRST SET IS USED FOR ROSSELAND MEAN
       else if(metpe.eq.2) then
       if (T(k) .gt. 2000.) then
        CALL ABSKO(NEWT,JTAU,T(k),PE(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
-      else    
+      else
        CALL ABSKO(NEWT,JTAU,T(k),PPEL(k),IMEM1,JMEM1,ABSK1,SPRID1,-1)
       endif
       end if
@@ -8681,6 +8690,10 @@ C when latent=1 -- see OSTABLOOK for how these commons are filled.
      >    cond_T_hi_phase(nr_cond,n_phase_max)
       real*8 :: sedflux_in(ndp,nr_cond)
       common /latent_sedflux/ sedflux_in
+      common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
+      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length
+      real*8 :: cond_strength, virga_frac
       integer :: force_abund_next
       common /force_abund/ force_abund_next
       real*8 :: FFL(ndp), L_cond
@@ -9416,7 +9429,8 @@ C init_thermo). Left at 0 where latent=0 or no phase matches.
                 L_cond = (cond_heatf_gas(i_cond)
      >            - cond_heatf_phase(i_cond,j_phase))
      >            / cond_molmass_gas(i_cond) * 1.d7
-                FFL(k) = FFL(k) + L_cond * sedflux_in(k,i_cond)
+                FFL(k) = FFL(k)
+     >            + virga_frac(k) * L_cond * sedflux_in(k,i_cond)
                 exit
               endif
             enddo
@@ -9429,9 +9443,10 @@ C init_thermo). Left at 0 where latent=0 or no phase matches.
      >      position='append')
         endif
         write(255,*) 'iteration ', it
-        write(255,*) 'layer  TT[K]  FFC[erg/cm2/s]  FFL[erg/cm2/s]'
+        write(255,*) 'layer  TT[K]  FFC[erg/cm2/s]  FFL[erg/cm2/s]',
+     >    '  virga_frac'
         do k=1,ntau
-          write(255,*) k, TT(k), FFC(k), FFL(k)
+          write(255,*) k, TT(k), FFC(k), FFL(k), virga_frac(k)
         enddo
         close(255)
       endif
@@ -10008,7 +10023,15 @@ C CHECK T CORR
 4061  FORMAT(' Max corr. to T wanted for kort=1 was',F6.1)
       END IF
 C
-      IF (KORT.EQ.4.AND.IT.GE.4  .OR. KORT.EQ.5) THEN
+      IF (((KORT.EQ.4.AND.IT.GE.4) .OR. KORT.EQ.5)
+     >    .AND. .NOT. t_bad) THEN
+C NOTE (2026-11-05): .AND. .NOT. t_bad added -- on a NaN-catch
+C iteration T(:) was just forced to all-zero (see the t_bad block
+C above), so TCMXNOW/TCORMX computed below would be a false zero, not
+C a real "no correction needed". Letting that flow into TCMXPRV would
+C corrupt the sign-flip (oscillation) detector; skip the whole block
+C instead and leave TCMXPRV/TDWORK exactly as they were, so the next
+C genuine iteration resumes from its last real state.
 C DAMP PERIOD-2 LIMIT CYCLES: A SIGN FLIP OF THE SIGNED MAX WANTED
 C CORRECTION BETWEEN CONSECUTIVE ITERATIONS MEANS THE APPLIED STEP
 C OVERSHOOTS THE EQUILIBRIUM (CYCLE AMPLITUDE SCALES WITH STEP SIZE).
@@ -10054,9 +10077,17 @@ C
      *     ' for applied kort =',I2,' (largest wanted was layer',I3,
      *     ')')
       END IF
-      IF (KORT.EQ.6) THEN
+      IF (KORT.EQ.6 .AND. .NOT. t_bad) THEN
       IF(IT.EQ.1) TCORPRV = 1.D3
       IF(IT.EQ.1) TCORMIN = 1.D3
+C NOTE (2026-11-05): .AND. .NOT. t_bad added -- see the matching note
+C on the KORT=4/5 block above. Without this, a single NaN-catch
+C iteration permanently ratchets TCORMIN/TCORPRV to 0 (T(:) is all-
+C zero that iteration, so TCORMX=0 feeds straight into both), clamping
+C every later iteration's applied correction to 0 regardless of how
+C reasonable the newly-wanted correction actually is -- confirmed as
+C the cause of the wnos1 test runs stalling at a fixed layer for many
+C iterations in a row after an isolated, otherwise-harmless NaN catch.
 C DAMP PERIOD-2 LIMIT CYCLES (SAME SCHEME AS IN THE KORT=4/5 BLOCK):
 C ON A SIGN FLIP OF THE SIGNED MAX WANTED CORRECTION BETWEEN
 C CONSECUTIVE ITERATIONS, HALVE THE WORKING STEP CEILING (FLOOR
@@ -13083,6 +13114,17 @@ C itself is untouched everywhere else.
      * STEFAN
       common /metal_Z/metal_z
       common /conv_help/ abund_freq,icalc_abund
+C it_outer/itmax_outer alias /CIT/IT,ITMAX under safe local names --
+C this subroutine's own "it" (below) is an unrelated loop index.
+      common /CIT/ it_outer, itmax_outer
+      common /onemor_it/ onemor
+      common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
+      integer :: virgaramp, virgaramp_min, virga_ramp_it,
+     >   ramp_length, it_outer, itmax_outer,
+     >   target_length, iterations_remaining, onemor
+      real*8 :: cond_strength, virga_frac, cond_strength_max
+      logical :: warn_truncated
 
       character(len=50) condensates(nr_cond)
       real*8 :: cond_pp_init(nr_cond)
@@ -13095,6 +13137,7 @@ C itself is untouched everywhere else.
 C CNDNSA depletion locals
       character(len=20) stoich_name, elem_sym_tmp, mmr_name
       real*8 :: stoich_molmass, mmr_c_in(ndp,nr_cond), f_gas_val
+      real*8 :: mmr_t_in(ndp,nr_cond), qt_deep, mmr_lost
       real*8 :: sedflux_in(ndp,nr_cond)
 C Shared with SOLVE, which computes FFL(k) from this + /latent_thermo/.
       common /latent_sedflux/ sedflux_in
@@ -13173,6 +13216,16 @@ C CALCULATE THE PARTIAL PRESSURE
         krome_ptot_out(k) = ptot(k)
       end do
 
+C Ramp counter: counts iterations since the last chemistry/virga
+C recompute, regardless of whether one happens this call.
+      if (ivirga_on.eq.1) then
+        if (icalc_abund.eq.1) then
+          virga_ramp_it = 1
+        else
+          virga_ramp_it = virga_ramp_it + 1
+        endif
+      endif
+
       if (icalc_abund .eq. 1) then
 C Reset to the full (undepleted) abundance every cycle -- virga_depl
 C only overwrites specific elements below, once virga has run.
@@ -13217,6 +13270,10 @@ C           krome_on=1 (this call always runs first, before krome_solve).
       enddo
 
       if (ivirga_on.eq.1) then
+C Ramp length for the worst-condensing layer (iterations); weaker
+C layers ramp proportionally faster. Floor avoids a rounded-to-zero ramp.
+      virgaramp = 10
+      virgaramp_min = 2
       if (nwtot.gt.nwreal) then
        write(*,*) "Number of wavelengths after OS calc", nwtot,
      >  "exceeds virga opacity array dimension nwreal", nwreal,
@@ -13294,53 +13351,116 @@ C     assuming the two grids already line up.
 
       call system('python3 call_virga.py') !runs virga on the written-out PT/condensate profile
 
+C Single unified read: Virga always writes all three sections (CNDNSA
+C qc+qt, LATENT sedflux, CLOUDS opacity) regardless of which of these
+C flags are on, only readin to MARCS is goverend by the flags
+      open(unit=255, file='virga_output.dat', status='old')
+      read(255,*) dummy_header
+
+      read(255,*) dummy_header
+      do i=1,nr_cond
+        read(255,'(A)') mmr_name
+        if (trim(mmr_name).ne.trim(condensates(i))) then
+          write(*,*) 'virga_output.dat (CNDNSA) order mismatch: ',
+     >      'expected ',trim(condensates(i)),' got ',trim(mmr_name)
+          stop 'check virga_output.dat against virga_condensates.dat'
+        endif
+        do k=1,ntau
+          read(255,*,iostat=virga_ios) mmr_c_in(k,i), mmr_t_in(k,i)
+          if (virga_ios.ne.0) then
+            write(*,*) 'error reading virga_output.dat (CNDNSA) for ',
+     >        trim(condensates(i)),' depth',k,' of',ntau
+            stop 'virga_output.dat is malformed or truncated (CNDNSA)'
+          endif
+        enddo
+      enddo
+      read(255,*) dummy_header
+
+      read(255,*) dummy_header
+      do i=1,nr_cond
+        read(255,'(A)') mmr_name
+        if (trim(mmr_name).ne.trim(condensates(i))) then
+          write(*,*) 'virga_output.dat (LATENT) order mismatch: ',
+     >      'expected ',trim(condensates(i)),' got ',trim(mmr_name)
+          stop 'check virga_output.dat against virga_condensates.dat'
+        endif
+        do k=1,ntau
+          read(255,*,iostat=virga_ios) sedflux_in(k,i)
+          if (virga_ios.ne.0) then
+            write(*,*) 'error reading virga_output.dat (LATENT) for ',
+     >        trim(condensates(i)),' depth',k,' of',ntau
+            stop 'virga_output.dat is malformed or truncated (LATENT)'
+          endif
+        enddo
+      enddo
+      read(255,*) dummy_header
+
       if (clouds.eq.1) then
-      open(unit=248, file='virga2marcs.dat', status='old')!read out from virga
-      read(248,*) dummy_header
+      read(255,*) dummy_header
       x_virga = 0.
       s_virga = 0.
       do j=1,nwtot
         do k=1,ntau
-          read(248,*,iostat=virga_ios) dummy_wn,dummy_P,
+          read(255,*,iostat=virga_ios) dummy_wn,dummy_P,
      >     x_virga(k,j), s_virga(k,j)
           if (virga_ios.ne.0) then
-           write(*,*) 'error reading virga2marcs.dat at wavelength',
-     >      j,' of',nwtot,' depth',k,' of',ntau,' iostat=',virga_ios
-           stop 'virga2marcs.dat is malformed, truncated, or the'//
+           write(*,*) 'error reading virga_output.dat (CLOUDS) at',
+     >      ' wavelength',j,' of',nwtot,' depth',k,' of',ntau,
+     >      ' iostat=',virga_ios
+           stop 'virga_output.dat is malformed, truncated, or the'//
      >      ' wrong shape (expected nwtot*ntau rows) -- check the'//
      >      ' virga run that produced it'
           endif
         end do
       enddo
-      close(248)
+      read(255,*) dummy_header
       endif
 C TODO: under-relax x_virga/s_virga here (SAVE'd old values, blend
 C weight ~0.4) to damp cloud on/off flips -- deferred until OPAC merges them (~line 7392).
+      close(255)
+
+C Ramp length from condensate strength (floored, capped to iterations
+C left), then virga_frac. Driven by CNDNSA's condensate mmr when it's
+C on; falls back to LATENT's sedimentation flux (same underlying virga
+C output, just a different proportional quantity) when only LATENT is.
+      if (cndnsa.eq.1) then
+        do k=1,ntau
+          cond_strength(k) = sum(mmr_c_in(k,:))
+        enddo
+      else if (latent.eq.1) then
+        do k=1,ntau
+          cond_strength(k) = sum(abs(sedflux_in(k,:)))
+        enddo
+      endif
+      if (cndnsa.eq.1 .or. latent.eq.1) then
+      cond_strength_max = maxval(cond_strength)
+      iterations_remaining = itmax_outer - it_outer + 1
+      warn_truncated = .false.
+      do k=1,ntau
+        if (cond_strength(k).le.0.d0) then
+          target_length = 1
+        else
+          target_length = max(virgaramp_min,
+     >      nint(virgaramp * cond_strength(k) / cond_strength_max))
+        endif
+        ramp_length(k) = min(target_length, iterations_remaining)
+        if (ramp_length(k).lt.target_length) warn_truncated = .true.
+      enddo
+      if (warn_truncated) then
+        write(*,*) 'WARNING: virga ramp truncated below its target',
+     >    ' at iteration',it_outer,'/',itmax_outer,' --',
+     >    iterations_remaining,'iterations remained.'
+      endif
+      do k=1,ntau
+        virga_frac(k) = min(1.0d0,
+     >    dble(virga_ramp_it)/dble(ramp_length(k)))
+      enddo
+C onemor confirmation pass: test real, full-strength physics before
+C letting the model declare convergence, regardless of ramp progress.
+      if (onemor.eq.1) virga_frac = 1.0d0
+      endif
 
       if (latent.eq.1) then
-C Per-condensate sedimentation mass flux from virga (g/cm^2/s), for
-C the LATENT heat term -- not yet used in FFL, just read + dumped here.
-      open(unit=253, file='virga2marcs_sedflux.dat', status='old')
-      read(253,*) dummy_header
-      do i=1,nr_cond
-        read(253,'(A)') mmr_name
-        if (trim(mmr_name).ne.trim(condensates(i))) then
-          write(*,*) 'virga2marcs_sedflux.dat order mismatch: ',
-     >      'expected ',trim(condensates(i)),' got ',trim(mmr_name)
-          stop 'check virga2marcs_sedflux.dat against'//
-     >      ' virga_condensates.dat'
-        endif
-        do k=1,ntau
-          read(253,*,iostat=virga_ios) sedflux_in(k,i)
-          if (virga_ios.ne.0) then
-            write(*,*) 'error reading virga2marcs_sedflux.dat for ',
-     >        trim(condensates(i)),' depth',k,' of',ntau
-            stop 'virga2marcs_sedflux.dat is malformed or truncated'
-          endif
-        enddo
-      enddo
-      close(253)
-
       open(unit=254, file='sedflux_diag.dat', status='replace')
       write(254,*) 'layer T[K] ptot[dyn/cm2]'
       do i=1,nr_cond
@@ -13354,28 +13474,6 @@ C the LATENT heat term -- not yet used in FFL, just read + dumped here.
       endif
 
       if (cndnsa.eq.1) then
-C Per-layer condensate mass-mixing-ratio from virga (the only new
-C per-run number this needs -- virga already computes it).
-      open(unit=251, file='virga2marcs_mmr.dat', status='old')
-      read(251,*) dummy_header
-      do i=1,nr_cond
-        read(251,'(A)') mmr_name
-        if (trim(mmr_name).ne.trim(condensates(i))) then
-          write(*,*) 'virga2marcs_mmr.dat order mismatch: expected ',
-     >      trim(condensates(i)),' got ',trim(mmr_name)
-          stop 'check virga2marcs_mmr.dat against virga_condensates.dat'
-        endif
-        do k=1,ntau
-          read(251,*,iostat=virga_ios) mmr_c_in(k,i)
-          if (virga_ios.ne.0) then
-            write(*,*) 'error reading virga2marcs_mmr.dat for ',
-     >        trim(condensates(i)),' depth',k,' of',ntau
-            stop 'virga2marcs_mmr.dat is malformed or truncated'
-          endif
-        enddo
-      enddo
-      close(251)
-
 C Static per-condensate molar mass + elemental stoichiometry.
       elem_depletion = 0.d0
       open(unit=250, file='virga_condensate_stoich.dat',status='old')
@@ -13402,11 +13500,18 @@ C Static per-condensate molar mass + elemental stoichiometry.
      >        trim(elem_sym_tmp)
             stop 'check virga_condensate_stoich.dat against abcname'
           endif
-C moles of element eindex removed per mole of total gas, layer k
+C Ackerman & Marley (2001): qt (vapor+condensate) only ever decreases
+C with altitude above the cloud base -- nothing makes it recover. So
+C depletion = deep total minus CURRENT vapor (qt-qc), not local
+C condensate alone, or layers above the cloud wrongly see full
+C strength again the moment local condensate happens to be zero.
+          qt_deep = mmr_t_in(ntau,i)
           do k=1,ntau
+            mmr_lost = qt_deep - (mmr_t_in(k,i) - mmr_c_in(k,i))
+            mmr_lost = max(mmr_lost, 0.d0)
             elem_depletion(eindex,k) = elem_depletion(eindex,k)
-     >        + elem_count_tmp * mmr_c_in(k,i) * avogadro
-     >          / stoich_molmass
+     >        + virga_frac(k) * elem_count_tmp * mmr_lost
+     >          * avogadro / stoich_molmass
           enddo
         enddo
       enddo
@@ -13467,12 +13572,13 @@ C live ppallmol is the post-depletion value actually used downstream).
       do n=1,natms
         if (maxval(elem_depletion(n,:)).gt.0.d0) then
           write(252,*) 'Element: ', trim(abcname(n))
-          write(252,*) 'layer  f_gas  abinit  abundforgg_depleted'
+          write(252,*) 'layer  f_gas  abinit  abundforgg_depleted',
+     >      '  virga_frac'
           do k=1,ntau
             f_gas_val = 1.d0 - elem_depletion(n,k) * xmh
      >        * mean_mass_per_H / 10.d0**(abinit(n)-12.d0)
             write(252,*) k, max(f_gas_val,1.d-10), abinit(n),
-     >        abundforgg_depleted(n,k)
+     >        abundforgg_depleted(n,k), virga_frac(k)
           enddo
         endif
       enddo
