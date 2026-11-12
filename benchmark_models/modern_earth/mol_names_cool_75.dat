@@ -44,7 +44,7 @@ SiH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/SiH/
 PN   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/PN/
 CS   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/CS/
 KF   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/KF/
-H2O  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/H2O_redo_100to4000K/
+H2O  /groups/astro/tbalduin/marcs_opac_converter/combined_UV_IR/output/combined/H2O_extended_1to4000K/
 PS   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/PS/
 SN   /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/NS/
 AlH  /lustre/hpc/astro/uffegj/marcs_sw/OS/3D2025/AlH/
