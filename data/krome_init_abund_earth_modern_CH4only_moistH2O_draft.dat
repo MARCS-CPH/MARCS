@@ -1,0 +1,15 @@
+# krome_init_abund.dat -- modern Earth, CH4 + layered H2O (DRAFT 2026-11-18)
+#
+# Same as krome_init_abund_earth_modern_CH4only.dat plus a stepped H2O profile:
+# moist up to the model's tropopause (T minimum, layer 59, ~350 hPa), dry above.
+# Third column = pin depth in layers from the bottom (70-layer model).
+#
+# NEEDS a small marcs.f change: repeated lines for one species must STACK
+# (later lines override earlier ones on the layers they cover). The current
+# parser keeps only the last line per species.
+#
+CH4       1.9000E-06   # ~1900 ppb, biogenic source
+#
+H2O       4.0000E-06        # dry stratosphere, all layers (~4 ppmv)
+H2O       1.3000E-03   12   # layers 59-70: upper troposphere (70% of saturation, 1.1-1.4e-3)
+H2O       4.0000E-03    5   # layers 66-70: lower troposphere (70% of saturation, 2.0-6.4e-3)

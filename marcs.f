@@ -93,7 +93,8 @@ C this common just shares the values through to there.
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
       common /ggchembool/ iggcall
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
@@ -4862,7 +4863,8 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
      &     ,pp24(ndp),pp54(ndp),pp24m(ndp),pp54m(ndp)
       common /consistlist/pgg(ndp)
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_initabund/ krome_init_abund_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
@@ -5924,7 +5926,8 @@ C
      > wlambda,bstar,spectrum_scale,irrinp,irrin,input_star_spec
       common /irradcs/Pstar(ndp),rstar, semimajor,tbottom
       common /ch4/ nch4
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
@@ -8474,7 +8477,8 @@ C     from init_thermo
      >               xattha(22,3,7),xatthTlim(22,4), thexp(7),
      >               xtemplimlow,xtemplimup,molactive(543),
      >               atactive(22)
-        common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+        common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
         common /noneq_initabund/ krome_init_abund_on
         cpRsum=0.0d0
         psum=0.0d0
@@ -8797,7 +8801,8 @@ C SPACE ALLOCATION
       character*8 file_id
       common /ctcorlast/tcorlast 
       DATA IVERS,IEDIT/21,1/
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
@@ -13093,7 +13098,8 @@ C itself is untouched everywhere else.
       common /krome_not_nums/ krome_not_pp, krome_not_count
       common /krome_not_cname/ krome_not_cnames
       common /dpeset/ dpein,dtin, pe_corr(ndp)
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_initabund/ krome_init_abund_on
       character*20 file_id, file_name
       dimension nmid(20)
@@ -14254,7 +14260,8 @@ C and only differs where CNDNSA=1 has actually applied depletion.
       open(unit=546, file='abund_drift.in', status='replace')
       do n=1, 48
             if (n <36  .or. n==44 ) then
-            write(546,'(a5f6.2)') (abcname(n),abundforgg(n))
+C more decimals: f6.2 rounding shifted N and O by about 1%
+            write(546,'(a5,f12.6)') (abcname(n),abundforgg(n))
             
             end if
       end do
@@ -14709,6 +14716,7 @@ C "<name>_AQUA" species, paired with its atmospheric counterpart by name; physic
       logical :: mixing_enabled     ! now driven by the MIXING= input flag
                                      ! (mixing_on, /noneq/ common) instead
                                      ! of a hardcoded compile-time switch.
+      real*8 :: pin_sum_chk       ! sum of INITAB mixing ratios
       real*8 :: tau_chem_i          ! chemical timescale for species i [s]
       real*8 :: dz_k                ! vertical layer spacing [cm]
       real*8 :: flux_up             ! upward eddy flux [cm^-2 s^-1]
@@ -14740,7 +14748,8 @@ C "<name>_AQUA" species, paired with its atmospheric counterpart by name; physic
      >                ,idmarcspres(32),idggchempres(32)
      >                ,idmarcspart(75),idggchempart(75)
      >                ,atnames(22),molnames(543),molnames2(75)
-      common /noneq/ conv_crit,krome_on,krome_photo_on,krome_photo_scale,mixing_on
+      common /noneq/ conv_crit,krome_on,krome_photo_on,
+     >  krome_photo_scale,mixing_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
@@ -14975,6 +14984,17 @@ C         Absent/<0/>=ntau -> pin every layer (legacy 2-column behavior).
         enddo
         close(88)
         write(*,*) 'krome_init_abund.dat: loaded initial mixing ratios'
+C INITAB check: a large pinned fraction can unbalance the closure
+        pin_sum_chk = 0.0d0
+        do i=1,nsp
+          if (init_abund_mask(i)) pin_sum_chk = pin_sum_chk
+     >      + init_mix_rat(i)
+        enddo
+        if (pin_sum_chk .gt. 1.0d-2) then
+          write(*,*) 'WARNING: INITAB pins sum to',pin_sum_chk,
+     >      ' of the gas (>1%).'
+          write(*,*) '  Use with caution: can cause imbalances.'
+        endif
       endif
       if (n_aqua_pairs.gt.0 .and. .not.aqua_params_read) then
         open(unit=89, file='./data/aqua_species_params.dat',
