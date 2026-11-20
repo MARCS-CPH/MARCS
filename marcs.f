@@ -14648,9 +14648,13 @@ C "<name>_AQUA" species, paired with its atmospheric counterpart by name; physic
       logical:: first_call = .True.
       logical:: first_not_call = .True.
       integer:: krome_photo_on
-      real*8, save :: init_mix_rat(nsp)
+C INITAB per layer: an entry holds from its start layer to the next
+      real*8, save :: init_vmr(ndp,nsp)
+      logical, save :: init_set(ndp,nsp)
+      integer, save :: init_start(ndp,nsp)
       logical, save :: init_abund_mask(nsp)
-      integer, save :: init_pin_nlayers(nsp)
+      integer :: k_a
+      logical :: chg
       real*8 :: accounted_sum, notfound_sum, remaining_budget
       character(len=100) :: abund_line
       character(len=20)  :: spec_read
@@ -14956,9 +14960,10 @@ C iterations after the fact instead of only ever seeing the last one.
       endif
 
       if (krome_init_abund_on.eq.1) then
-        init_mix_rat(:) = default_abun
+        init_vmr(:,:) = default_abun
+        init_set(:,:) = .False.
+        init_start(:,:) = 0
         init_abund_mask(:) = .False.
-        init_pin_nlayers(:) = -1
         open(unit=88, file='./data/krome_init_abund.dat',
      >       status='old', action='read')
         do
@@ -14968,16 +14973,29 @@ C iterations after the fact instead of only ever seeing the last one.
           if (abund_line(1:1).eq.'#') cycle
           read(abund_line,*,iostat=ios_ab) spec_read, abun_read
           if (ios_ab /= 0) cycle
-C         Optional 3rd column: pin depth in layers from the bottom.
-C         Absent/<0/>=ntau -> pin every layer (legacy 2-column behavior).
+C         3rd column (optional): first layer of the entry, counted from the
+C         top; empty or <=1 = whole column. An entry holds down to the next.
           pin_read = -1
           read(abund_line,*,iostat=ios_pin) spec_read, abun_read,
      >      pin_read
+          k_pin_lo = 1
+          if (pin_read.gt.1) k_pin_lo = pin_read
+          if (k_pin_lo.gt.ntau) then
+            write(*,*) 'WARNING: INITAB start layer > ntau, ignored: ',
+     >        trim(spec_read),pin_read
+            cycle
+          endif
           do i=1,nsp
             if (trim(spec_read).eq.trim(chem_spec(i))) then
-              init_mix_rat(i) = abun_read
               init_abund_mask(i) = .True.
-              init_pin_nlayers(i) = pin_read
+              do k=k_pin_lo,ntau
+                if (.not.init_set(k,i) .or. k_pin_lo.ge.init_start(k,i))
+     >            then
+                  init_vmr(k,i) = abun_read
+                  init_set(k,i) = .True.
+                  init_start(k,i) = k_pin_lo
+                endif
+              enddo
               exit
             endif
           enddo
@@ -14987,8 +15005,27 @@ C         Absent/<0/>=ntau -> pin every layer (legacy 2-column behavior).
 C INITAB check: a large pinned fraction can unbalance the closure
         pin_sum_chk = 0.0d0
         do i=1,nsp
-          if (init_abund_mask(i)) pin_sum_chk = pin_sum_chk
-     >      + init_mix_rat(i)
+          if (init_abund_mask(i)) then
+            if (any(init_set(1:ntau,i))) pin_sum_chk = pin_sum_chk
+     >        + maxval(init_vmr(1:ntau,i),mask=init_set(1:ntau,i))
+          endif
+        enddo
+C log the applied layer profile of every pinned species
+        do i=1,nsp
+          if (.not.init_abund_mask(i)) cycle
+          write(*,'(A,A12,A)',advance='no') 'INITAB ',chem_spec(i),':'
+          k_a = 1
+          do k=2,ntau+1
+            chg = .True.
+            if (k.le.ntau) chg = (init_set(k,i).neqv.init_set(k-1,i))
+     >        .or. (init_vmr(k,i).ne.init_vmr(k-1,i))
+            if (chg) then
+              if (init_set(k_a,i)) write(*,'(A,I3,A,I3,A,ES9.2)',
+     >          advance='no') ' L',k_a,'-',k-1,'=',init_vmr(k_a,i)
+              k_a = k
+            endif
+          enddo
+          write(*,*)
         enddo
         if (pin_sum_chk .gt. 1.0d-2) then
           write(*,*) 'WARNING: INITAB pins sum to',pin_sum_chk,
@@ -15078,14 +15115,9 @@ C INITAB check: a large pinned fraction can unbalance the closure
       if (krome_init_abund_on.eq.1) then
         do i=1,nsp
           if (init_abund_mask(i)) then
-            if (init_pin_nlayers(i).lt.0 .or.
-     >          init_pin_nlayers(i).ge.ntau) then
-              k_pin_lo = 1
-            else
-              k_pin_lo = ntau - init_pin_nlayers(i) + 1
-            endif
-            do k=k_pin_lo,ntau
-              num_den(k,i) = init_mix_rat(i) * (ptot(k)*Pcon(k))
+            do k=1,ntau
+              if (init_set(k,i))
+     >          num_den(k,i) = init_vmr(k,i) * (ptot(k)*Pcon(k))
             enddo
           endif
         enddo
