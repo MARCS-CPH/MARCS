@@ -191,7 +191,7 @@ clean:
 	$(fc) $(switch) $(nowarn) -c $^ -o $@
 
 #Special rule for marcs
-marcs.o:marcs.f $(objs)
+marcs.o:marcs.f parameter.inc noneq_parameter.inc $(objs)
 	$(fc) -save $(switch) $(nowarn) -c $< -o $@
 
 #rule for c
