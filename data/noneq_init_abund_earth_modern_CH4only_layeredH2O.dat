@@ -1,0 +1,7 @@
+# noneq_init_abund.dat -- modern Earth, CH4 + stepped H2O (2026-11-20)
+# Third column = first layer of the entry, counted from the top (empty or 1 = whole column);
+# an entry holds down to the next entry's first layer. Optional fourth = floor fraction 0..1.
+CH4       1.9000E-06
+H2O       4.0000E-06         # layers 1-58, dry stratosphere (~4 ppmv)
+H2O       1.3000E-03   59    # layers 59-65
+H2O       4.0000E-03   66    # layers 66-70

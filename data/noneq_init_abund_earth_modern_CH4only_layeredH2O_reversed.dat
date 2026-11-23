@@ -1,0 +1,5 @@
+# same profile as ..._layeredH2O.dat with the lines in the opposite order (order must not matter)
+CH4       1.9000E-06
+H2O       4.0000E-03   66
+H2O       1.3000E-03   59
+H2O       4.0000E-06

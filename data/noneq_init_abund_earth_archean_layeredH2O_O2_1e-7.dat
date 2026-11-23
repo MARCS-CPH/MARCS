@@ -1,0 +1,24 @@
+# noneq_init_abund: pre-GOE (~2.5 Ga) Earth, layered H2O -- DRAFT for review. 3rd column = first layer counted from the top.
+# H2O: RH_s=0.77 (Manabe-Wetherald, RH~(P/Ps-0.02)/0.98) x saturation (Buck 1996) on benchmark_models/earth_archean T-P (100 layers), floor 3e-6 aloft;
+# refine with the converged T-P of the tuned run. O2 1e-07: allowed by MIF-S limits (<1e-5..1e-6 PAL = 2e-6..2e-7 vmr).
+N2        9.8900E-01
+O2        1.0000E-07
+CO2       1.0000E-02
+CH4       1.0000E-03
+H2O 3.00e-06
+H2O 4.43e-05 64
+H2O 9.04e-05 65
+H2O 1.35e-04 66
+H2O 2.00e-04 67
+H2O 3.04e-04 69
+H2O 4.45e-04 72
+H2O 6.00e-04 76
+H2O 8.54e-04 79
+H2O 1.20e-03 82
+H2O 1.67e-03 85
+H2O 2.41e-03 88
+H2O 3.41e-03 91
+H2O 4.64e-03 93
+H2O 6.30e-03 95
+H2O 8.76e-03 97
+H2O 1.25e-02 99

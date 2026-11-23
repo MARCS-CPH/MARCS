@@ -1,0 +1,4 @@
+# noneq_init_abund.dat -- modern Earth, CH4 only, with a floor (test 2026-11-20)
+# columns: species  mixing ratio  [first layer from the top; 1 or empty = whole column]  [floor fraction 0..1]
+# the floor column is only used by the coupled (noneq) solver; the old solver ignores it
+CH4       1.9000E-06   1    0.8   # never below 1.52e-6 during the solve
