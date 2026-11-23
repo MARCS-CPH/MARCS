@@ -7311,7 +7311,7 @@ class krome:
 					if not isBlockOpen:
 						fout.write("if(j=="+str(i+1)+") then\n")
 						isBlockOpen = True
-					if isBlockOpen: fout.write("elseif(j=="+str(i+1)+") then\n")
+					else: fout.write("elseif(j=="+str(i+1)+") then\n")
 					if i!=Tgas_species.idx - 1:
 						spdj = ""
 						has_pdj = False

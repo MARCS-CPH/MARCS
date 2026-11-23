@@ -2629,6 +2629,7 @@ end subroutine krome_load_opacity_table
     ian = 0
     jan = 0
 
+    pdj(:) = 0d0 !jes only writes structural nonzeros: stale stack values otherwise
     call jes(nspec, tt, n, j, ian, jan, pdj)
     krome_get_jacobian(:) = pdj(:)
 
