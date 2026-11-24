@@ -8705,6 +8705,13 @@ C when latent=1 -- see OSTABLOOK for how these commons are filled.
       integer :: nchk
       logical :: t_bad
       real*8 :: tpe_incr
+C Newton guard v2: relative limit, per-iteration log, stop after n_tbad_max
+      integer, save :: n_tbad = 0
+      integer, parameter :: n_tbad_max = 5
+      real*8, parameter :: gdmax = 1.d4
+      integer :: iv, gd_bk, gd_bv, gd_k(6)
+      real*8 :: gd_c(6), gd_s(6), gd_r(6), gd_x
+      logical :: gd_bad
 C
 C DIMENSIONS
       DIMENSION PTAU(NDP),ROSSP(NDP),SUMW(NDP),ROSST(NDP),ROSSPE(NDP)
@@ -9914,31 +9921,80 @@ C catastrophic cancellation) -- stall this iteration rather than
 C propagate garbage into TT(k)/PPE(k)/FFC(k)/VV(k)/PPR(k)/PP(k). All
 C five corrections share the same failed solve, so if any one of them
 C is bad the whole set is suspect and gets zeroed together.
-      t_bad = .false.
+C v2: relative test (GDMAX x the layer's own state) instead of fixed
+C absolute limits, so planets and stars are treated alike.
+      gd_bk = 0
+      gd_bv = 0
+      gd_r(:) = 0.d0
+      gd_k(:) = 0
       do nchk=1,ntau
-        if (T(nchk).ne.T(nchk) .or. abs(T(nchk)).gt.1.d4 .or.
-     >      PE(nchk).ne.PE(nchk) .or. abs(PE(nchk)).gt.1.d10 .or.
-     >      FC(nchk).ne.FC(nchk) .or. abs(FC(nchk)).gt.1.d10 .or.
-     >      V(nchk).ne.V(nchk) .or. abs(V(nchk)).gt.1.d10 .or.
-     >      PR(nchk).ne.PR(nchk) .or. abs(PR(nchk)).gt.1.d10 .or.
-     >      P(nchk).ne.P(nchk) .or. abs(P(nchk)).gt.1.d10) then
-          t_bad = .true.
-          exit
+        gd_c(1)=T(nchk)
+        gd_s(1)=TT(nchk)
+C Pe can be ~1e-78 at the top, so scale it by Pg (Pe <= Pg always)
+        gd_c(2)=PE(nchk)
+        gd_s(2)=PP(nchk)
+        gd_c(3)=FC(nchk)
+        gd_s(3)=max(abs(FFC(nchk)),1.d-4*FLUX)
+        gd_c(4)=V(nchk)
+        gd_s(4)=max(abs(VV(nchk)),1.d2)
+        gd_c(5)=PR(nchk)
+        gd_s(5)=PPR(nchk)
+        gd_c(6)=P(nchk)
+        gd_s(6)=PP(nchk)
+        do iv=1,6
+          gd_bad = .false.
+          if (gd_c(iv).ne.gd_c(iv) .or. abs(gd_c(iv)).gt.1.d300) then
+            gd_bad = .true.
+          else
+            gd_x = abs(gd_c(iv))/max(abs(gd_s(iv)),1.d-300)
+            if (gd_x.gt.gd_r(iv)) then
+              gd_r(iv) = gd_x
+              gd_k(iv) = nchk
+            endif
+C FC, V are ~0 in radiative layers: huge steps there are harmless
+            if (gd_x.gt.gdmax .and. iv.ne.3 .and. iv.ne.4)
+     >        gd_bad = .true.
+          endif
+          if (gd_bad .and. gd_bk.eq.0) then
+            gd_bk = nchk
+            gd_bv = iv
+          endif
+        enddo
+C T <= 0 is nonsense; big Pe/Pg steps are handled below (IPRESS, TRYCK)
+        if (gd_bk.eq.0) then
+          if (TT(nchk)+T(nchk).le.0.d0) then
+            gd_bk = nchk
+            gd_bv = 0
+          endif
         endif
       enddo
+      t_bad = gd_bk.gt.0
+      write(*,9931) it,(gd_r(iv),gd_k(iv),iv=1,6)
+9931  format(' GUARD it=',I3,' max|corr|/state (layer) T,PE,FC,V,PR,P:',
+     >  6(1PE9.2,'(',I2,')'))
       if (t_bad) then
-        write(*,*) 'WARNING: Newton correction rejected at',
-     >    ' iteration ',it,' -- linear solve produced a',
-     >    ' non-finite/absurd correction at layer ',nchk,
-     >    ' (T=',T(nchk),' PE=',PE(nchk),' FC=',FC(nchk),
-     >    ' V=',V(nchk),' PR=',PR(nchk),' P=',P(nchk),
-     >    '). Applying zero correction this iteration.'
+        n_tbad = n_tbad + 1
+        write(*,*) 'WARNING: Newton correction rejected at iteration ',
+     >    it,' (',n_tbad,' in a row): layer ',gd_bk,' variable ',gd_bv,
+     >    ' (1=T 2=PE 3=FC 4=V 5=PR 6=P, 0=non-positive result)',
+     >    ' T=',T(gd_bk),' PE=',PE(gd_bk),' FC=',FC(gd_bk),
+     >    ' V=',V(gd_bk),' PR=',PR(gd_bk),' P=',P(gd_bk),
+     >    '. Applying zero correction this iteration.'
         T = 0.d0
         PE = 0.d0
         FC = 0.d0
         V = 0.d0
         PR = 0.d0
         P = 0.d0
+        if (n_tbad.ge.n_tbad_max) then
+          write(*,*) 'Too many bad newton guesses, something could be',
+     >      ' very wrong with your model parameters'
+          write(*,*) n_tbad,' consecutive rejected Newton corrections;',
+     >      ' stopping at iteration ',it
+          call exit(3)
+        endif
+      else
+        n_tbad = 0
       endif
 C
 C
