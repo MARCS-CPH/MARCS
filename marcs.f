@@ -4865,6 +4865,8 @@ C atms,ions,spec ~ highest index of neutral atoms, ions, species total
       common /consistgginit/ttgg(ndp),ppgg(ndp),kk
       common /noneq/ conv_crit,krome_on,krome_photo_on,
      >  krome_photo_scale,mixing_on
+C krome_photo_scale was implicitly INTEGER here; real*8 like MAINB.
+      real*8 krome_photo_scale
       common /noneq_initabund/ krome_init_abund_on
       common /noneq_time/ dt_start,dt_max,dt_inc,krome_tmax
       common /noneq_output/ krome_debug,krome_return
@@ -7363,6 +7365,8 @@ c
       common /virga/ ivirga_on
       common /virgaopac/ x_virga(ndp,nwreal), s_virga(ndp,nwreal)
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routines.
+      real*8 K_zz
       common /conv_help/ abund_freq,icalc_abund
 c
        dimension tau_lambda(5)
@@ -8479,6 +8483,8 @@ C     from init_thermo
      >               atactive(22)
         common /noneq/ conv_crit,krome_on,krome_photo_on,
      >  krome_photo_scale,mixing_on
+C krome_photo_scale was implicitly INTEGER here; real*8 like MAINB.
+      real*8 krome_photo_scale
         common /noneq_initabund/ krome_init_abund_on
         cpRsum=0.0d0
         psum=0.0d0
@@ -8810,11 +8816,15 @@ C SPACE ALLOCATION
       DATA IVERS,IEDIT/21,1/
       common /noneq/ conv_crit,krome_on,krome_photo_on,
      >  krome_photo_scale,mixing_on
+C krome_photo_scale was implicitly INTEGER here; real*8 like MAINB.
+      real*8 krome_photo_scale
       common /noneq_output/ krome_debug,krome_return
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /starspec/ stellar_spectrum(nwreal),index_wlambda
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routines.
+      real*8 K_zz
       common /virga/ ivirga_on, cndnsa, clouds, latent
       common /conv_help/ abund_freq, icalc_abund
       common /onemor_it/ onemor
@@ -13156,6 +13166,8 @@ C itself is untouched everywhere else.
       common /dpeset/ dpein,dtin, pe_corr(ndp)
       common /noneq/ conv_crit,krome_on,krome_photo_on,
      >  krome_photo_scale,mixing_on
+C krome_photo_scale was implicitly INTEGER here; real*8 like MAINB.
+      real*8 krome_photo_scale
       common /noneq_initabund/ krome_init_abund_on
       character*20 file_id, file_name
       dimension nmid(20)
@@ -13171,6 +13183,8 @@ C itself is untouched everywhere else.
       common/cabnames/abcname(natms)
       common /nat_const/ avogadro, atomic_mass(natms), mean_mass_per_H
       common /eddy_diff/K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routines.
+      real*8 K_zz
       COMMON /CG/GRAV,KONSG
       COMMON /NATURE/BOLTZK,CLIGHT,ECHARG,HPLNCK,PI,PI4C,RYDBRG,
      * STEFAN
@@ -14815,6 +14829,8 @@ C INITAB per layer: an entry holds from its start layer to the next
       common /noneq_initabund/ krome_init_abund_on
       common /photochem/ FLUX_RAD(ndp,nwreal) !second dimension should be nwtot, in most cases 7949
       common /eddy_diff/ K_zz(ndp),H_p(ndp),vert_mix_time(ndp),teff_real
+C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routines.
+      real*8 K_zz
       integer initmd
       common /krome_solve_params/ initmd, conv_rate
       logical:: initmd_init_done = .False.
