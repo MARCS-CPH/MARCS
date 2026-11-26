@@ -33,7 +33,13 @@ run_virga = _v2m.run_virga
 # precomputed Mie scattering coefficients (784MB, kept outside git; see virga/Mie_data)
 MIE_DATA_DIR = '/groups/astro/tbalduin/virga_mie_data'
 
+# VIRGA sedimentation efficiency -- edit this and resubmit, no recompile
+# needed (this file is copied fresh into every run's scratch dir).
+FSED = 5.0
+
 if __name__ == '__main__':
+    print(f'call_virga.py: FSED = {FSED}')
     run_virga(input_dir='.',
               mieff_dir=f'{VIRGA_MARCS_REPO}/virga/',
-              mie_data_dir=MIE_DATA_DIR)
+              mie_data_dir=MIE_DATA_DIR,
+              fsed=FSED)

@@ -78,7 +78,7 @@ def read_in_mie_h5(file_path):
     return mie_radii, wavelengths_um, qabs, qsca
 
 
-def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
+def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None, fsed=None):
     """
     Read marcs2virga.dat + marcs_wnos.dat (both written by marcs.f's
     OSTABLOOK), run virga, and write one unified virga_output.dat that
@@ -148,10 +148,14 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     ############################# SETTING UP VIRGA #################################
     profile = pd.DataFrame({'pressure': P, 'temperature': T, 'kz': kz})
 
-    # sedimentation efficiency -- overridable via $MARCS_VIRGA_FSED for a
-    # cloud-thickness sweep (2026-11-26); default matches the original
-    # hardcoded value so unset behavior is unchanged.
-    fsed_param = float(os.environ.get('MARCS_VIRGA_FSED', '0.1'))
+    # sedimentation efficiency -- normally set by the FSED variable at the
+    # top of call_virga.py (no recompile needed, just edit and resubmit).
+    # $MARCS_VIRGA_FSED env var is a fallback for callers that don't pass
+    # fsed explicitly; 0.1 if neither is set, matching the original value.
+    if fsed is not None:
+        fsed_param = float(fsed)
+    else:
+        fsed_param = float(os.environ.get('MARCS_VIRGA_FSED', '0.1'))
     a = jdi.Atmosphere(molecules,
                     fsed=fsed_param, mh=metallicity,
                     mmw=mean_molecular_weight)
