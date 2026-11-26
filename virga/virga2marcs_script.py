@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import astropy.units as u
@@ -147,8 +148,12 @@ def run_virga(input_dir='.', mieff_dir=None, mie_data_dir=None):
     ############################# SETTING UP VIRGA #################################
     profile = pd.DataFrame({'pressure': P, 'temperature': T, 'kz': kz})
 
+    # sedimentation efficiency -- overridable via $MARCS_VIRGA_FSED for a
+    # cloud-thickness sweep (2026-11-26); default matches the original
+    # hardcoded value so unset behavior is unchanged.
+    fsed_param = float(os.environ.get('MARCS_VIRGA_FSED', '0.1'))
     a = jdi.Atmosphere(molecules,
-                    fsed=0.1, mh=metallicity,
+                    fsed=fsed_param, mh=metallicity,
                     mmw=mean_molecular_weight)
 
     a.gravity(gravity=gravity_cgs, gravity_unit=u.Unit('cm/(s**2)'))
