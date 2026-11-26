@@ -8668,6 +8668,7 @@ C zero-init default; 1.2*0 is a fixed point, so every later wanted
 C correction clamps to 0.0 for the rest of the run. Seed once, the
 C first time this block is actually reached, regardless of IT.
       logical, save :: tdwork_seeded = .false.
+      real*8 :: t_damp_bound
 C
 C SOLVE PERFORMS ONE NEWTON-RAPSON ITERATION ON THE MODELATMOSPHERE PROB
 C INCLUDING LOCAL CONVECTION.THE STATE OF THE ATMOSPHERE IS DESCRIBED BY
@@ -10004,6 +10005,26 @@ C absolute limits, so planets and stars are treated alike.
       gd_k(:) = 0
       do nchk=1,ntau
         gd_c(1)=T(nchk)
+C T gets damped by the KORT=4/5/6 ratchet before it's actually
+C applied, so judge these checks (ratio below, non-positive-T check
+C further down) against the value that will really reach TT(k) --
+C same clamp bound the ratchet computes -- not the raw pre-damping
+C solve. A huge raw T(nchk) that would be clamped down to a safe step
+C shouldn't zero out the whole correction set.
+        if (gd_c(1).eq.gd_c(1)) then
+          if ((KORT.EQ.4.AND.IT.GE.4) .OR. KORT.EQ.5) then
+            t_damp_bound = TDIFF
+            if (tdwork_seeded) t_damp_bound = TDWORK
+            gd_c(1) = SIGN(MIN(ABS(gd_c(1)),t_damp_bound),gd_c(1))
+          else if (KORT.EQ.6) then
+            if (tdwork_seeded) then
+              t_damp_bound = MIN(TDWORK,2.D0*TCORPRV,TCORMIN)
+            else
+              t_damp_bound = MIN(TDIFF,1.D3)
+            endif
+            gd_c(1) = SIGN(MIN(ABS(gd_c(1)),t_damp_bound),gd_c(1))
+          endif
+        endif
         gd_s(1)=TT(nchk)
 C Pe can be ~1e-78 at the top, so scale it by Pg (Pe <= Pg always)
         gd_c(2)=PE(nchk)
@@ -10036,8 +10057,9 @@ C FC, V are ~0 in radiative layers: huge steps there are harmless
           endif
         enddo
 C T <= 0 is nonsense; big Pe/Pg steps are handled below (IPRESS, TRYCK)
+C (gd_c(1) is the damping-aware estimate set above, not raw T(nchk))
         if (gd_bk.eq.0) then
-          if (TT(nchk)+T(nchk).le.0.d0) then
+          if (TT(nchk)+gd_c(1).le.0.d0) then
             gd_bk = nchk
             gd_bv = 0
           endif
@@ -10217,8 +10239,10 @@ C
      *     ')')
       END IF
       IF (KORT.EQ.6 .AND. .NOT. t_bad) THEN
-      IF(IT.EQ.1) TCORPRV = 1.D3
-      IF(IT.EQ.1) TCORMIN = 1.D3
+C TCORPRV/TCORMIN seeding moved into the shared tdwork_seeded guard
+C below (same bug as TDWORK: literal IT.EQ.1 behind ".AND. .NOT.
+C t_bad" never fires if iteration 1 itself gets rejected, leaving
+C these stuck at their zero-init default forever).
 C NOTE (2026-11-05): .AND. .NOT. t_bad added -- see the matching note
 C on the KORT=4/5 block above. Without this, a single NaN-catch
 C iteration permanently ratchets TCORMIN/TCORPRV to 0 (T(:) is all-
@@ -10239,6 +10263,8 @@ C CEILING FEEDS KORT=6'S OWN RATCHET (PPKK/TCORMIN) UNCHANGED.
       IF (.NOT. tdwork_seeded) THEN
         TDWORK=TDIFF
         TCMXPRV=0.
+        TCORPRV=1.D3
+        TCORMIN=1.D3
         tdwork_seeded=.true.
       ENDIF
       IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
