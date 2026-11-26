@@ -242,6 +242,7 @@ C
 C
       SUBROUTINE ABSKO(NEWT,NT,TSKAL,PESKAL,ISETA,J,ABSK,SPRID,nlayer)
       implicit real*8 (a-h,o-z)
+      integer :: KOMPDBG1, KOMPDBG2
 C
 C        THE ROUTINE ADMINISTERS THE COMPUTATION OF ABSORPTION
 C        COEFFICIENTS. IT CALLS THE ROUTINES, GIVING THE PROPER THERMO-
@@ -368,8 +369,17 @@ C
         CALL DETABS(J,0,NTP,IOUTR,NTP)
       else 
         CALL DETABS(J,0,NTP,IOUTR,nlayer)
-      end if     
-        
+      end if
+
+C NAN-GUARD (2026-11-22): pragmatic circuit-breaker, not a root-cause
+C fix -- whatever opacity component comes back NaN here (seen at the
+C K2-18b top boundary even after flooring PE) gets treated as a zero
+C contribution instead of corrupting every other layer/wavelength via
+C the shared AFAK/FAKTP cache.
+      DO 97810 KOMPDBG1=1,NKOMP
+        IF (FAKT(KOMPDBG1).NE.FAKT(KOMPDBG1) .OR.
+     &    ABS(FAKT(KOMPDBG1)).GT.1.0D30) FAKT(KOMPDBG1)=0.D0
+97810 CONTINUE
 C
 C        WE STORE THE FAKT ARRAY, MADE IN JON-DETABS IN LONGER ARRAYS NAMELY
 C                  IN AFAK FOR TEMPERATURE-INDEPENDENT COMPONENTS
@@ -499,8 +509,14 @@ C        DONE IN DETABS.
             CALL DETABS(J,JP,NTP,IOUTR,NTP)
       else 
             CALL DETABS(J,JP,NTP,IOUTR,nlayer)
-      end if 
-      
+      end if
+
+C NAN-GUARD (2026-11-22): see the matching note at the other DETABS
+C call site above.
+      DO 97811 KOMPDBG2=1,NKOMP
+        IF (FAKT(KOMPDBG2).NE.FAKT(KOMPDBG2) .OR.
+     &    ABS(FAKT(KOMPDBG2)).GT.1.0D30) FAKT(KOMPDBG2)=0.D0
+97811 CONTINUE
 C
       IF(J.LE.0)GO TO 25
    24 ABSK(NTP)=SUMABS
@@ -1504,7 +1520,12 @@ C
       COMMON /CLIN/lin_cia
       COMMON/CI5/abmarcs(18,ndp),ANJON(18,5),H(5),PART(18,5),
      *DXI,F1,F2,F3,F4,F5,XKHM,XMH,XMY(ndp)
-      COMMON/CA2/RCA2DUM(40000),ICA2DUM(2002),NKOMP
+C ICA2DUM_FIX (2026-11-26): commit 087cd1d grew KOMPLA to 6000 in every
+C other COMMON/CA2/ declaration but left this dummy-aliased one at its
+C old size, so DETABS reads NKOMP as a KOMPLA element (effectively 0)
+C and skips its own component-name setup. Verified in a variant
+C (marcs_ica2fix.f): reconverges solar in 2 iterations instead of ~31.
+      COMMON/CA2/RCA2DUM(40000),ICA2DUM(6002),NKOMP
       COMMON/CA5/AB(30),FAKT(30),PE(NDP),T(NDP),
      *           XLA(MAXWLSET),XLA3(MAXWLSET),RO,
      *SUMABS,SUMSCA,VIKTR,ISET,NLB
@@ -7117,6 +7138,19 @@ C READ OLD ARCHIV FILE
       PI=3.14159
       DO 100 K=1,NTAU
       READ(IARCH) A,A,A,ZZ(K),TT(K),PPE(K),PG,PPR(K),PPT(K),ROSS(K)
+C PE-FLOOR (2026-11-22): a restart archive can carry a layer-1 PPE as
+C low as ~8.8D-50, which JON/DETABS can't handle (returns Infinity
+C PG/RO -> NaN in opacity component 20) even though other converged
+C decks run fine with PE as low as 1.6D-78 -- not a magnitude problem
+C in general, just a bad value in that one archive. Pragmatic unblock,
+C not a root-cause fix: substitute a known-good floor wherever PPE(K)
+C looks pathologically tiny; normal layers are untouched.
+      IF (PPE(K).LT.1.0D-20) THEN
+        WRITE(*,97701) K,PPE(K)
+97701   FORMAT('PEFLOOR: layer ',I4,' archive PPE=',E13.5,
+     &    ' below floor, substituting 1.6D-78')
+        PPE(K)=1.6D-78
+      ENDIF
       PP(K)=PG+PPR(K)+PPT(K)
       GG(K)=0.
       ZZ(K)=0.
@@ -7174,7 +7208,19 @@ C READ OLD STATE FROM unit 16
       READ(16,*) (B(IK),IK=IST+1,IST+NTAU)
 
 100   CONTINUE
-      
+C PE-FLOOR (2026-11-22): block I=9 of /STATEC/'s B() aliasing is PPE,
+C same rationale as the archive-read PE-FLOOR above. Narrowed to K=1
+C only (2nd pass): layers 2+ show a smooth, monotonically-increasing
+C PE profile with depth (legitimate cold-upper-atmosphere physics) --
+C a blanket floor there clobbered that real gradient. Only a layer-1
+C value breaking the monotonic trend gets substituted.
+      IF (B(8*NDP+1).LT.1.0D-20) THEN
+        WRITE(*,97701) 1,B(8*NDP+1)
+97701   FORMAT('PEFLOOR: layer ',I4,' archive PPE=',E13.5,
+     &    ' below floor, substituting 1.6D-78')
+        B(8*NDP+1)=1.6D-78
+      ENDIF
+
       MINTAU=10.*NDP+1
       MAXTAU=10.*NDP+NTAU
       DO 104 IK=MINTAU,MAXTAU
@@ -7763,7 +7809,8 @@ C INTEGRATE PRESSURE EQUATION
         end if
 C
 C SCALE DD AND VV
-      DO 120 K=NOCONV,NTAU
+C NOCONV0: floor start at 2 (K=1 has no K-1) so NOCONV=0 is safe.
+      DO 120 K=MAX(NOCONV,2),NTAU
       KL=K
       IF(FFC(K).EQ.0.) GO TO 120
       TMEAN=.5*(TT(K)+TT(K-1))
@@ -8637,6 +8684,15 @@ C*NEW PDS MEMBER FOLLOWS
 C*
       SUBROUTINE SOLVE(NEW)
       implicit real*8 (a-h,o-z)
+C TDWORK_FIX (2026-11-26): TDWORK/TCMXPRV (the KORT=4/5/6 damping
+C ceiling) only seeds on IT.EQ.1, but that seed sits behind the same
+C ".AND. .NOT. t_bad" guard added to protect it from corruption
+C (6e877a6). An iteration-1 Newton rejection -- common on a cold or
+C extreme-PE restart -- skips the seed entirely, leaving TDWORK at its
+C zero-init default; 1.2*0 is a fixed point, so every later wanted
+C correction clamps to 0.0 for the rest of the run. Seed once, the
+C first time this block is actually reached, regardless of IT.
+      logical, save :: tdwork_seeded = .false.
 C
 C SOLVE PERFORMS ONE NEWTON-RAPSON ITERATION ON THE MODELATMOSPHERE PROB
 C INCLUDING LOCAL CONVECTION.THE STATE OF THE ATMOSPHERE IS DESCRIBED BY
@@ -8767,6 +8823,9 @@ C GRAV=SURFACE GRAVITY, TEFF=EFFECTIVE TEMPERATURE, FLUX=STEFAN*TEFF**4/
       COMMON /TAUC/TAU(NDP),DTAULN(NDP),JTAU
       COMMON /CVAAGL/XL,W,NLAM
       COMMON /CSTYR/MIHAL,NOCONV /DEBUG/KDEBUG
+C MIHAL_GUARD: TAU above which radiative equilibrium (K<=MIHAL) is
+C too deep -- flux constancy belongs there instead.
+      real*8, parameter :: tau_thick_warn = 1.d0
       COMMON /MIXC/PALFA,PBETA,PNY,PY /CVFIX/VFIX
       COMMON /CG/GRAV,KONSG /CTEFF/TEFF,FLUX
       COMMON /CMETPE/ PPEL(NDP), METPE
@@ -8920,6 +8979,32 @@ C
      & ' solve: increase nrays in parameter.inc'
       IF (mmu_pp.GT.6) STOP ' solve: increase dimension to mmu_pp'
       ITER=ITER+1
+C MIHAL_GUARD: catch common MIHAL/NOCONV misconfigs, checked once.
+      IF (ITER.EQ.1) THEN
+        IF (MIHAL.GE.NTAU) THEN
+          WRITE(*,9821) MIHAL,NTAU
+9821      FORMAT('MIHAL_GUARD: MIHAL=',I4,' >= NTAU=',I4,' -- every',
+     &      ' layer uses radiative equilibrium, flux constancy is',
+     &      ' never reached.')
+        ENDIF
+        IF (NOCONV.NE.MIHAL) THEN
+          WRITE(*,9822) NOCONV,MIHAL
+9822      FORMAT('MIHAL_GUARD WARNING: NOCONV=',I4,' does not match',
+     &      ' MIHAL=',I4,' -- these are normally set equal (no-',
+     &      'convection and radiative-equilibrium should end at the',
+     &      ' same layer). Check this is intentional.')
+        ENDIF
+        IF (MIHAL.GE.1 .AND. MIHAL.LE.NTAU) THEN
+          IF (TAU(MIHAL).GT.tau_thick_warn) THEN
+            WRITE(*,9823) MIHAL,TAU(MIHAL),tau_thick_warn
+9823        FORMAT('MIHAL_GUARD WARNING: radiative equilibrium is',
+     &        ' used up to K=MIHAL=',I4,' where TAU=',1PE10.3,
+     &        ', above the optically-thick guard TAU=',1PE10.3,
+     &        '. Flux constancy should normally be used this deep;',
+     &        ' expect convergence trouble at the switch boundary.')
+          ENDIF
+        ENDIF
+      ENDIF
       INORD=IEDIT+10*IVERS
       FNORD=.1*INORD
 C
@@ -9222,7 +9307,9 @@ C separate, independently-motivated numerical fix (Gauss-Jordan
 C elimination of column NTAU so every other row stays consistent with
 C the anchor) that applies regardless of how/where the anchor is set
 C here, and fixes a real dilution bug documented in its own comment.
-      IF (K.GT.MIHAL) GO TO 145
+C MIHAL0: K=1 has no K-1 (flux-constancy needs XK(K-1)), so force
+C K=1 radiative regardless of MIHAL -- keeps MIHAL=0 safe.
+      IF (K.GT.MAX(MIHAL,1)) GO TO 145
 C
 C RADIATIVE EQUILIBRIUM
       Y=-WLSTEP(J)*X(K)
@@ -9360,7 +9447,7 @@ C amplify or flip sign the way the recursive elimination can.
       DO 155 L=1,NTAU
 155   Y=Y+TTT(K,L)
       IF(PFD) WRITE(7,151) K,Y,(TTT(K,L),L=1,NTAU)
-      IF(K.LE.MIHAL.AND.Y.LE.0.)TTT(K,K)=TTT(K,K)-Y
+      IF(K.LE.MAX(MIHAL,1).AND.Y.LE.0.)TTT(K,K)=TTT(K,K)-Y
   154 CONTINUE
 151   FORMAT(' TTT='/(I3,E11.4,4(/10E11.4)))
 156   CONTINUE
@@ -9376,6 +9463,9 @@ C PRINT PRESSURE EQUATION
         KL=K
       ROSST(K)=(ROSST(K)-ROSS(K))/T(K)
       ROSSPE(K)=(ROSSPE(K)-ROSS(K))/PE(K)
+C PE(K)~1e-50..1e-78 in METPE=2 cool layers amplifies FP noise into
+C ~1e70 nonsense here; force the same zero-sensitivity K<=61 already has.
+      IF (METPE.EQ.2 .AND. PE(K).LT.1.0D-20) ROSSPE(K) = 0.D0
 C
 C TAU SCALES
       IF(K.GT.1) GO TO 162
@@ -9679,7 +9769,7 @@ CC    PEPR=PEPT=1.  PEP=-1.
 C
 C TEMPERATURE
 CC    TTT IS ALREADY INITIATED
-      IF(K.GT.MIHAL) GO TO 261
+      IF(K.GT.MAX(MIHAL,1)) GO TO 261
 C STRMGREN CONDITION
       RT(K)=RT(K)+(FFC(K+1)-FFC(K))
       if (latent.eq.1) RT(K)=RT(K)+(FFL(K+1)-FFL(K))
@@ -9839,7 +9929,7 @@ C CONVECTIVE FLUX
       TTT(I,J)=TTT(I,J)-FCT(I,J)
       TPE(I,J)=TPE(I,J)-FCPE(I,J)
 361   CONTINUE
-      IF(I.GT.MIHAL) GO TO 360
+      IF(I.GT.MAX(MIHAL,1)) GO TO 360
       RT(I)=RT(I)+RFC(I+1)
       DO 362 J=1,NTAU
       TTT(I,J)=TTT(I,J)+FCT(I+1,J)
@@ -10116,8 +10206,11 @@ C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
         KCMX=I
       end if
 4012  CONTINUE
-      IF (IT.EQ.1) TDWORK=TDIFF
-      IF (IT.EQ.1) TCMXPRV=0.
+      IF (.NOT. tdwork_seeded) THEN
+        TDWORK=TDIFF
+        TCMXPRV=0.
+        tdwork_seeded=.true.
+      ENDIF
       IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
         TDWORK=MAX(0.5D0*TDWORK,TCONV)
       ELSE
@@ -10168,8 +10261,11 @@ C CEILING FEEDS KORT=6'S OWN RATCHET (PPKK/TCORMIN) UNCHANGED.
       DO 4013 I=2,NTAU
       IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
 4013  CONTINUE
-      IF (IT.EQ.1) TDWORK=TDIFF
-      IF (IT.EQ.1) TCMXPRV=0.
+      IF (.NOT. tdwork_seeded) THEN
+        TDWORK=TDIFF
+        TCMXPRV=0.
+        tdwork_seeded=.true.
+      ENDIF
       IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
         TDWORK=MAX(0.5D0*TDWORK,TCONV)
       ELSE
@@ -10917,6 +11013,8 @@ C
 C
       SUBROUTINE SOLVE_sph(NEW)
       implicit real*8 (a-h,o-z)
+C TDWORK_FIX (2026-11-26): same fix as SOLVE -- see that routine.
+      logical, save :: tdwork_seeded = .false.
 C
 C SOLVE PERFORMS ONE NEWTON-RAPSON ITERATION ON THE MODELATMOSPHERE PROBLEM
 C INCLUDING LOCAL CONVECTION.THE STATE OF THE ATMOSPHERE IS DESCRIBED BY A
@@ -11666,7 +11764,7 @@ CC    PEPR=PEPT=1.  PEP=-1.
 C
 C TEMPERATURE
 CC    TTT IS ALREADY INITIATED
-      IF(K.GT.MIHAL) GO TO 261
+      IF(K.GT.MAX(MIHAL,1)) GO TO 261
 C STRMGREN CONDITION
       
       RT(K)=RT(K)+(FFC(K+1)-FFC(K))
@@ -11816,7 +11914,7 @@ C CONVECTIVE FLUX
       TTT(I,J)=TTT(I,J)-FCT(I,J)
       TPE(I,J)=TPE(I,J)-FCPE(I,J)
 361   CONTINUE
-      IF(I.GT.MIHAL) GO TO 360
+      IF(I.GT.MAX(MIHAL,1)) GO TO 360
       RT(I)=RT(I)+RFC(I+1)
       DO 362 J=1,NTAU
       TTT(I,J)=TTT(I,J)+FCT(I+1,J)
@@ -11959,8 +12057,11 @@ C WHILE THE SIGN PERSISTS. TDWORK/TCMXPRV PERSIST VIA -save.
       DO 4012 I=2,NTAU
       IF (ABS(T(I)).GT.ABS(TCMXNOW)) TCMXNOW=T(I)
 4012  CONTINUE
-      IF (IT.EQ.1) TDWORK=TDIFF
-      IF (IT.EQ.1) TCMXPRV=0.
+      IF (.NOT. tdwork_seeded) THEN
+        TDWORK=TDIFF
+        TCMXPRV=0.
+        tdwork_seeded=.true.
+      ENDIF
       IF (TCMXPRV.NE.0. .AND. TCMXNOW*TCMXPRV.LT.0.) THEN
         TDWORK=MAX(0.5D0*TDWORK,TCONV)
       ELSE
@@ -13319,6 +13420,15 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
 ! jon here
             call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
+C PE-FLOOR (2026-11-22, pass 2): ppel(1) is independently recomputed
+C here by GGCHEM every cycle, so the OLDSTA-level archive floor above
+C never reaches it. Same extreme top-boundary corner, same fix.
+      IF (K.EQ.1 .AND. ppel(1).LT.1.0D-20) THEN
+        WRITE(*,97702) ppel(1)
+97702   FORMAT('PEFLOOR2: layer 1 ggchem ppel=',E13.5,
+     &    ' below floor, substituting 1.6D-78')
+        ppel(1)=1.6D-78
+      ENDIF
             ggmu(k) = ggmuk
 C           METPE=2 default mu (mass/particle, grams): GGchem equilibrium.
 C           Overwritten with the true non-eq value in krome_solve when
@@ -13616,6 +13726,13 @@ C rest of the model now see the depleted chemistry for this cycle.
         ppallat_cond(k,:) = ppallat(k,:)
             call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
+C PE-FLOOR (2026-11-22, pass 2): same fix as above -- see that note.
+      IF (K.EQ.1 .AND. ppel(1).LT.1.0D-20) THEN
+        WRITE(*,97703) ppel(1)
+97703   FORMAT('PEFLOOR2b: layer 1 ggchem ppel=',E13.5,
+     &    ' below floor, substituting 1.6D-78')
+        ppel(1)=1.6D-78
+      ENDIF
             ggmu(k) = ggmuk
             mu_metpe(k) = ggmuk * 1.66053906660d-24
             ggrho(k) = ggrhok
