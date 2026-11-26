@@ -7138,19 +7138,6 @@ C READ OLD ARCHIV FILE
       PI=3.14159
       DO 100 K=1,NTAU
       READ(IARCH) A,A,A,ZZ(K),TT(K),PPE(K),PG,PPR(K),PPT(K),ROSS(K)
-C PE-FLOOR (2026-11-22): a restart archive can carry a layer-1 PPE as
-C low as ~8.8D-50, which JON/DETABS can't handle (returns Infinity
-C PG/RO -> NaN in opacity component 20) even though other converged
-C decks run fine with PE as low as 1.6D-78 -- not a magnitude problem
-C in general, just a bad value in that one archive. Pragmatic unblock,
-C not a root-cause fix: substitute a known-good floor wherever PPE(K)
-C looks pathologically tiny; normal layers are untouched.
-      IF (PPE(K).LT.1.0D-20) THEN
-        WRITE(*,97701) K,PPE(K)
-97701   FORMAT('PEFLOOR: layer ',I4,' archive PPE=',E13.5,
-     &    ' below floor, substituting 1.6D-78')
-        PPE(K)=1.6D-78
-      ENDIF
       PP(K)=PG+PPR(K)+PPT(K)
       GG(K)=0.
       ZZ(K)=0.
@@ -7208,18 +7195,6 @@ C READ OLD STATE FROM unit 16
       READ(16,*) (B(IK),IK=IST+1,IST+NTAU)
 
 100   CONTINUE
-C PE-FLOOR (2026-11-22): block I=9 of /STATEC/'s B() aliasing is PPE,
-C same rationale as the archive-read PE-FLOOR above. Narrowed to K=1
-C only (2nd pass): layers 2+ show a smooth, monotonically-increasing
-C PE profile with depth (legitimate cold-upper-atmosphere physics) --
-C a blanket floor there clobbered that real gradient. Only a layer-1
-C value breaking the monotonic trend gets substituted.
-      IF (B(8*NDP+1).LT.1.0D-20) THEN
-        WRITE(*,97701) 1,B(8*NDP+1)
-97701   FORMAT('PEFLOOR: layer ',I4,' archive PPE=',E13.5,
-     &    ' below floor, substituting 1.6D-78')
-        B(8*NDP+1)=1.6D-78
-      ENDIF
 
       MINTAU=10.*NDP+1
       MAXTAU=10.*NDP+NTAU
@@ -13420,15 +13395,6 @@ C ------------ USING GGCHEM TO COMPUTE PARTIALPRESSURES ------------
 ! jon here
             call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
-C PE-FLOOR (2026-11-22, pass 2): ppel(1) is independently recomputed
-C here by GGCHEM every cycle, so the OLDSTA-level archive floor above
-C never reaches it. Same extreme top-boundary corner, same fix.
-      IF (K.EQ.1 .AND. ppel(1).LT.1.0D-20) THEN
-        WRITE(*,97702) ppel(1)
-97702   FORMAT('PEFLOOR2: layer 1 ggchem ppel=',E13.5,
-     &    ' below floor, substituting 1.6D-78')
-        ppel(1)=1.6D-78
-      ENDIF
             ggmu(k) = ggmuk
 C           METPE=2 default mu (mass/particle, grams): GGchem equilibrium.
 C           Overwritten with the true non-eq value in krome_solve when
@@ -13726,13 +13692,6 @@ C rest of the model now see the depleted chemistry for this cycle.
         ppallat_cond(k,:) = ppallat(k,:)
             call GGCHEM(k,t(k),ptot(k),.True.)
             ppel(k) = ppelGG
-C PE-FLOOR (2026-11-22, pass 2): same fix as above -- see that note.
-      IF (K.EQ.1 .AND. ppel(1).LT.1.0D-20) THEN
-        WRITE(*,97703) ppel(1)
-97703   FORMAT('PEFLOOR2b: layer 1 ggchem ppel=',E13.5,
-     &    ' below floor, substituting 1.6D-78')
-        ppel(1)=1.6D-78
-      ENDIF
             ggmu(k) = ggmuk
             mu_metpe(k) = ggmuk * 1.66053906660d-24
             ggrho(k) = ggrhok
