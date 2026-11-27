@@ -13352,6 +13352,25 @@ C           noneq_on=1 (this call always runs first, before noneq_solve).
             ro_dt(k) = ggrhok
       enddo
 
+C Uses ggmu from the seed pass here, not the depleted one below --
+C a known, deliberate, and very minor mismatch.
+      h1mbar=0
+      p1mbar=1d99
+      amu=1.66053906660e-24
+      do k=1,ntau
+        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
+        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
+        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
+          p1mbar = p1mbar_diff
+          h1mbar = H_p(k)
+        end if
+      end do
+      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
+       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
+     >       *h1mbar/(620e5)*(teff_real/1450)**4
+       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
+      enddo
+
       if (ivirga_on.eq.1) then
 C Ramp length for the worst-condensing layer (iterations); weaker
 C layers ramp proportionally faster. Floor avoids a rounded-to-zero ramp.
@@ -13677,25 +13696,6 @@ C live ppallmol is the post-depletion value actually used downstream).
 C ------------ DEPLETED RECALC DONE ------------
       endif
       endif
-C Pressure scale height / Kzz / vertical mixing timescale, for virga and
-C photochemistry -- computed here (after the optional depleted recalc)
-C so it reflects the most up-to-date ggmu, not the undepleted seed pass.
-      h1mbar=0
-      p1mbar=1d99
-      amu=1.66053906660e-24
-      do k=1,ntau
-        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
-        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
-        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
-          p1mbar = p1mbar_diff
-          h1mbar = H_p(k)
-        end if
-      end do
-      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
-       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
-     >       *h1mbar/(620e5)*(teff_real/1450)**4
-       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
-      enddo
 C     Header Pressure WAbs. Coeff Sca. Coeff
 C     Updating stuff for ggchem
       DO K=1,NTAU
