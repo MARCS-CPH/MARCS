@@ -7437,9 +7437,15 @@ C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routin
       real*8 K_zz
       common /conv_help/ abund_freq,icalc_abund
       common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
-     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
-      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length
-      real*8 :: cond_strength, virga_frac
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp),
+     >   virgaramp_clouds, ramp_length_clouds(ndp),
+     >   virga_frac_clouds(ndp)
+      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length,
+     >   virgaramp_clouds, ramp_length_clouds
+      real*8 :: cond_strength, virga_frac, virga_frac_clouds
+C Default effectively disables the clamp (min() always picks the
+C ramped term) -- lower this to run the exploratory sweep.
+      real*8, parameter :: cloud_opac_scale = 1.d30
 c
        dimension tau_lambda(5)
        DATA JJ/4/
@@ -7578,8 +7584,16 @@ C on clouds.eq.1 only.
           ELSE
 C CLOUDS_RAMP (2026-11-27): was applied at full strength the instant
 C it was read -- now ramped like LATENT/CNDNSA already were.
-            X(K) = X(K) + virga_frac(k)*x_virga(k,j)/XKAPR(K)
-            S(K) = S(K) + virga_frac(k)*s_virga(k,j)/XKAPR(K)
+C CLOUD_OPAC_SCALE (2026-11-27): experimental companion to the ramp --
+C also cap the addition at this multiple of the local gas-only
+C opacity, so the first injection is bounded by what's already there,
+C not by the cloud physics itself. Edit and rebuild to test a larger
+C scale (0.1 -> 1 -> 10 -> ...) until it stops being the binding
+C constraint (i.e. the min below always picks the ramped term).
+            X(K) = X(K) + min(virga_frac_clouds(k)*x_virga(k,j),
+     >        cloud_opac_scale*x_gas(k,j))/XKAPR(K)
+            S(K) = S(K) + min(virga_frac_clouds(k)*s_virga(k,j),
+     >        cloud_opac_scale*s_gas(k,j))/XKAPR(K)
           END IF
           IF (X(K).NE.X(K) .OR. S(K).NE.S(K)) THEN
             WRITE(*,9802) K, J, X(K), S(K), x_virga(k,j),
@@ -8807,9 +8821,12 @@ C when latent=1 -- see OSTABLOOK for how these commons are filled.
       real*8 :: sedflux_in(ndp,nr_cond)
       common /latent_sedflux/ sedflux_in
       common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
-     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
-      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length
-      real*8 :: cond_strength, virga_frac
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp),
+     >   virgaramp_clouds, ramp_length_clouds(ndp),
+     >   virga_frac_clouds(ndp)
+      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length,
+     >   virgaramp_clouds, ramp_length_clouds
+      real*8 :: cond_strength, virga_frac, virga_frac_clouds
       integer :: force_abund_next
       common /force_abund/ force_abund_next
       real*8 :: FFL(ndp), L_cond
@@ -13478,11 +13495,15 @@ C this subroutine's own "it" (below) is an unrelated loop index.
       common /CIT/ it_outer, itmax_outer
       common /onemor_it/ onemor
       common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
-     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp),
+     >   virgaramp_clouds, ramp_length_clouds(ndp),
+     >   virga_frac_clouds(ndp)
       integer :: virgaramp, virgaramp_min, virga_ramp_it,
      >   ramp_length, it_outer, itmax_outer,
-     >   target_length, iterations_remaining, onemor
-      real*8 :: cond_strength, virga_frac, cond_strength_max
+     >   target_length, iterations_remaining, onemor,
+     >   virgaramp_clouds, ramp_length_clouds, target_length_clouds
+      real*8 :: cond_strength, virga_frac, cond_strength_max,
+     >   virga_frac_clouds
       logical :: warn_truncated
 
       character(len=50) condensates(nr_cond)
@@ -13575,10 +13596,14 @@ C CALCULATE THE PARTIAL PRESSURE
         krome_ptot_out(k) = ptot(k)
       end do
 
-C Ramp counter: counts iterations since the last chemistry/virga
-C recompute, regardless of whether one happens this call.
+C Ramp counter: counts iterations since the last VIRGA recompute.
+C RAMP_RESET_FIX (2026-11-27): was keyed on icalc_abund -- now that
+C icalc_cloud can be 0 while icalc_abund is 1 (e.g. a Newton-rejection
+C forces icalc_abund without forcing a cloud recompute), that reset
+C fired on iterations where VIRGA never actually ran, corrupting the
+C ramp. Keyed on icalc_cloud, the gate VIRGA's own call site uses.
       if (ivirga_on.eq.1) then
-        if (icalc_abund.eq.1) then
+        if (icalc_cloud.eq.1) then
           virga_ramp_it = 1
         else
           virga_ramp_it = virga_ramp_it + 1
@@ -13663,6 +13688,10 @@ C Ramp length for the worst-condensing layer (iterations); weaker
 C layers ramp proportionally faster. Floor avoids a rounded-to-zero ramp.
       virgaramp = 10
       virgaramp_min = 2
+C CLOUDS_SEPARATE_RAMP (2026-11-27): own ramp rate for CLOUDS opacity,
+C decoupled from CNDNSA/LATENT's shared virgaramp -- edit and rebuild
+C to test a different CLOUDS ramp rate in isolation.
+      virgaramp_clouds = 10
       if (nwtot.gt.nwreal) then
        write(*,*) "Number of wavelengths after OS calc", nwtot,
      >  "exceeds virga opacity array dimension nwreal", nwreal,
@@ -13862,9 +13891,28 @@ C output, just a different proportional quantity) when only LATENT is.
         virga_frac(k) = min(1.0d0,
      >    dble(virga_ramp_it)/dble(ramp_length(k)))
       enddo
+C CLOUDS_SEPARATE_RAMP: same per-layer condensate-strength scaling,
+C own target rate (virgaramp_clouds) -- CNDNSA/LATENT keep using
+C virga_frac above, unaffected.
+      do k=1,ntau
+        if (cond_strength(k).le.0.d0) then
+          target_length_clouds = 1
+        else
+          target_length_clouds = max(virgaramp_min,
+     >      nint(virgaramp_clouds * cond_strength(k)
+     >      / cond_strength_max))
+        endif
+        ramp_length_clouds(k) = min(target_length_clouds,
+     >    iterations_remaining)
+        virga_frac_clouds(k) = min(1.0d0,
+     >    dble(virga_ramp_it)/dble(ramp_length_clouds(k)))
+      enddo
 C onemor confirmation pass: test real, full-strength physics before
 C letting the model declare convergence, regardless of ramp progress.
-      if (onemor.eq.1) virga_frac = 1.0d0
+      if (onemor.eq.1) then
+        virga_frac = 1.0d0
+        virga_frac_clouds = 1.0d0
+      endif
       endif
 
       if (latent.eq.1) then
