@@ -105,10 +105,17 @@ C this common just shares the values through to there.
       common /onemor_it/ onemor
       integer :: force_abund_next
       common /force_abund/ force_abund_next
+C GUARD_STOP (2026-11-27): own small COMMON, not added to the already
+C widely-shared /CPF/ -- SOLVE sets this instead of calling exit(3)
+C directly, so archiv/listmo still run and full_output.dat still gets
+C written before the program actually exits.
+      logical :: guard_forced_stop
+      common /guard_stop/ guard_forced_stop
 C
 
 ! Initiation
       onemor = 0
+      guard_forced_stop = .false.
       force_abund_next = 0
       larciv = 0
       call gettime(0)
@@ -212,6 +219,9 @@ C
         endif
         if(itstop .and. onemor.eq.1) quit=.true.
         if(itstop) onemor=1
+C GUARD_STOP (2026-11-27): the state is already bad -- skip the
+C "one more iteration to confirm convergence" dance and quit now.
+        if(guard_forced_stop) quit=.true.
         if(quit) exit
       end do
       
@@ -234,6 +244,12 @@ C
       print *
       if(it.gt.itmax) then
         print *, 'WARNING: Maximum number of iterations reached'
+      end if
+      if (guard_forced_stop) then
+        print *, 'WARNING: stopped early after repeated Newton'//
+     >    ' rejections -- NOT a converged model. Output reflects'//
+     >    ' the last state reached before the stall.'
+        call exit(3)
       end if
 
       stop
@@ -8717,6 +8733,8 @@ C correction clamps to 0.0 for the rest of the run. Seed once, the
 C first time this block is actually reached, regardless of IT.
       logical, save :: tdwork_seeded = .false.
       real*8 :: t_damp_bound
+      logical :: guard_forced_stop
+      common /guard_stop/ guard_forced_stop
 C
 C SOLVE PERFORMS ONE NEWTON-RAPSON ITERATION ON THE MODELATMOSPHERE PROB
 C INCLUDING LOCAL CONVECTION.THE STATE OF THE ATMOSPHERE IS DESCRIBED BY
@@ -8797,6 +8815,13 @@ C Newton guard v2: relative limit, per-iteration log, stop after n_tbad_max
       integer, save :: n_tbad = 0
       integer, parameter :: n_tbad_max = 5
       real*8, parameter :: gdmax = 1.d4
+C STRICT_GUARD (2026-11-27): alternative, more permissive guard mode --
+C flip to .true. and rebuild to test it. Drops the magnitude-ratio
+C check (gd_x.gt.gdmax) entirely and only rejects on NaN/Inf (already
+C unconditional below) or a physically-positive-definite quantity
+C (T, PE, P, PR) being driven to <=0. Default .false. keeps the
+C existing ratio-based behavior completely unchanged.
+      logical, parameter :: STRICT_GUARD = .false.
       integer :: iv, gd_bk, gd_bv, gd_k(6)
       real*8 :: gd_c(6), gd_s(6), gd_r(6), gd_x
       logical :: gd_bad
@@ -10103,8 +10128,10 @@ C Pe can be ~1e-78 at the top, so scale it by Pg (Pe <= Pg always)
               gd_k(iv) = nchk
             endif
 C FC, V are ~0 in radiative layers: huge steps there are harmless
-            if (gd_x.gt.gdmax .and. iv.ne.3 .and. iv.ne.4)
-     >        gd_bad = .true.
+            if (.not. STRICT_GUARD) then
+              if (gd_x.gt.gdmax .and. iv.ne.3 .and. iv.ne.4)
+     >          gd_bad = .true.
+            endif
           endif
           if (gd_bad .and. gd_bk.eq.0) then
             gd_bk = nchk
@@ -10117,6 +10144,21 @@ C (gd_c(1) is the damping-aware estimate set above, not raw T(nchk))
           if (TT(nchk)+gd_c(1).le.0.d0) then
             gd_bk = nchk
             gd_bv = 0
+          endif
+        endif
+C STRICT_GUARD: also catch PE/P/PR (physically positive-definite)
+C being driven to <=0. FC/V deliberately excluded -- same reasoning
+C as their exemption from the ratio check above.
+        if (STRICT_GUARD .and. gd_bk.eq.0) then
+          if (PPE(nchk)+PE(nchk).le.0.d0) then
+            gd_bk = nchk
+            gd_bv = 2
+          else if (PPR(nchk)+PR(nchk).le.0.d0) then
+            gd_bk = nchk
+            gd_bv = 5
+          else if (PP(nchk)+P(nchk).le.0.d0) then
+            gd_bk = nchk
+            gd_bv = 6
           endif
         endif
       enddo
@@ -10143,7 +10185,16 @@ C (gd_c(1) is the damping-aware estimate set above, not raw T(nchk))
      >      ' very wrong with your model parameters'
           write(*,*) n_tbad,' consecutive rejected Newton corrections;',
      >      ' stopping at iteration ',it
-          call exit(3)
+C GUARD_STOP (2026-11-27): set itstop/guard_forced_stop instead of a
+C hard exit(3) here -- that call killed the process before archiv/
+C listmo ever ran, so a guard-stopped run never got a full_output.dat
+C to inspect. This lets the normal end-of-run path (one more "onemor"
+C iteration, then archiv/listmo/stop) run its course; the actual
+C exit(3) now happens at the very end of the program, after output is
+C written, so a guard stop is still distinguishable from a converged
+C run by exit code alone if needed.
+          itstop = .true.
+          guard_forced_stop = .true.
         endif
       else
         n_tbad = 0
@@ -10202,8 +10253,14 @@ C large corrections keep landing on the same layer or move around.
       ENDIF
 C A rejected correction means "unknown", not "zero" -- never let it
 C look converged, and force a fresh chemistry recompute next iteration.
+C GUARD_STOP (2026-11-27): except when the guard has already decided
+C to stop (guard_forced_stop) -- without this exemption, this
+C unconditional reset undid that decision on every single t_bad
+C iteration from then on, so the program never actually left the
+C iteration loop (confirmed: "Too many bad newton guesses" printed
+C repeatedly instead of the program stopping after the first time).
       if (t_bad) then
-        ITSTOP=.FALSE.
+        if (.not. guard_forced_stop) ITSTOP=.FALSE.
         force_abund_next = 1
       endif
 
