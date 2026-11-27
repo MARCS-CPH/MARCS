@@ -7436,6 +7436,10 @@ C COMMON block offset, which silently broke the clouds.eq.1 gate below.
 C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routines.
       real*8 K_zz
       common /conv_help/ abund_freq,icalc_abund
+      common /virga_ramp/ virgaramp, virgaramp_min, virga_ramp_it,
+     >   cond_strength(ndp), ramp_length(ndp), virga_frac(ndp)
+      integer :: virgaramp, virgaramp_min, virga_ramp_it, ramp_length
+      real*8 :: cond_strength, virga_frac
 c
        dimension tau_lambda(5)
        DATA JJ/4/
@@ -7572,8 +7576,10 @@ C on clouds.eq.1 only.
  9801       FORMAT('VIRGAMERGE-BADXKAPR K=',I4,' J=',I6,
      &        ' XKAPR=',E13.5)
           ELSE
-            X(K) = X(K) + x_virga(k,j)/XKAPR(K)
-            S(K) = S(K) + s_virga(k,j)/XKAPR(K)
+C CLOUDS_RAMP (2026-11-27): was applied at full strength the instant
+C it was read -- now ramped like LATENT/CNDNSA already were.
+            X(K) = X(K) + virga_frac(k)*x_virga(k,j)/XKAPR(K)
+            S(K) = S(K) + virga_frac(k)*s_virga(k,j)/XKAPR(K)
           END IF
           IF (X(K).NE.X(K) .OR. S(K).NE.S(K)) THEN
             WRITE(*,9802) K, J, X(K), S(K), x_virga(k,j),
@@ -8938,7 +8944,12 @@ C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routin
       common /virga/ ivirga_on, cndnsa, clouds, latent
       common /conv_help/ abund_freq, icalc_abund
       common /onemor_it/ onemor
-      
+C ICALC_CLOUD (2026-11-27): own cadence for VIRGA, decoupled from
+C icalc_abund's general chemistry cadence. Declared/set here, not yet
+C wired into the VIRGA call site below (still gated on icalc_abund).
+      integer :: icalc_cloud
+      common /conv_help2/ icalc_cloud
+
       if (krome_on.EQ.1) then
         if (krome_photo_on.EQ.1) then
         if (first_call_rad.eq..True.) then
@@ -9020,6 +9031,23 @@ C fresh chemistry/virga recompute now rather than reuse frozen inputs.
       if (force_abund_next.eq.1) then
        icalc_abund=1
        force_abund_next=0
+      endif
+C ICALC_CLOUD: mirrors icalc_abund's periodic/onemor/itmax rules, but
+C deliberately NOT the force_abund_next-on-rejection rule -- isolates
+C whether recomputing VIRGA on every Newton rejection matters.
+      if (mod(it,abund_freq).eq.0) then
+       icalc_cloud=1
+      else
+       icalc_cloud=0
+      endif
+      if (onemor.eq.1) then
+        icalc_cloud=1
+      endif
+      if (it.eq.1) then
+       icalc_cloud=1
+      endif
+      if (it.eq.itmax) then
+       icalc_cloud=1
       endif
 C
 C IN THIS SECTION THE MEAN INTENSITY IS ELIMINATED IN THE TRANSPORT EQUA
@@ -13443,6 +13471,8 @@ C K_zz was implicitly INTEGER (name starts with K); typed real*8 in all 4 routin
      * STEFAN
       common /metal_Z/metal_z
       common /conv_help/ abund_freq,icalc_abund
+      integer :: icalc_cloud
+      common /conv_help2/ icalc_cloud
 C it_outer/itmax_outer alias /CIT/IT,ITMAX under safe local names --
 C this subroutine's own "it" (below) is an unrelated loop index.
       common /CIT/ it_outer, itmax_outer
@@ -13607,7 +13637,28 @@ C           krome_on=1 (this call always runs first, before krome_solve).
             ro_dt(k) = ggrhok
       enddo
 
-      if (ivirga_on.eq.1) then
+C Uses ggmu from the seed pass here, not the depleted one below --
+C a known, deliberate, and very minor mismatch.
+      h1mbar=0
+      p1mbar=1d99
+      amu=1.66053906660e-24
+      do k=1,ntau
+        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
+        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
+        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
+          p1mbar = p1mbar_diff
+          h1mbar = H_p(k)
+        end if
+      end do
+      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
+       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
+     >       *h1mbar/(620e5)*(teff_real/1450)**4
+       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
+      enddo
+
+C ICALC_CLOUD gate: VIRGA's write/call/read only run when icalc_cloud
+C allows it -- otherwise everything it produces stays frozen.
+      if (ivirga_on.eq.1 .and. icalc_cloud.eq.1) then
 C Ramp length for the worst-condensing layer (iterations); weaker
 C layers ramp proportionally faster. Floor avoids a rounded-to-zero ramp.
       virgaramp = 10
@@ -13768,8 +13819,11 @@ C silently merging cloud opacity at the wrong wavelength.
       enddo
       read(255,*) dummy_header
       endif
-C TODO: under-relax x_virga/s_virga here (SAVE'd old values, blend
-C weight ~0.4) to damp cloud on/off flips -- deferred until OPAC merges them (~line 7392).
+C x_virga/s_virga are now ramped by virga_frac at the OPAC merge
+C (~line 7392), same as LATENT/CNDNSA -- done, 2026-11-27.
+C TODO (later, not yet useful without a converged model to restart):
+C persist x_virga_old/s_virga_old to disk like krome_flux_rad.dat, so
+C the blend above survives across separate SLURM invocations too.
       close(255)
 
 C Ramp length from condensate strength (floored, capped to iterations
@@ -13954,25 +14008,6 @@ C live ppallmol is the post-depletion value actually used downstream).
 C ------------ DEPLETED RECALC DONE ------------
       endif
       endif
-C Pressure scale height / Kzz / vertical mixing timescale, for virga and
-C photochemistry -- computed here (after the optional depleted recalc)
-C so it reflects the most up-to-date ggmu, not the undepleted seed pass.
-      h1mbar=0
-      p1mbar=1d99
-      amu=1.66053906660e-24
-      do k=1,ntau
-        H_p(k)=boltzk*t(k)/(grav*ggmu(k)*amu) !pressure scale height
-        p1mbar_diff=abs(ptot(k)*1e-6-1e-3)
-        if (p1mbar_diff.lt.p1mbar) then !find 1mbar level needed for Kzz calc
-          p1mbar = p1mbar_diff
-          h1mbar = H_p(k)
-        end if
-      end do
-      do k=1,ntau !calc Kzz from Moses et al. 2022 Equation 1
-       K_zz(k)=5e8*(ptot(k)*1e-6)**(-0.5)
-     >       *h1mbar/(620e5)*(teff_real/1450)**4
-       vert_mix_time(k) = H_p(k)**2 / K_zz(k)
-      enddo
 C     Header Pressure WAbs. Coeff Sca. Coeff
 C     Updating stuff for ggchem
       DO K=1,NTAU
